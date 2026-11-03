@@ -66,6 +66,8 @@
 20. [Шаблон спецификации модуля](docs/templates/MODULE_SPEC_TEMPLATE.md) — единый формат проектирования программных компонентов.
 21. [Спецификация StationStateManager](docs/17_STATION_STATE_MANAGER.md) — черновик модели работы, границ и функций ядра управления состояниями.
 22. [План реализации StationStateManager по функциям](docs/20_STATION_STATE_MANAGER_IMPLEMENTATION_PLAN.md) — небольшие задачи для Claude с отдельными тестами.
+23. [Самодиагностика станции](docs/21_STATION_SELF_DIAGNOSTICS.md) — функции и правила стартовой проверки служб и оборудования.
+24. [План реализации самодиагностики по функциям](docs/22_STATION_SELF_DIAGNOSTICS_IMPLEMENTATION_PLAN.md) — задачи для Claude с пофункциональной реализацией и тестами.
 21. [Конфигурация GitHub Projects](docs/19_GITHUB_PROJECT_BOARD.md) — предлагаемые статусы, поля, представления и правила ведения задач.
 
 ## 4. Роли участников разработки
