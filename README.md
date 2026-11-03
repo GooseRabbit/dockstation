@@ -42,7 +42,7 @@
 
 ## 3. С чего начинать чтение
 
-Документы рекомендуется изучать в следующем порядке:
+Основной комплект документов рекомендуется изучать в следующем порядке:
 
 1. [Управление документацией](docs/00_DOCUMENT_CONTROL.md) — статусы, версии, приоритет источников и основные документы по темам.
 2. [Паспорт проекта](docs/01_PROJECT_PASSPORT.md) — назначение, границы и исходные решения.
@@ -58,21 +58,21 @@
 12. [Испытания](docs/11_TESTING_AND_ACCEPTANCE.md) — методы и критерии проверки.
 13. [Решения и открытые вопросы](docs/12_DECISIONS_AND_OPEN_QUESTIONS.md) — что задано, согласовано и ещё требует выбора.
 14. [Словарь](docs/13_GLOSSARY.md) — термины и сокращения.
-15. [Первый аудит Claude](docs/14_FIRST_CLAUDE_REVIEW_PROMPT.md) — историческое задание первого независимого аудита.
-16. [Матрица трассировки](docs/15_TRACEABILITY_MATRIX.md) — связи требований, решений, отказов и испытаний.
-17. [Второй аудит Claude](docs/16_CLAUDE_REVIEW_PROMPT_V02.md) — историческое задание проверки редакции документации 0.2.
-18. [Правила работы с ИИ](docs/AI_WORK_RULES.md) — действующие ограничения для ChatGPT, Claude и других помощников.
-19. [Реестр программных модулей](docs/18_MODULE_REGISTER.md) — логические компоненты и статусы их проработки.
-20. [Шаблон спецификации модуля](docs/templates/MODULE_SPEC_TEMPLATE.md) — единый формат проектирования компонентов.
-21. [Спецификация StationStateManager](docs/17_STATION_STATE_MANAGER.md) — согласованная модель работы и границ ядра состояний.
-22. [План реализации StationStateManager по функциям](docs/20_STATION_STATE_MANAGER_IMPLEMENTATION_PLAN.md) — согласованные небольшие задачи и тесты.
-23. [Самодиагностика станции](docs/21_STATION_SELF_DIAGNOSTICS.md) — черновик функций стартовой диагностики.
-24. [План реализации самодиагностики по функциям](docs/22_STATION_SELF_DIAGNOSTICS_IMPLEMENTATION_PLAN.md) — черновик пофункциональной реализации.
-25. [Операторское приложение](docs/23_OPERATOR_APPLICATION.md) — Windows-клиент, три способа подключения, мониторинг и управление.
-26. [Идентичность станции и криптографическая защита](docs/24_STATION_IDENTITY_AND_CRYPTOGRAPHIC_SECURITY.md) — Station ID, provisioning, ключи, сертификаты и защита команд.
-27. [План реализации StationIdentityManager](docs/25_STATION_IDENTITY_MANAGER_IMPLEMENTATION_PLAN.md) — функции регистрации и управления идентичностью станции.
+15. [Правила работы с ИИ](docs/AI_WORK_RULES.md) — действующие ограничения для ChatGPT, Claude и других помощников.
+16. [Реестр программных модулей](docs/18_MODULE_REGISTER.md) — логические компоненты и статусы их проработки.
+17. [Шаблон спецификации модуля](docs/templates/MODULE_SPEC_TEMPLATE.md) — единый формат проектирования компонентов.
+18. [Спецификация StationStateManager](docs/17_STATION_STATE_MANAGER.md) — согласованная модель работы и границ ядра состояний.
+19. [План реализации StationStateManager по функциям](docs/20_STATION_STATE_MANAGER_IMPLEMENTATION_PLAN.md) — согласованные небольшие задачи и тесты.
+20. [Самодиагностика станции](docs/21_STATION_SELF_DIAGNOSTICS.md) — черновик функций стартовой диагностики.
+21. [План реализации самодиагностики по функциям](docs/22_STATION_SELF_DIAGNOSTICS_IMPLEMENTATION_PLAN.md) — черновик пофункциональной реализации.
+22. [Операторское приложение](docs/23_OPERATOR_APPLICATION.md) — Windows-клиент, три способа подключения, мониторинг и управление.
+23. [Идентичность станции и криптографическая защита](docs/24_STATION_IDENTITY_AND_CRYPTOGRAPHIC_SECURITY.md) — Station ID, provisioning, ключи, сертификаты и защита команд.
+24. [План реализации StationIdentityManager](docs/25_STATION_IDENTITY_MANAGER_IMPLEMENTATION_PLAN.md) — функции регистрации и управления идентичностью станции.
 
-[Документ о GitHub Projects](docs/19_GITHUB_PROJECT_BOARD.md) сохранён в репозитории как архив прежнего варианта планирования и не используется в текущем процессе.
+Исторические материалы, не являющиеся текущими заданиями или рабочими инструкциями:
+- [Первое задание Claude на аудит](docs/14_FIRST_CLAUDE_REVIEW_PROMPT.md).
+- [Второе задание Claude на аудит](docs/16_CLAUDE_REVIEW_PROMPT_V02.md).
+- [Архив прежней конфигурации GitHub Projects](docs/19_GITHUB_PROJECT_BOARD.md).
 
 ## 4. Роли участников разработки
 
