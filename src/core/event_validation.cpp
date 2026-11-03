@@ -1,7 +1,6 @@
 #include "event_validation.hpp"
 
 #include <array>
-#include <cctype>
 
 namespace dockstation::core {
 namespace {
@@ -17,9 +16,14 @@ constexpr EventValidationResult invalid_result(
     return {false, error, field, message};
 }
 
+constexpr bool is_ascii_whitespace(char ch) noexcept {
+    return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' ||
+           ch == '\f' || ch == '\v';
+}
+
 bool has_non_whitespace(std::string_view value) noexcept {
     for (const char ch : value) {
-        if (std::isspace(static_cast<unsigned char>(ch)) == 0) {
+        if (!is_ascii_whitespace(ch)) {
             return true;
         }
     }
