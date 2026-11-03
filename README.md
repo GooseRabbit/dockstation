@@ -64,6 +64,8 @@
 18. [Второй аудит Claude](docs/16_CLAUDE_REVIEW_PROMPT_V02.md) — проверка редакции документации 0.2.
 19. [Реестр программных модулей](docs/18_MODULE_REGISTER.md) — состав модулей и статусы их проработки.
 20. [Шаблон спецификации модуля](docs/templates/MODULE_SPEC_TEMPLATE.md) — единый формат проектирования программных компонентов.
+21. [Спецификация StationStateManager](docs/17_STATION_STATE_MANAGER.md) — черновик модели работы, границ и функций ядра управления состояниями.
+22. [План реализации StationStateManager по функциям](docs/20_STATION_STATE_MANAGER_IMPLEMENTATION_PLAN.md) — небольшие задачи для Claude с отдельными тестами.
 21. [Конфигурация GitHub Projects](docs/19_GITHUB_PROJECT_BOARD.md) — предлагаемые статусы, поля, представления и правила ведения задач.
 
 ## 4. Роли участников разработки
