@@ -64,11 +64,11 @@
 18. [Второй аудит Claude](docs/16_CLAUDE_REVIEW_PROMPT_V02.md) — проверка редакции документации 0.2.
 19. [Реестр программных модулей](docs/18_MODULE_REGISTER.md) — состав модулей и статусы их проработки.
 20. [Шаблон спецификации модуля](docs/templates/MODULE_SPEC_TEMPLATE.md) — единый формат проектирования программных компонентов.
-21. [Спецификация StationStateManager](docs/17_STATION_STATE_MANAGER.md) — черновик модели работы, границ и функций ядра управления состояниями.
-22. [План реализации StationStateManager по функциям](docs/20_STATION_STATE_MANAGER_IMPLEMENTATION_PLAN.md) — небольшие задачи для Claude с отдельными тестами.
-23. [Самодиагностика станции](docs/21_STATION_SELF_DIAGNOSTICS.md) — функции и правила стартовой проверки служб и оборудования.
-24. [План реализации самодиагностики по функциям](docs/22_STATION_SELF_DIAGNOSTICS_IMPLEMENTATION_PLAN.md) — задачи для Claude с пофункциональной реализацией и тестами.
-21. [Конфигурация GitHub Projects](docs/19_GITHUB_PROJECT_BOARD.md) — предлагаемые статусы, поля, представления и правила ведения задач.
+21. [Конфигурация GitHub Projects](docs/19_GITHUB_PROJECT_BOARD.md) — предлагаемая конфигурация доски задач.
+22. [Спецификация StationStateManager](docs/17_STATION_STATE_MANAGER.md) — согласованная модель работы, границ и функций ядра управления состояниями.
+23. [План реализации StationStateManager по функциям](docs/20_STATION_STATE_MANAGER_IMPLEMENTATION_PLAN.md) — согласованные небольшие задачи для Claude с отдельными тестами.
+24. [Самодиагностика станции](docs/21_STATION_SELF_DIAGNOSTICS.md) — черновик функций и правил стартовой проверки служб и оборудования.
+25. [План реализации самодиагностики по функциям](docs/22_STATION_SELF_DIAGNOSTICS_IMPLEMENTATION_PLAN.md) — черновик задач для Claude с пофункциональной реализацией и тестами.
 
 ## 4. Роли участников разработки
 
