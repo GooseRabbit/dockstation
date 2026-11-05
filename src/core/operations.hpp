@@ -1,7 +1,10 @@
 #pragma once
 
+#include <cstdint>
 #include <optional>
 #include <string_view>
+
+#include "event_processing.hpp"
 
 namespace dockstation::core {
 
@@ -71,6 +74,7 @@ public:
     virtual ~StateRepository() = default;
 
     // Saved допустим только после атомарной фиксации записи, переживающей перезапуск.
+    // Новая запись создаёт OperationRecord со статусом Requested и revision=1.
     // При повторном ID репозиторий сравнивает весь ActionRequest точно, включая optional parameters.
     // До возврата данные из string_view должны быть скопированы/сериализованы во владеющее хранилище.
     [[nodiscard]] virtual OperationIntentSaveStatus save_operation_intent(
@@ -123,5 +127,79 @@ struct DispatchResult {
     const ActionRequest& request,
     const PersistResult& persistence,
     ActionDispatcher& dispatcher) noexcept;
+
+
+/** Жизненный цикл операции отделён от глобального состояния станции. */
+enum class OperationLifecycleStatus : std::uint8_t {
+    Requested, Accepted, Started, Completed, Failed, CancelRequested, Cancelled, OutcomeUnknown
+};
+
+// Сохранённая операция. F07 создаёт её со статусом Requested и revision=1.
+struct OperationRecord {
+    ActionRequest request{};
+    OperationLifecycleStatus status{OperationLifecycleStatus::Requested};
+    std::uint64_t revision{1};
+};
+
+enum class OperationLookupStatus : std::uint8_t { Found, NotFound, Error };
+struct OperationLookupResult {
+    OperationLookupStatus status{OperationLookupStatus::Error};
+    OperationRecord record{};
+};
+
+enum class OperationUpdateCommitStatus : std::uint8_t {
+    Applied, DuplicateEvent, EventConflict, OperationChanged,
+    SourceCursorChanged, OperationNotFound, Error
+};
+
+// Единый логический порт для F09. Операции, события и курсор должны иметь
+// согласованное долговременное представление.
+class OperationUpdateRepository : public EventRepository {
+public:
+    ~OperationUpdateRepository() override = default;
+
+    // Снимок operation_id; string_view должны оставаться действительными до завершения commit_operation_update().
+    [[nodiscard]] virtual OperationLookupResult find_operation(
+        std::string_view operation_id) noexcept = 0;
+
+    // Одна атомарная фиксация: проверка revision/status и курсора; изменение
+    // lifecycle; сохранение event для find_by_id(); продвижение source_sequence.
+    // При конфликте операции/курсора возвращается соответствующий статус.
+    // Повторный event_id возвращает DuplicateEvent, иное содержимое — EventConflict.
+    // Все string_view копируются/сериализуются до возврата.
+    [[nodiscard]] virtual OperationUpdateCommitStatus commit_operation_update(
+        const OperationRecord& expected_record,
+        OperationLifecycleStatus next_status,
+        const Event& event,
+        const SourceCursor& expected_cursor) noexcept = 0;
+};
+
+// Адаптер уже преобразовал payload события в типизированный статус.
+// F09 не выбирает JSON и не угадывает значение по строке.
+struct OperationUpdate {
+    Event event{};
+    OperationLifecycleStatus next_status{OperationLifecycleStatus::Requested};
+};
+
+enum class OperationUpdateResultStatus : std::uint8_t {
+    Applied, Duplicate, EventConflict, InvalidEvent, EventNotReliable,
+    WrongEventType, InvalidStatus, StaleEvent, EventOrderUnknown,
+    OperationNotFound, CorrelationMismatch, TransitionNotAllowed,
+    ConcurrentOperationUpdate, ConcurrentSourceUpdate, RepositoryError
+};
+
+struct OperationUpdateResult {
+    OperationUpdateResultStatus status{OperationUpdateResultStatus::InvalidEvent};
+    OperationLifecycleStatus resulting_status{OperationLifecycleStatus::Requested};
+    std::uint64_t revision{0};
+};
+
+// update — событие и распознанный статус; source_cursor — последний принятый
+// номер источника/сессии; repository — атомарный порт операций и событий.
+// Функция не меняет глобальное состояние станции и не запускает оборудование.
+[[nodiscard]] OperationUpdateResult handle_operation_update(
+    const OperationUpdate& update,
+    const SourceCursor& source_cursor,
+    OperationUpdateRepository& repository) noexcept;
 
 }  // namespace dockstation::core

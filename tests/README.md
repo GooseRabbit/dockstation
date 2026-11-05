@@ -108,3 +108,11 @@ mismatched persistence proof, all dispatcher statuses, duplicate operation IDs,
 and prevention of a second execution in an idempotent receiving-module fake.
 These host tests do not verify real inter-module transport, durable receiver-side
 deduplication, SafetyManager integration, or physical hardware.
+
+
+## Operation lifecycle update tests
+
+    g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -Isrc src/core/event_validation.cpp src/core/event_processing.cpp src/core/operations.cpp tests/unit/test_operation_update.cpp -o test_operation_update
+    ./test_operation_update
+
+The `handle_operation_update()` tests use a fake `OperationUpdateRepository`. They cover valid lifecycle transitions, rejected jumps, terminal and OUTCOME_UNKNOWN behavior, exact duplicate events, event-ID conflicts, invalid/unreliable envelopes, stale or unordered source sequences, unknown operations, correlation mismatches, parallel operations, and concurrent operation/cursor changes. The fake verifies the repository contract but does not prove real transaction durability, receiver-side event persistence, source-cursor recovery after reboot, or hardware integration. The adapter must translate the operation status into the typed `OperationUpdate`; the payload serialization format is not fixed.
