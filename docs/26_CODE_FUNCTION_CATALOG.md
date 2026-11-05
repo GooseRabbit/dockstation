@@ -37,7 +37,7 @@
 | Функция | Назначение |
 |---|---|
 | `TransitionDecision resolve_transition(State state, const Event& event, const TransitionContext& context)` | Определяет, разрешён ли переход из текущего состояния по поступившему событию. Неизвестные переходы отклоняет. |
-| `CommitResult commit_transition(const TransitionPlan& plan, const TransitionEvidence& evidence)` | Сохраняет подтверждённый переход и новую версию состояния. Не фиксирует переход только по факту отправки команды. |
+| `TransitionCommitResult commit_transition(const TransitionPlan& plan, const TransitionEvidence& evidence, StationStateRepository& repository, StateChangedPublisher& publisher) noexcept` **(реализована)** | Повторно проверяет допуск F05, атомарно сохраняет snapshot/историю/событие с новой revision и только после этого публикует StateChanged. |
 | `StateSnapshot get_snapshot() const` | Возвращает текущее глобальное состояние станции и номер его версии. |
 | `std::vector<TransitionRecord> get_transition_history(const HistoryFilter& filter)` | Возвращает историю подтверждённых переходов по заданному фильтру. |
 
