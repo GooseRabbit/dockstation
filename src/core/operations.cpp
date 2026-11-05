@@ -32,4 +32,36 @@ ActionRequestResult create_action_request(
     return {ActionRequestStatus::Created, request};
 }
 
+
+PersistResult persist_operation_intent(
+    const ActionRequest& request,
+    StateRepository& repository) noexcept {
+    // Запрос может поступить не только напрямую из F06, поэтому обязательные поля проверяются повторно.
+    if (request.operation_id.empty() || request.correlation_id.empty() ||
+        request.target_module.empty() || request.action.empty()) {
+        return {PersistStatus::InvalidRequest};
+    }
+
+    // StateRepository обязан атомарно обеспечить уникальность operation_id и устойчивую фиксацию.
+    const OperationIntentSaveStatus save_status = repository.save_operation_intent(request);
+
+    switch (save_status) {
+        case OperationIntentSaveStatus::Saved:
+            // Только впервые сохранённая запись даёт право перейти к отправке в F08.
+            return {PersistStatus::Persisted};
+        case OperationIntentSaveStatus::AlreadySavedSame:
+            // Повторное сохранение не доказывает, что исполнитель ещё не получал команду.
+            return {PersistStatus::AlreadyPersisted};
+        case OperationIntentSaveStatus::Conflict:
+            // Один operation_id с разными данными — конфликт; физическое действие блокируется.
+            return {PersistStatus::Conflict};
+        case OperationIntentSaveStatus::Error:
+            // Неизвестный исход записи трактуется fail-closed.
+            return {PersistStatus::RepositoryError};
+    }
+
+    // Неизвестное значение enum также не считается подтверждением сохранения.
+    return {PersistStatus::RepositoryError};
+}
+
 }  // namespace dockstation::core

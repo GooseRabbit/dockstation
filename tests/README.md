@@ -82,3 +82,15 @@ input. The test does not prove uniqueness of a production ID algorithm: that is
 the provider's contract and must be tested against the selected persistent
 implementation. It also does not test storage, dispatch, parameter serialization,
 or physical hardware.
+
+
+## Operation intent persistence tests
+
+    g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -Isrc src/core/operations.cpp tests/unit/test_operation_intent.cpp -o test_operation_intent
+    ./test_operation_intent
+
+The `persist_operation_intent()` tests use a fake `StateRepository`. They cover
+new persistence, exact-existing status, conflicts, repository errors, unknown
+statuses, required fields, optional/empty parameters, and dispatch gating.
+The fake does not prove crash consistency, atomicity, flash wear behavior, or
+power-loss durability; those require the selected storage adapter and hardware.
