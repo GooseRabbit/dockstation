@@ -42,7 +42,7 @@ int main() {
     // 1. Новое намерение считается сохранённым только после положительного ответа репозитория.
     const auto saved = persist_operation_intent(request, repository);
     expect(saved.status == PersistStatus::Persisted, "new intent is reported as persisted");
-    expect(saved.may_dispatch(), "newly persisted intent may be dispatched once by F08");
+    expect(saved.authorizes(request), "newly persisted intent may be dispatched once by F08");
     expect(repository.calls == 1, "repository is called once for a valid request");
 
     // 2. Все поля передаются хранилищу без потери или преобразования.
@@ -57,17 +57,17 @@ int main() {
     const auto already_saved = persist_operation_intent(request, repository);
     expect(already_saved.status == PersistStatus::AlreadyPersisted,
            "identical existing intent is reported as already persisted");
-    expect(!already_saved.may_dispatch(), "already persisted intent must not be dispatched again");
+    expect(!already_saved.authorizes(request), "already persisted intent must not be dispatched again");
 
     // 4. Конфликт и ошибка репозитория блокируют дальнейшую отправку.
     repository.next_status = OperationIntentSaveStatus::Conflict;
     const auto conflict = persist_operation_intent(request, repository);
-    expect(conflict.status == PersistStatus::Conflict && !conflict.may_dispatch(),
+    expect(conflict.status == PersistStatus::Conflict && !conflict.authorizes(request),
            "operation ID conflict blocks dispatch");
 
     repository.next_status = OperationIntentSaveStatus::Error;
     const auto error = persist_operation_intent(request, repository);
-    expect(error.status == PersistStatus::RepositoryError && !error.may_dispatch(),
+    expect(error.status == PersistStatus::RepositoryError && !error.authorizes(request),
            "repository error blocks dispatch");
 
     // 5. Некорректный запрос блокируется до обращения к хранилищу.
@@ -102,7 +102,7 @@ int main() {
     // 7. Неизвестное значение статуса репозитория закрывает обработку.
     repository.next_status = static_cast<OperationIntentSaveStatus>(255);
     const auto unknown = persist_operation_intent(request, repository);
-    expect(unknown.status == PersistStatus::RepositoryError && !unknown.may_dispatch(),
+    expect(unknown.status == PersistStatus::RepositoryError && !unknown.authorizes(request),
            "unknown repository status blocks dispatch");
 
     // 8. Входной запрос не изменяется.

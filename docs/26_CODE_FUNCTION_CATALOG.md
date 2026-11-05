@@ -47,7 +47,7 @@
 |---|---|
 | `ActionRequestResult create_action_request(const ActionPlan& plan, OperationIdProvider& id_provider)` | Формирует логический запрос из ActionPlan и получает operation_id через OperationIdProvider; не сохраняет запрос и не выполняет физическое действие. |
 | `PersistResult persist_operation_intent(const ActionRequest& request, StateRepository& repository)` | Передаёт ActionRequest в StateRepository; только впервые устойчиво сохранённая запись разрешает последующий dispatch, повторная запись или ошибка отправку не разрешают. |
-| `DispatchResult dispatch_action_request(const ActionRequest& request)` | Передаёт сохранённый запрос нужному функциональному модулю. |
+| `DispatchResult dispatch_action_request(const ActionRequest& request, const PersistResult& persistence, ActionDispatcher& dispatcher)` | Передаёт запрос только при точном подтверждении новой записи F07; получатель дедуплицирует по operation_id, а ACCEPTED не означает физическое начало действия. |
 | `OperationUpdateResult handle_operation_update(const OperationUpdate& update)` | Обрабатывает подтверждения принятия, начала, завершения, отмены или отказа по конкретной операции. |
 | `TimeoutResult handle_operation_timeout(OperationId operation_id, TimeoutType timeout_type)` | Обрабатывает тайм-аут, не предполагая автоматически, что физическое действие не состоялось. |
 | `FailureDispositionResult resolve_failure_disposition(const Failure& failure, const TransitionContext& context)` | Находит заранее утверждённую реакцию на конкретный отказ. Если правила нет, не придумывает его. |

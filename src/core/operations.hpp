@@ -87,12 +87,9 @@ enum class PersistStatus {
 
 struct PersistResult {
     PersistStatus status{PersistStatus::InvalidRequest};
+    ActionRequest persisted_request{};
 
-    // Разрешает F08 отправить запрос только если запись создана впервые сейчас.
-    // AlreadyPersisted не разрешает повторную отправку: физический результат нужно сверить.
-    [[nodiscard]] bool may_dispatch() const noexcept {
-        return status == PersistStatus::Persisted;
-    }
+    [[nodiscard]] bool authorizes(const ActionRequest& request) const noexcept;
 };
 
 // Сохраняет намерение до передачи физически значимого действия исполнителю.
@@ -101,5 +98,30 @@ struct PersistResult {
 [[nodiscard]] PersistResult persist_operation_intent(
     const ActionRequest& request,
     StateRepository& repository) noexcept;
+
+enum class ActionDispatchPortStatus { Accepted, AlreadyKnown, Rejected, Conflict, Unknown };
+
+class ActionDispatcher {
+public:
+    virtual ~ActionDispatcher() = default;
+    // Получатель дедуплицирует operation_id; точный повтор не запускает действие заново.
+    // Тот же ID с иным содержимым — Conflict; неопределённый результат — Unknown.
+    // Данные string_view должны быть скопированы/сериализованы до возврата при асинхронной постановке в очередь.
+    [[nodiscard]] virtual ActionDispatchPortStatus dispatch(const ActionRequest& request) noexcept = 0;
+};
+
+enum class DispatchStatus {
+    Accepted, AlreadyKnown, Rejected, Conflict, OutcomeUnknown,
+    PersistenceNotConfirmed, PersistenceReceiptMismatch, InvalidRequest
+};
+
+struct DispatchResult {
+    DispatchStatus status{DispatchStatus::InvalidRequest};
+};
+
+[[nodiscard]] DispatchResult dispatch_action_request(
+    const ActionRequest& request,
+    const PersistResult& persistence,
+    ActionDispatcher& dispatcher) noexcept;
 
 }  // namespace dockstation::core

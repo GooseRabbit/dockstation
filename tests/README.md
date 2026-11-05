@@ -91,6 +91,20 @@ or physical hardware.
 
 The `persist_operation_intent()` tests use a fake `StateRepository`. They cover
 new persistence, exact-existing status, conflicts, repository errors, unknown
-statuses, required fields, optional/empty parameters, and dispatch gating.
+statuses, required fields, optional/empty parameters, and the exact request receipt
+that F08 must match before dispatch.
 The fake does not prove crash consistency, atomicity, flash wear behavior, or
 power-loss durability; those require the selected storage adapter and hardware.
+
+
+## Action request dispatch tests
+
+    g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -Isrc src/core/operations.cpp tests/unit/test_operation_dispatch.cpp -o test_operation_dispatch
+    ./test_operation_dispatch
+
+The `dispatch_action_request()` tests use a fake persisted-intent receipt and
+fake dispatchers. They cover exact receipt matching, rejection of missing or
+mismatched persistence proof, all dispatcher statuses, duplicate operation IDs,
+and prevention of a second execution in an idempotent receiving-module fake.
+These host tests do not verify real inter-module transport, durable receiver-side
+deduplication, SafetyManager integration, or physical hardware.
