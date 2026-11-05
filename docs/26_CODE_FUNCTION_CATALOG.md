@@ -29,7 +29,7 @@
 |---|---|
 | `EventCategory classify_event(const Event& event) noexcept` | Определяет категорию события: подсистема, операция, безопасность, команда, таймер или восстановление. |
 | `DuplicateEventResult check_duplicate_event(const Event& event, EventRepository& repository)` | Определяет, новое ли событие пришло, является ли оно точным повтором или конфликтом с тем же идентификатором. |
-| `EventFreshnessResult check_event_freshness(const Event& event, const SourceCursor& cursor)` | Проверяет последовательность событий и выявляет устаревшие или неупорядоченные события, если источник предоставляет нужные данные. |
+| `EventFreshnessResult check_event_freshness(const Event& event, const SourceCursor& cursor) noexcept` **(реализована)** | Сравнивает source_sequence в пределах одного источника/сессии; не использует календарное время, не меняет курсор. При новой сессии вызывающий слой предварительно подтверждает её и сбрасывает курсор. |
 | `EventHandlingResult handle_event(const Event& event)` | Запускает полный сценарий обработки события: проверку, поиск повтора, проверку актуальности и выбор дальнейшего действия. |
 
 ### src/core/state_transitions.cpp

@@ -15,6 +15,9 @@ From the repository root:
     g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -Isrc src/core/state_transitions.cpp tests/unit/test_state_transitions.cpp -o test_state_transitions
     ./test_state_transitions
 
+    g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -Isrc src/core/event_processing.cpp tests/unit/test_event_freshness.cpp -o test_event_freshness
+    ./test_event_freshness
+
 On Windows, use .exe for the output name and run ./test_event_validation.exe
 from PowerShell if a compatible GCC/Clang toolchain is installed.
 
@@ -32,3 +35,8 @@ The host tests do not constitute an ESP32/Arduino target build or hardware test.
 ## State transition tests
 
 The `resolve_transition()` tests cover the three approved startup transitions from §8.1 of `docs/17_STATION_STATE_MANAGER.md`. They verify that configuration validation, a complete positive critical-diagnostics report, a confirmed safe initial condition, and the absence of a pending recovery requirement are mandatory before entering WAITING. Every other state/event pair is rejected. These tests do not validate the full station transition matrix, which is not yet approved.
+
+
+## Event freshness tests
+
+The `check_event_freshness()` tests compare source sequence numbers only within the same source/session. The cursor must be explicitly bound to the same source and session, even for the first event. A missing or repeated sequence, unmatched source, or unconfirmed/mismatched session is UNORDERED; a regressed sequence is STALE; a first or strictly advanced sequence is CURRENT. Calendar timestamps are never used as a substitute for source sequence numbers. When a new source session is confirmed by the source layer, that layer must reset the cursor and store the new session identifier before processing its first event. This function does not detect duplicate `event_id` values; that is a separate SSM task.
