@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 #include <optional>
 #include <string_view>
 #include "event.hpp"
@@ -19,10 +20,10 @@ enum class RecoveryStatus { Unknown, Required, NotRequired };
 // true устанавливается только после достоверно положительной проверки;
 // отсутствие результата, UNKNOWN и ошибка должны оставаться false.
 struct TransitionContext {
-    bool configuration_validated{false};
-    bool diagnostic_report_complete{false};
-    bool critical_checks_passed{false};
-    bool safe_initial_condition_confirmed{false};
+    bool configuration_validated{false};  // true только после успешной проверки сохранённой конфигурации.
+    bool diagnostic_report_complete{false};  // true только после получения полного отчёта.
+    bool critical_checks_passed{false};  // true только если все критические проверки достоверно успешны.
+    bool safe_initial_condition_confirmed{false};  // true после подтверждения безопасного исходного состояния.
     // Только NOT_REQUIRED разрешает прямой переход в ОЖИДАНИЕ; значение по умолчанию UNKNOWN.
     RecoveryStatus recovery_status{RecoveryStatus::Unknown};
 };
@@ -43,4 +44,90 @@ struct TransitionResult {
     StationState current_state,
     const Event& event,
     const TransitionContext& context = {}) noexcept;
+
+
+// Снимок содержит только поля, необходимые для атомарного сравнения и фиксации.
+// Полный диагностический snapshot станции будет расширен отдельной функцией чтения.
+struct StationStateSnapshot {
+    StationState state{StationState::PoweredOff};  // Последнее подтверждённое глобальное состояние.
+    std::uint64_t revision{0};  // Первая версия предварительно равна 0; далее +1 на переход.
+    std::string_view transition_id{};  // ID последнего сохранённого перехода; пустой до первой фиксации.
+};
+
+// План не разрешает переход сам по себе: F10 повторно сверяет его с результатом F05.
+// expected_state и expected_revision защищают от записи поверх более нового состояния.
+struct TransitionPlan {
+    StationState expected_state{StationState::PoweredOff};  // Состояние из текущего snapshot.
+    std::uint64_t expected_revision{0};  // Версия этого snapshot; должна совпасть с сохранённой.
+    StationState next_state{StationState::PoweredOff};  // Целевое состояние, ранее разрешённое F05.
+    std::string_view transition_id{};  // Уникальный ID перехода; формат и генератор пока не выбраны.
+};
+
+// Доказательная часть первого вертикального среза: нормализованное событие
+// и положительные подтверждения условий, используемые resolve_transition().
+struct TransitionEvidence {
+    Event event{};  // Событие, ранее прошедшее F01/F03/F04 у вызывающего слоя.
+    TransitionContext context{};  // Подтверждения доверенных менеджеров, а не сырые данные датчиков.
+};
+
+enum class StationStateRepositoryStatus : std::uint8_t {
+    Committed, DuplicateEvent, EventConflict, TransitionIdConflict, SnapshotChanged, Error
+};
+
+// Специализированный логический порт транзакции глобального состояния.
+// Тот же физический адаптер хранения может реализовать его вместе с StateRepository
+// из operations.hpp и OperationUpdateRepository; отдельную БД этот интерфейс не требует.
+class StationStateRepository {
+public:
+    virtual ~StationStateRepository() = default;
+
+    // Одна атомарная операция: сравнить expected_state/revision; проверить уникальность
+    // event_id и transition_id; сохранить next_snapshot, историю переходов и исходный Event.
+    // Для повторного event_id сравнивается всё содержимое, кроме назначенного приёмником received_at.
+    // Ничего из перечисленного нельзя фиксировать частично. Все string_view копируются до возврата.
+    [[nodiscard]] virtual StationStateRepositoryStatus commit_transition(
+        const TransitionPlan& plan, const TransitionEvidence& evidence,
+        const StationStateSnapshot& next_snapshot) noexcept = 0;
+};
+
+enum class StateChangedPublishStatus : std::uint8_t { Published, Rejected, Unknown };
+struct StateChanged {
+    StationState old_state{StationState::PoweredOff};  // Состояние до фиксации.
+    StationState new_state{StationState::PoweredOff};  // Состояние после фиксации.
+    std::uint64_t revision{0};  // Новая версия состояния.
+    std::string_view event_id{};  // ID события, на основании которого выполнен переход.
+    std::string_view transition_id{};  // ID записи перехода.
+    std::optional<std::string_view> reason_code{};  // Только если причина достоверно определена.
+    std::optional<std::string_view> reason_text{};  // Краткое описание известной причины.
+};
+class StateChangedPublisher {
+public:
+    virtual ~StateChangedPublisher() = default;
+    // При асинхронной постановке получатель копирует/сериализует данные до возврата.
+    [[nodiscard]] virtual StateChangedPublishStatus publish(
+        const StateChanged& notification) noexcept = 0;
+};
+
+enum class TransitionCommitStatus : std::uint8_t {
+    Committed, CommittedNotificationNotConfirmed, DuplicateEvent, EventConflict,
+    TransitionIdConflict, SnapshotChanged, InvalidPlan, InvalidEvidence, RepositoryError
+};
+struct TransitionCommitResult {
+    TransitionCommitStatus status{TransitionCommitStatus::InvalidPlan};
+    StationStateSnapshot snapshot{};
+    std::string_view reason_code{};
+    std::string_view reason_text{};
+    [[nodiscard]] bool committed() const noexcept {
+        return status == TransitionCommitStatus::Committed ||
+               status == TransitionCommitStatus::CommittedNotificationNotConfirmed;
+    }
+};
+
+// F10: повторно проверяет допуск F05, атомарно фиксирует новый snapshot и историю,
+// затем публикует StateChanged. Если публикация не подтверждена, запись уже сохранена:
+// повторять commit нельзя; требуется сверка/восстановление уведомления.
+[[nodiscard]] TransitionCommitResult commit_transition(
+    const TransitionPlan& plan, const TransitionEvidence& evidence,
+    StationStateRepository& repository, StateChangedPublisher& publisher) noexcept;
+
 }  // namespace dockstation::core

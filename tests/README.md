@@ -116,3 +116,11 @@ deduplication, SafetyManager integration, or physical hardware.
     ./test_operation_update
 
 The `handle_operation_update()` tests use a fake `OperationUpdateRepository`. They cover valid lifecycle transitions, rejected jumps, terminal and OUTCOME_UNKNOWN behavior, exact duplicate events, event-ID conflicts, invalid/unreliable envelopes, stale or unordered source sequences, unknown operations, correlation mismatches, parallel operations, and concurrent operation/cursor changes. The fake verifies the repository contract but does not prove real transaction durability, receiver-side event persistence, source-cursor recovery after reboot, or hardware integration. The adapter must translate the operation status into the typed `OperationUpdate`; the payload serialization format is not fixed.
+
+
+## Global state transition commit tests
+
+    g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -Isrc src/core/event_validation.cpp src/core/state_transitions.cpp tests/unit/test_transition_commit.cpp -o test_transition_commit
+    ./test_transition_commit
+
+The commit_transition() tests use fake StationStateRepository and StateChangedPublisher ports. They cover all three currently approved startup transitions; event-envelope and quality validation; F05 prerequisites and target matching; empty transition IDs and revision overflow; repository errors, duplicate/conflicting event IDs, transition-ID conflicts and stale snapshots; publication only after confirmed persistence; and a publish failure after a successful commit. The test checks the logical port contract only. It does not prove real transaction durability, power-loss behavior, a production transition-ID generator, durable outbox/reliable delivery, ESP32/Arduino builds or hardware integration. The caller is responsible for the applicable F03/F04 checks before F10; the repository must still enforce event-ID uniqueness atomically.
