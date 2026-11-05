@@ -18,6 +18,9 @@ From the repository root:
     g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -Isrc src/core/event_processing.cpp tests/unit/test_event_freshness.cpp -o test_event_freshness
     ./test_event_freshness
 
+    g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -Isrc src/core/event_processing.cpp tests/unit/test_event_classification.cpp -o test_event_classification
+    ./test_event_classification
+
 On Windows, use .exe for the output name and run ./test_event_validation.exe
 from PowerShell if a compatible GCC/Clang toolchain is installed.
 
@@ -40,3 +43,14 @@ The `resolve_transition()` tests cover the three approved startup transitions fr
 ## Event freshness tests
 
 The `check_event_freshness()` tests compare source sequence numbers only within the same source/session. The cursor must be explicitly bound to the same source and session, even for the first event. A missing or repeated sequence, unmatched source, or unconfirmed/mismatched session is UNORDERED; a regressed sequence is STALE; a first or strictly advanced sequence is CURRENT. Calendar timestamps are never used as a substitute for source sequence numbers. When a new source session is confirmed by the source layer, that layer must reset the cursor and store the new session identifier before processing its first event. This function does not detect duplicate `event_id` values; that is a separate SSM task.
+
+
+## Event classification tests
+
+The `classify_event()` tests cover all ten registered event types from §2.1 of
+`docs/06_INTERFACES_AND_DATA_CONTRACTS.md`, all six categories, and the
+`Unknown` result for empty, unregistered, case-mismatched, and near-match
+event types. Repeated calls with the same event must return the same category.
+Classification uses exact `event_type` matching only; it does not validate the
+event envelope, change station state, authorize an operation, or trigger a
+physical action.

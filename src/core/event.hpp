@@ -47,8 +47,9 @@ struct Event {
 };
 
 // These requirements are supplied by the trusted source/operation contract.
-// They are not inferred from event_type because a complete event catalogue
-// has not yet been approved.
+// Event type classification is performed separately by classify_event() using
+// the agreed catalogue in docs/06 §2.1; validate_event() does not infer policy
+// requirements from event_type.
 struct EventValidationPolicy {
     bool require_source_instance{false};
     bool require_source_sequence{false};

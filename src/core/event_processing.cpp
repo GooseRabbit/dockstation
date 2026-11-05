@@ -53,4 +53,45 @@ EventFreshnessResult check_event_freshness(
             EventFreshnessReason::SequenceRegressed};
 }
 
+
+EventCategory classify_event(const Event& event) noexcept {
+    // Сопоставляем только точные зарегистрированные имена: похожие строки не угадываем.
+    if (event.event_type == "STARTUP_REQUESTED" ||
+        event.event_type == "COMMAND_REQUESTED") {
+        return EventCategory::Command;
+    }
+
+    // Эти события сообщают об инициализации или состоянии отдельной подсистемы.
+    // Неисправность подсистемы также передаётся через SUBSYSTEM_STATUS_UPDATED.
+    if (event.event_type == "INITIALIZATION_COMPLETED" ||
+        event.event_type == "SELF_TEST_COMPLETED" ||
+        event.event_type == "SUBSYSTEM_STATUS_UPDATED") {
+        return EventCategory::Subsystem;
+    }
+
+    // Изменение статуса операции не является самостоятельным глобальным переходом.
+    if (event.event_type == "OPERATION_STATUS_UPDATED") {
+        return EventCategory::Operation;
+    }
+
+    // Результат SafetyManager классифицируется отдельно от команды и операции.
+    if (event.event_type == "SAFETY_PERMISSION_UPDATED") {
+        return EventCategory::Safety;
+    }
+
+    // Тайм-аут — сигнал времени; он сам по себе не доказывает исход физического действия.
+    if (event.event_type == "OPERATION_TIMEOUT") {
+        return EventCategory::Timer;
+    }
+
+    // События восстановления относятся к сверке состояния после перезапуска/сбоя.
+    if (event.event_type == "RECOVERY_REQUESTED" ||
+        event.event_type == "RECOVERY_RECONCILIATION_COMPLETED") {
+        return EventCategory::Recovery;
+    }
+
+    // Неизвестный или пустой тип нельзя автоматически считать событием подсистемы.
+    return EventCategory::Unknown;
+}
+
 }  // namespace dockstation::core
