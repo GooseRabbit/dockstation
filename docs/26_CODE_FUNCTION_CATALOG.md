@@ -49,7 +49,7 @@
 | `PersistResult persist_operation_intent(const ActionRequest& request, StateRepository& repository)` | Передаёт ActionRequest в StateRepository; только впервые устойчиво сохранённая запись разрешает последующий dispatch, повторная запись или ошибка отправку не разрешают. |
 | `DispatchResult dispatch_action_request(const ActionRequest& request, const PersistResult& persistence, ActionDispatcher& dispatcher)` | Передаёт запрос только при точном подтверждении новой записи F07; получатель дедуплицирует по operation_id, а ACCEPTED не означает физическое начало действия. |
 | `OperationUpdateResult handle_operation_update(const OperationUpdate& update, const SourceCursor& source_cursor, OperationUpdateRepository& repository)` | Проверяет typed update, качество/повтор/порядок события, operation_id и correlation_id; применяет только разрешённый переход и атомарно фиксирует статус, событие и курсор источника. |
-| `TimeoutResult handle_operation_timeout(OperationId operation_id, TimeoutType timeout_type)` | Обрабатывает тайм-аут, не предполагая автоматически, что физическое действие не состоялось. |
+| `OperationTimeoutResult handle_operation_timeout(const OperationTimeout& timeout, const SourceCursor& source_cursor, OperationUpdateRepository& repository) noexcept` **(реализована; отдельный harness 13/13, интегрированный запуск ожидает проверки)** | По подтверждённому таймерному событию переводит только в FAILED до отправки либо OUTCOME_UNKNOWN после возможной отправки; сохраняет событие и lifecycle атомарно. |
 | `FailureDispositionResult resolve_failure_disposition(const Failure& failure, const TransitionContext& context)` | Находит заранее утверждённую реакцию на конкретный отказ. Если правила нет, не придумывает его. |
 
 ### src/core/recovery.cpp

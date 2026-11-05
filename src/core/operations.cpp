@@ -287,4 +287,194 @@ OperationUpdateResult handle_operation_update(
     return update_result(OperationUpdateResultStatus::RepositoryError);
 }
 
+
+OperationTimeoutResult handle_operation_timeout(
+    const OperationTimeout& timeout,
+    const SourceCursor& source_cursor,
+    OperationUpdateRepository& repository) noexcept {
+    // Вспомогательный результат сохраняет текущий статус/ревизию, если запись не менялась.
+    const auto result = [](OperationTimeoutResultStatus status,
+                           OperationLifecycleStatus lifecycle = OperationLifecycleStatus::Requested,
+                           std::uint64_t revision = 0) noexcept {
+        return OperationTimeoutResult{status, lifecycle, revision};
+    };
+
+    // Проверяем конверт и обязательную связь тайм-аута с конкретной операцией.
+    const EventValidationPolicy policy{false, false, true};
+    if (!validate_event(timeout.event, policy)) {
+        return result(OperationTimeoutResultStatus::InvalidEvent);
+    }
+
+    // Только достоверное событие таймера может влиять на lifecycle операции.
+    if (timeout.event.quality_status != "VALID") {
+        return result(OperationTimeoutResultStatus::EventNotReliable);
+    }
+    if (timeout.event.event_type != "OPERATION_TIMEOUT") {
+        return result(OperationTimeoutResultStatus::WrongEventType);
+    }
+
+    // Неизвестные значения enum отклоняются; новые типы тайм-аутов требуют явного правила.
+    switch (timeout.timeout_type) {
+        case OperationTimeoutType::BeforeDispatch:
+        case OperationTimeoutType::DispatchResponse:
+        case OperationTimeoutType::OperationCompletion:
+        case OperationTimeoutType::CancellationCompletion:
+            break;
+        default:
+            return result(OperationTimeoutResultStatus::InvalidTimeoutType);
+    }
+    switch (timeout.dispatch_certainty) {
+        case DispatchCertainty::NotDispatched:
+        case DispatchCertainty::MayHaveBeenDispatched:
+            break;
+        default:
+            return result(OperationTimeoutResultStatus::InvalidDispatchCertainty);
+    }
+
+    // До F08 допустимо только явное подтверждение, что запрос не передавался.
+    // Во всех остальных видах ожидания нужно считать, что исполнитель мог получить запрос.
+    const bool before_dispatch = timeout.timeout_type == OperationTimeoutType::BeforeDispatch;
+    if ((before_dispatch &&
+         timeout.dispatch_certainty != DispatchCertainty::NotDispatched) ||
+        (!before_dispatch &&
+         timeout.dispatch_certainty != DispatchCertainty::MayHaveBeenDispatched)) {
+        return result(OperationTimeoutResultStatus::InvalidDispatchCertainty);
+    }
+
+    // F03: повторный timeout не обновляет lifecycle повторно; конфликт event_id блокирует обработку.
+    const DuplicateEventResult duplicate = check_duplicate_event(timeout.event, repository);
+    switch (duplicate.status) {
+        case DuplicateEventStatus::Duplicate:
+            return result(OperationTimeoutResultStatus::Duplicate);
+        case DuplicateEventStatus::Conflict:
+            return result(OperationTimeoutResultStatus::EventConflict);
+        case DuplicateEventStatus::RepositoryError:
+            return result(OperationTimeoutResultStatus::RepositoryError);
+        case DuplicateEventStatus::New:
+            break;
+    }
+
+    // F04: Timer должен выдавать последовательные события в одной подтверждённой сессии.
+    const EventFreshnessResult freshness = check_event_freshness(timeout.event, source_cursor);
+    if (freshness.status == EventFreshnessStatus::Stale) {
+        return result(OperationTimeoutResultStatus::StaleEvent);
+    }
+    if (freshness.status != EventFreshnessStatus::Current) {
+        return result(OperationTimeoutResultStatus::EventOrderUnknown);
+    }
+
+    // Читаем актуальную операцию; входной operation_id никогда не создаёт новую запись.
+    const OperationLookupResult lookup = repository.find_operation(*timeout.event.operation_id);
+    switch (lookup.status) {
+        case OperationLookupStatus::NotFound:
+            return result(OperationTimeoutResultStatus::OperationNotFound);
+        case OperationLookupStatus::Error:
+            return result(OperationTimeoutResultStatus::RepositoryError);
+        case OperationLookupStatus::Found:
+            break;
+        default:
+            return result(OperationTimeoutResultStatus::RepositoryError);
+    }
+
+    const OperationRecord& record = lookup.record;
+    if (record.request.operation_id != *timeout.event.operation_id ||
+        record.request.correlation_id.empty()) {
+        return result(OperationTimeoutResultStatus::RepositoryError);
+    }
+    if (record.request.correlation_id != *timeout.event.correlation_id) {
+        return result(OperationTimeoutResultStatus::CorrelationMismatch,
+                      record.status, record.revision);
+    }
+    if (!is_known_operation_status(record.status)) {
+        return result(OperationTimeoutResultStatus::RepositoryError,
+                      record.status, record.revision);
+    }
+
+    // Поздний timeout не должен открывать терминальную операцию или повторно помечать UNKNOWN.
+    switch (record.status) {
+        case OperationLifecycleStatus::Completed:
+        case OperationLifecycleStatus::Failed:
+        case OperationLifecycleStatus::Cancelled:
+            return result(OperationTimeoutResultStatus::LateTimeoutIgnored,
+                          record.status, record.revision);
+        case OperationLifecycleStatus::OutcomeUnknown:
+            return result(OperationTimeoutResultStatus::AlreadyOutcomeUnknown,
+                          record.status, record.revision);
+        case OperationLifecycleStatus::Requested:
+        case OperationLifecycleStatus::Accepted:
+        case OperationLifecycleStatus::Started:
+        case OperationLifecycleStatus::CancelRequested:
+            break;
+    }
+
+    // Выбираем только безопасный lifecycle-исход; тайм-аут после отправки не доказывает отказ.
+    OperationLifecycleStatus next_status = OperationLifecycleStatus::OutcomeUnknown;
+    switch (timeout.timeout_type) {
+        case OperationTimeoutType::BeforeDispatch:
+            if (record.status != OperationLifecycleStatus::Requested) {
+                return result(OperationTimeoutResultStatus::LateTimeoutIgnored,
+                              record.status, record.revision);
+            }
+            next_status = OperationLifecycleStatus::Failed;
+            break;
+        case OperationTimeoutType::DispatchResponse:
+            if (record.status != OperationLifecycleStatus::Requested) {
+                return result(OperationTimeoutResultStatus::LateTimeoutIgnored,
+                              record.status, record.revision);
+            }
+            next_status = OperationLifecycleStatus::OutcomeUnknown;
+            break;
+        case OperationTimeoutType::OperationCompletion:
+            if (record.status != OperationLifecycleStatus::Requested &&
+                record.status != OperationLifecycleStatus::Accepted &&
+                record.status != OperationLifecycleStatus::Started) {
+                return result(OperationTimeoutResultStatus::TimeoutNotApplicable,
+                              record.status, record.revision);
+            }
+            next_status = OperationLifecycleStatus::OutcomeUnknown;
+            break;
+        case OperationTimeoutType::CancellationCompletion:
+            if (record.status != OperationLifecycleStatus::CancelRequested) {
+                return result(OperationTimeoutResultStatus::TimeoutNotApplicable,
+                              record.status, record.revision);
+            }
+            next_status = OperationLifecycleStatus::OutcomeUnknown;
+            break;
+        default:
+            return result(OperationTimeoutResultStatus::InvalidTimeoutType,
+                          record.status, record.revision);
+    }
+
+    // Защищаем revision от переполнения до попытки записи.
+    if (record.revision == std::numeric_limits<std::uint64_t>::max()) {
+        return result(OperationTimeoutResultStatus::RepositoryError,
+                      record.status, record.revision);
+    }
+    // Сохраняем тайм-аут, новый lifecycle и sequence атомарно через тот же порт, что и F09.
+    const OperationUpdateCommitStatus committed = repository.commit_operation_update(
+        record, next_status, timeout.event, source_cursor);
+    switch (committed) {
+        case OperationUpdateCommitStatus::Applied:
+            return result(OperationTimeoutResultStatus::Applied,
+                          next_status, record.revision + 1U);
+        case OperationUpdateCommitStatus::DuplicateEvent:
+            return result(OperationTimeoutResultStatus::Duplicate,
+                          record.status, record.revision);
+        case OperationUpdateCommitStatus::EventConflict:
+            return result(OperationTimeoutResultStatus::EventConflict,
+                          record.status, record.revision);
+        case OperationUpdateCommitStatus::OperationChanged:
+            return result(OperationTimeoutResultStatus::ConcurrentOperationUpdate,
+                          record.status, record.revision);
+        case OperationUpdateCommitStatus::SourceCursorChanged:
+            return result(OperationTimeoutResultStatus::ConcurrentSourceUpdate,
+                          record.status, record.revision);
+        case OperationUpdateCommitStatus::OperationNotFound:
+            return result(OperationTimeoutResultStatus::OperationNotFound);
+        case OperationUpdateCommitStatus::Error:
+            return result(OperationTimeoutResultStatus::RepositoryError);
+    }
+    return result(OperationTimeoutResultStatus::RepositoryError);
+}
+
 }  // namespace dockstation::core

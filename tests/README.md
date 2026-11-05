@@ -124,3 +124,11 @@ The `handle_operation_update()` tests use a fake `OperationUpdateRepository`. Th
     ./test_transition_commit
 
 The commit_transition() tests use fake StationStateRepository and StateChangedPublisher ports. They cover all three currently approved startup transitions; event-envelope and quality validation; F05 prerequisites and target matching; empty transition IDs and revision overflow; repository errors, duplicate/conflicting event IDs, transition-ID conflicts and stale snapshots; publication only after confirmed persistence; and a publish failure after a successful commit. The test checks the logical port contract only. It does not prove real transaction durability, power-loss behavior, a production transition-ID generator, durable outbox/reliable delivery, ESP32/Arduino builds or hardware integration. The caller is responsible for the applicable F03/F04 checks before F10; the repository must still enforce event-ID uniqueness atomically.
+
+
+## Operation timeout tests (SSM-F11)
+
+    g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -Isrc src/core/event_validation.cpp src/core/event_processing.cpp src/core/operations.cpp tests/unit/test_operation_timeout.cpp -o test_operation_timeout
+    ./test_operation_timeout
+
+The timeout tests cover UNKNOWN defaults for timeout type/certainty (fail closed), pre-dispatch timeout (FAILED only with explicit NotDispatched), dispatch/operation/cancellation timeout after possible delivery (OUTCOME_UNKNOWN), terminal and already-unknown operations, late timeouts, invalid event/type/certainty, F03 duplicate/conflict, F04 stale/unordered sequence, operation/correlation lookup, repository failures and concurrent updates. The test fake checks the logical transaction contract only; it does not test real monotonic timers, timeout durations, persistence durability, reboot recovery, outbox delivery, target builds or hardware. An integrated compile/run result must be recorded separately once executed.

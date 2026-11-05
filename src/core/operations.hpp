@@ -162,8 +162,9 @@ public:
     [[nodiscard]] virtual OperationLookupResult find_operation(
         std::string_view operation_id) noexcept = 0;
 
-    // Одна атомарная фиксация: проверка revision/status и курсора; изменение
+    // Одна атомарная фиксация для F09/F11: проверка revision/status и курсора; изменение
     // lifecycle; сохранение event для find_by_id(); продвижение source_sequence.
+    // F09 передаёт OPERATION_STATUS_UPDATED, F11 — OPERATION_TIMEOUT; тип проверяет вызывающая функция.
     // При конфликте операции/курсора возвращается соответствующий статус.
     // Повторный event_id возвращает DuplicateEvent, иное содержимое — EventConflict.
     // Все string_view копируются/сериализуются до возврата.
@@ -201,5 +202,52 @@ struct OperationUpdateResult {
     const OperationUpdate& update,
     const SourceCursor& source_cursor,
     OperationUpdateRepository& repository) noexcept;
+
+
+/** Тайм-ауты операции; длительности задаёт вызывающий Timer после выбора платформы. */
+enum class OperationTimeoutType : std::uint8_t {
+    Unknown,                // Не задан: обработка должна быть отклонена.
+    BeforeDispatch,         // Истёк срок до вызова F08; запрос точно не передавался исполнителю.
+    DispatchResponse,       // Запрос мог быть передан, но подтверждение доставки/приёма не получено.
+    OperationCompletion,    // Исполнение могло начаться; не получено подтверждение результата.
+    CancellationCompletion  // Отмена запрошена, но подтверждение отмены не получено.
+};
+
+// Доказательство того, мог ли запрос достичь исполнителя.
+// Это не булев флаг: UNKNOWN нельзя подменять утверждением «не отправляли».
+enum class DispatchCertainty : std::uint8_t {
+    Unknown,                 // Не задано: нельзя предполагать, что команда не отправлялась.
+    NotDispatched,          // Диспетчер не вызывался; физическое действие не могло начаться через этот запрос.
+    MayHaveBeenDispatched   // Запрос принят или результат отправки неизвестен; действие могло начаться.
+};
+
+struct OperationTimeout {
+    Event event{};  // Событие OPERATION_TIMEOUT от Timer; содержит operation_id/correlation_id/source_sequence.
+    OperationTimeoutType timeout_type{OperationTimeoutType::Unknown};  // Тип истёкшего ожидания.
+    DispatchCertainty dispatch_certainty{DispatchCertainty::Unknown};  // Факт из оркестратора/F08, не догадка.
+};
+
+enum class OperationTimeoutResultStatus : std::uint8_t {
+    Applied, Duplicate, EventConflict, InvalidEvent, EventNotReliable,
+    WrongEventType, InvalidTimeoutType, InvalidDispatchCertainty,
+    StaleEvent, EventOrderUnknown, OperationNotFound, CorrelationMismatch,
+    TimeoutNotApplicable, AlreadyOutcomeUnknown, LateTimeoutIgnored,
+    ConcurrentOperationUpdate, ConcurrentSourceUpdate, RepositoryError
+};
+
+struct OperationTimeoutResult {
+    OperationTimeoutResultStatus status{OperationTimeoutResultStatus::InvalidEvent};
+    OperationLifecycleStatus resulting_status{OperationLifecycleStatus::Requested};
+    std::uint64_t revision{0};
+};
+
+// F11 принимает уже сработавшее событие таймера; время и длительность здесь не вычисляются.
+// OPERATION_TIMEOUT и новый lifecycle фиксируются одной транзакцией OperationUpdateRepository.
+// Физическое действие не повторяется; OUTCOME_UNKNOWN требует отдельной сверки.
+[[nodiscard]] OperationTimeoutResult handle_operation_timeout(
+    const OperationTimeout& timeout,
+    const SourceCursor& source_cursor,
+    OperationUpdateRepository& repository) noexcept;
+
 
 }  // namespace dockstation::core
