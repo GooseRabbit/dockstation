@@ -24,6 +24,49 @@ enum class EventCategory : std::uint8_t {
 // Функция не меняет событие и не запускает переходы или действия.
 [[nodiscard]] EventCategory classify_event(const Event& event) noexcept;
 
+// Состояние результата поиска сохранённого события по event_id.
+enum class EventRepositoryLookupStatus : std::uint8_t {
+    Found,     // Запись найдена; поле event содержит её снимок.
+    NotFound,  // Записи с таким event_id нет.
+    Error      // Хранилище не смогло достоверно выполнить поиск.
+};
+
+// Снимок найденного события. Его string_view-поля должны ссылаться на память,
+// действительную до завершения вызова check_duplicate_event().
+struct EventRepositoryLookupResult {
+    EventRepositoryLookupStatus status{EventRepositoryLookupStatus::Error};
+    Event event{};
+};
+
+// Минимальный read-only порт поиска ранее сохранённого события.
+// Конкретная база данных и способ хранения этим интерфейсом не задаются.
+class EventRepository {
+public:
+    virtual ~EventRepository() = default;
+
+    // Ищет запись по event_id. Ошибка чтения возвращается как Error, не как NotFound.
+    [[nodiscard]] virtual EventRepositoryLookupResult find_by_id(
+        std::string_view event_id) noexcept = 0;
+};
+
+// Результат проверки повторной доставки.
+enum class DuplicateEventStatus : std::uint8_t {
+    New,             // event_id не найден в репозитории.
+    Duplicate,       // event_id найден, неизменяемое содержимое совпадает.
+    Conflict,        // event_id найден, но содержимое отличается.
+    RepositoryError  // Ошибка или противоречивый ответ репозитория.
+};
+
+struct DuplicateEventResult {
+    DuplicateEventStatus status{DuplicateEventStatus::RepositoryError};
+};
+
+// Проверяет ранее сохранённую запись. Event должен быть предварительно проверен
+// через validate_event(). Функция не меняет событие и не записывает его в хранилище.
+[[nodiscard]] DuplicateEventResult check_duplicate_event(
+    const Event& event,
+    EventRepository& repository) noexcept;
+
 
 // Результат сравнения номера события с последним принятым номером источника.
 enum class EventFreshnessStatus : std::uint8_t {

@@ -7,8 +7,8 @@
 namespace dockstation::core {
 
 // Normalized event envelope used by StationStateManager.
-// string_view fields are non-owning: their data must remain alive during the
-// validation call. The validator does not retain references or allocate memory.
+// string_view fields are non-owning: their data must remain alive while an
+// operation reads the event. The validator does not retain references or allocate memory.
 // The payload is opaque here: its serialization and event-specific schema
 // are validated by the corresponding adapter/contract, not by this function.
 struct Event {

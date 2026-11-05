@@ -1,7 +1,7 @@
 # Host unit tests
 
-The first StationStateManager validation function is intentionally independent
-of Arduino APIs and hardware drivers. The code is written against C++17 as a
+The StationStateManager host unit tests are intentionally independent of
+Arduino APIs and physical hardware drivers. The code is written against C++17 as a
 provisional portable implementation; the final language/toolchain decision is
 still open in docs/12_DECISIONS_AND_OPEN_QUESTIONS.md.
 
@@ -20,6 +20,9 @@ From the repository root:
 
     g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -Isrc src/core/event_processing.cpp tests/unit/test_event_classification.cpp -o test_event_classification
     ./test_event_classification
+
+    g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -Isrc src/core/event_processing.cpp tests/unit/test_event_duplicates.cpp -o test_event_duplicates
+    ./test_event_duplicates
 
 On Windows, use .exe for the output name and run ./test_event_validation.exe
 from PowerShell if a compatible GCC/Clang toolchain is installed.
@@ -54,3 +57,14 @@ event types. Repeated calls with the same event must return the same category.
 Classification uses exact `event_type` matching only; it does not validate the
 event envelope, change station state, authorize an operation, or trigger a
 physical action.
+
+
+## Duplicate event tests
+
+The `check_duplicate_event()` tests use an in-memory fake `EventRepository`.
+They cover an absent event ID, exact duplicate, a changed receiver-assigned
+`received_at`, changes to every other event-content field, repository errors,
+a contradictory repository key, unknown repository status, and read-only/
+deterministic behavior. The function does not write or reserve new event IDs.
+Atomic coordination between deduplication and later side effects is not covered
+by this unit function and must be handled by the event-processing orchestration.
