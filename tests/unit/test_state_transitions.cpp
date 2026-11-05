@@ -59,13 +59,17 @@ int main() {
            TransitionStatus::Rejected, StationState::PoweredOff,
            "SAFE_INITIAL_CONDITION_UNCONFIRMED");
     context.safe_initial_condition_confirmed = true;
-    context.recovery_required = true;
-    expect("recovery blocks waiting",
+    expect("unknown recovery status blocks waiting",
            resolve_transition(StationState::SelfTest, self_test, context),
            TransitionStatus::Rejected, StationState::PoweredOff,
            "RECOVERY_REQUIRED");
-    context.recovery_required = false;
-    expect("all startup conditions confirmed",
+    context.recovery_status = RecoveryStatus::Required;
+    expect("required recovery blocks waiting",
+           resolve_transition(StationState::SelfTest, self_test, context),
+           TransitionStatus::Rejected, StationState::PoweredOff,
+           "RECOVERY_REQUIRED");
+    context.recovery_status = RecoveryStatus::NotRequired;
+    expect("recovery explicitly cleared",
            resolve_transition(StationState::SelfTest, self_test, context),
            TransitionStatus::Allowed, StationState::Waiting);
     expect("unknown event is rejected",

@@ -13,6 +13,8 @@ enum class StationState {
     LimitedMode, AwaitingIntervention, Recovery, Emergency,
 };
 enum class TransitionStatus { Allowed, Rejected };
+// UNKNOWN не считается подтверждением отсутствия необходимости восстановления.
+enum class RecoveryStatus { Unknown, Required, NotRequired };
 // Входные данные: подтверждения от координаторов запуска, конфигурации и диагностики.
 // true устанавливается только после достоверно положительной проверки;
 // отсутствие результата, UNKNOWN и ошибка должны оставаться false.
@@ -21,7 +23,8 @@ struct TransitionContext {
     bool diagnostic_report_complete{false};
     bool critical_checks_passed{false};
     bool safe_initial_condition_confirmed{false};
-    bool recovery_required{false};
+    // Только NOT_REQUIRED разрешает прямой переход в ОЖИДАНИЕ; значение по умолчанию UNKNOWN.
+    RecoveryStatus recovery_status{RecoveryStatus::Unknown};
 };
 struct TransitionResult {
     TransitionStatus status{TransitionStatus::Rejected};

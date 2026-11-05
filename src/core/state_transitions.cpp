@@ -43,7 +43,9 @@ TransitionResult resolve_transition(
             return rejected("SAFE_INITIAL_CONDITION_UNCONFIRMED",
                             "The safe initial station condition is not confirmed");
         }
-        if (context.recovery_required) {
+        // UNKNOWN и REQUIRED одинаково блокируют переход: восстановление должно быть
+        // явно исключено до перехода в ОЖИДАНИЕ.
+        if (context.recovery_status != RecoveryStatus::NotRequired) {
             return rejected("RECOVERY_REQUIRED",
                             "Recovery and equipment reconciliation are required before waiting");
         }
