@@ -68,3 +68,17 @@ a contradictory repository key, unknown repository status, and read-only/
 deterministic behavior. The function does not write or reserve new event IDs.
 Atomic coordination between deduplication and later side effects is not covered
 by this unit function and must be handled by the event-processing orchestration.
+
+
+## Action request creation tests
+
+    g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -Isrc src/core/operations.cpp tests/unit/test_action_request.cpp -o test_action_request
+    ./test_action_request
+
+The `create_action_request()` tests use a fake `OperationIdProvider`. They cover
+valid field mapping, required logical fields, optional/empty parameters, provider
+failure, empty IDs, repeated calls with distinct provider values, and unchanged
+input. The test does not prove uniqueness of a production ID algorithm: that is
+the provider's contract and must be tested against the selected persistent
+implementation. It also does not test storage, dispatch, parameter serialization,
+or physical hardware.

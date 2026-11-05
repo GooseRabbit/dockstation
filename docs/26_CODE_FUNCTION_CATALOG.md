@@ -45,7 +45,7 @@
 
 | Функция | Назначение |
 |---|---|
-| `ActionRequest create_action_request(const TransitionPlan& plan)` | Создаёт запрос логического действия для соответствующего функционального модуля и назначает идентификаторы операции. |
+| `ActionRequestResult create_action_request(const ActionPlan& plan, OperationIdProvider& id_provider)` | Формирует логический запрос из ActionPlan и получает operation_id через OperationIdProvider; не сохраняет запрос и не выполняет физическое действие. |
 | `PersistResult persist_operation_intent(const ActionRequest& request)` | Сохраняет намерение выполнить физически значимое действие до отправки запроса исполнителю. |
 | `DispatchResult dispatch_action_request(const ActionRequest& request)` | Передаёт сохранённый запрос нужному функциональному модулю. |
 | `OperationUpdateResult handle_operation_update(const OperationUpdate& update)` | Обрабатывает подтверждения принятия, начала, завершения, отмены или отказа по конкретной операции. |
