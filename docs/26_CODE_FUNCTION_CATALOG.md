@@ -38,6 +38,7 @@
 |---|---|
 | `TransitionDecision resolve_transition(State state, const Event& event, const TransitionContext& context)` | Определяет, разрешён ли переход из текущего состояния по поступившему событию. Неизвестные переходы отклоняет. |
 | `TransitionCommitResult commit_transition(const TransitionPlan& plan, const TransitionEvidence& evidence, StationStateRepository& repository, StateChangedPublisher& publisher) noexcept` **(реализована)** | Повторно проверяет допуск F05, атомарно сохраняет snapshot/историю/событие с новой revision и только после этого публикует StateChanged. |
+| `FailureDispositionResult resolve_failure_disposition(const Failure& failure) noexcept` **(реализована)** | По точному FAIL-коду возвращает предварительную реакцию из `docs/09`, §6; неизвестный код не получает выдуманной реакции. Не меняет состояние и не запускает оборудование. |
 | `StateSnapshot get_snapshot() const` | Возвращает текущее глобальное состояние станции и номер его версии. |
 | `std::vector<TransitionRecord> get_transition_history(const HistoryFilter& filter)` | Возвращает историю подтверждённых переходов по заданному фильтру. |
 

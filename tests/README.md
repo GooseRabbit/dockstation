@@ -132,3 +132,11 @@ The commit_transition() tests use fake StationStateRepository and StateChangedPu
     ./test_operation_timeout
 
 The timeout tests cover UNKNOWN defaults for timeout type/certainty (fail closed), pre-dispatch timeout (FAILED only with explicit NotDispatched), dispatch/operation/cancellation timeout after possible delivery (OUTCOME_UNKNOWN), terminal and already-unknown operations, late timeouts, invalid event/type/certainty, F03 duplicate/conflict, F04 stale/unordered sequence, operation/correlation lookup, repository failures and concurrent updates. The test fake checks the logical transaction contract only; it does not test real monotonic timers, timeout durations, persistence durability, reboot recovery, outbox delivery, target builds or hardware. An integrated compile/run result must be recorded separately once executed.
+
+
+## Failure disposition lookup tests (SSM-F12)
+
+    g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -Isrc src/core/failure_disposition.cpp tests/unit/test_failure_disposition.cpp -o test_failure_disposition
+    ./test_failure_disposition
+
+The tests cover all 41 failure IDs from the current `docs/09`, §6 matrix, plus empty, unknown, malformed, case-mismatched and whitespace-mismatched IDs. They also verify deterministic repeated lookup. The function returns the matrix's preliminary reaction verbatim; it does not promote it to a final safety policy, choose a station state, authorize equipment, or execute a physical response. GCC and Clang strict-warning host builds were run. No SafetyManager, target build or hardware response is covered.
