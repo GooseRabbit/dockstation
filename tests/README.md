@@ -140,3 +140,11 @@ The timeout tests cover UNKNOWN defaults for timeout type/certainty (fail closed
     ./test_failure_disposition
 
 The tests cover all 41 failure IDs from the current `docs/09`, §6 matrix, plus empty, unknown, malformed, case-mismatched and whitespace-mismatched IDs. They also verify deterministic repeated lookup. The function returns the matrix's preliminary reaction verbatim; it does not promote it to a final safety policy, choose a station state, authorize equipment, or execute a physical response. GCC and Clang strict-warning host builds were run. No SafetyManager, target build or hardware response is covered.
+
+
+## General event handling tests (SSM-F13)
+
+    g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -Isrc src/core/event_validation.cpp src/core/event_processing.cpp src/core/event_handling.cpp tests/unit/test_event_handling.cpp -o test_event_handling
+    ./test_event_handling
+
+The F13 tests cover the ordered common pipeline: envelope validation, exact event classification, duplicate/conflict/repository-error handling, source/session/sequence freshness, and delegation to the profile processor. They verify that invalid, unknown, duplicate, stale and unordered events do not reach the processor; registered categories and non-VALID data-quality statuses are forwarded unchanged for event-specific handling without parsing payload; processor outcomes are mapped without treating errors or unknown enum values as success. The profile processor must repeat event-ID/cursor checks atomically with its own state change to close races; F13's initial F03/F04 checks are read-only and F13 does not advance the cursor. This unit test does not implement or verify profile-specific payload adapters, durable transaction coordination, hardware, or full-system integration.
