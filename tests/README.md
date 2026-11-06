@@ -148,3 +148,11 @@ The tests cover all 41 failure IDs from the current `docs/09`, §6 matrix, plus 
     ./test_event_handling
 
 The F13 tests cover the ordered common pipeline: envelope validation, exact event classification, duplicate/conflict/repository-error handling, source/session/sequence freshness, and delegation to the profile processor. They verify that invalid, unknown, duplicate, stale and unordered events do not reach the processor; registered categories and non-VALID data-quality statuses are forwarded unchanged for event-specific handling without parsing payload; processor outcomes are mapped without treating errors or unknown enum values as success. The profile processor must repeat event-ID/cursor checks atomically with its own state change to close races; F13's initial F03/F04 checks are read-only and F13 does not advance the cursor. This unit test does not implement or verify profile-specific payload adapters, durable transaction coordination, hardware, or full-system integration.
+
+
+## Recovery start tests (SSM-F14)
+
+    g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -Isrc src/core/recovery.cpp tests/unit/test_recovery_start.cpp -o test_recovery_start
+    ./test_recovery_start
+
+The F14 tests use fake recovery and report-request ports. They cover snapshot loading, malformed/unknown state and revision linkage, persistence of the RECOVERY_IN_PROGRESS marker before report requests, repeated/idempotent entry, snapshot races, repository and report-request errors, unknown enum values, and prevention of downstream calls when prerequisites are not confirmed. The isolated host harness does not prove the real storage adapter, report transport, correlation of asynchronous subsystem reports, F15 reconciliation, target build or hardware behavior.

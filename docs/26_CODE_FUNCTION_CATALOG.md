@@ -63,7 +63,7 @@
 
 | Функция | Назначение |
 |---|---|
-| `RecoveryResult begin_recovery()` | Запускает восстановление после перезапуска или нештатного завершения работы. |
+| `RecoveryStartResult begin_recovery(RecoveryRepository& repository, RecoveryReportRequester& report_requester) noexcept` **(реализована; SSM-F14)** | Загружает и проверяет последний snapshot, устойчиво отмечает RECOVERY_IN_PROGRESS и запрашивает свежие отчёты; не выполняет сверку и физические действия. |
 | `RecoveryResult reconcile_after_restart(const StateSnapshot& snapshot, const EquipmentReports& reports)` | Сравнивает сохранённое состояние с фактическими отчётами оборудования и определяет, что можно безопасно делать дальше. |
 
 ---
