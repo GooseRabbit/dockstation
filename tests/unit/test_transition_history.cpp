@@ -13,7 +13,7 @@ namespace {
 int failures = 0;
 
 void check(bool condition, std::string_view name) {
-    std::cout << (condition ? "PASS" : "FAIL") << " - " << name << '\\n';
+    std::cout << (condition ? "PASS" : "FAIL") << " - " << name << '\n';
     if (!condition) ++failures;
 }
 
@@ -188,6 +188,22 @@ int main() {
     check(result.status == TransitionHistoryStatus::InvalidHistory,
           "reader record outside filter rejected");
 
-    std::cout << "Assertions: 19; failures: " << failures << std::endl;
+    reader.result.records = {
+        record(1, StationState::PoweredOff, StationState::Startup, "event-1", "transition-1"),
+        record(2, StationState::Startup, StationState::SelfTest, "event-1", "transition-2")
+    };
+    result = get_transition_history({}, reader);
+    check(result.status == TransitionHistoryStatus::InvalidHistory,
+          "duplicate event IDs across history records rejected");
+
+    reader.result.records = {
+        record(1, StationState::PoweredOff, StationState::Startup, "event-1", "transition-1"),
+        record(2, StationState::Startup, StationState::SelfTest, "event-2", "transition-1")
+    };
+    result = get_transition_history({}, reader);
+    check(result.status == TransitionHistoryStatus::InvalidHistory,
+          "duplicate transition IDs across history records rejected");
+
+    std::cout << "Assertions: 21; failures: " << failures << std::endl;
     return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }

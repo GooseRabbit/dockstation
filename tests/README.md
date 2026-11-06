@@ -12,7 +12,7 @@ From the repository root:
     g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -Isrc src/core/event_validation.cpp tests/unit/test_event_validation.cpp -o test_event_validation
     ./test_event_validation
 
-    g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -Isrc src/core/state_transitions.cpp tests/unit/test_state_transitions.cpp -o test_state_transitions
+    g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -Isrc src/core/event_validation.cpp src/core/state_transitions.cpp tests/unit/test_state_transitions.cpp -o test_state_transitions
     ./test_state_transitions
 
     g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -Isrc src/core/event_processing.cpp tests/unit/test_event_freshness.cpp -o test_event_freshness
@@ -72,7 +72,7 @@ by this unit function and must be handled by the event-processing orchestration.
 
 ## Action request creation tests
 
-    g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -Isrc src/core/operations.cpp tests/unit/test_action_request.cpp -o test_action_request
+    g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -Isrc src/core/event_validation.cpp src/core/event_processing.cpp src/core/operations.cpp tests/unit/test_action_request.cpp -o test_action_request
     ./test_action_request
 
 The `create_action_request()` tests use a fake `OperationIdProvider`. They cover
@@ -86,7 +86,7 @@ or physical hardware.
 
 ## Operation intent persistence tests
 
-    g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -Isrc src/core/operations.cpp tests/unit/test_operation_intent.cpp -o test_operation_intent
+    g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -Isrc src/core/event_validation.cpp src/core/event_processing.cpp src/core/operations.cpp tests/unit/test_operation_intent.cpp -o test_operation_intent
     ./test_operation_intent
 
 The `persist_operation_intent()` tests use a fake `StateRepository`. They cover
@@ -99,7 +99,7 @@ power-loss durability; those require the selected storage adapter and hardware.
 
 ## Action request dispatch tests
 
-    g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -Isrc src/core/operations.cpp tests/unit/test_operation_dispatch.cpp -o test_operation_dispatch
+    g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -Isrc src/core/event_validation.cpp src/core/event_processing.cpp src/core/operations.cpp tests/unit/test_operation_dispatch.cpp -o test_operation_dispatch
     ./test_operation_dispatch
 
 The `dispatch_action_request()` tests use a fake persisted-intent receipt and
@@ -178,4 +178,4 @@ The F16 tests use a fake read-only StationStateSnapshotReader. They cover the in
     g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -fno-exceptions -fno-rtti -Isrc src/core/event_validation.cpp src/core/state_transitions.cpp tests/unit/test_transition_history.cpp -o test_transition_history
     ./test_transition_history
 
-The F17 tests use a fake read-only TransitionHistoryReader. They cover an empty complete selection, ordered records, inclusive revision/state filtering, invalid filters rejected before repository access, incomplete/error/unknown port statuses, invalid records (unknown/equal states, zero revision, empty IDs, malformed reason pairs, and preservation of a valid reason pair), unordered/duplicate revisions, and records outside the requested filter. Partial results are never returned as complete history. The isolated harness validates the logical algorithm only; it does not prove production storage completeness, retention policy, durable F10 transactions, target builds or hardware integration.
+The F17 tests use a fake read-only TransitionHistoryReader. They cover an empty complete selection, ordered records, inclusive revision/state filtering, invalid filters rejected before repository access, incomplete/error/unknown port statuses, invalid records (unknown/equal states, zero revision, empty IDs, malformed reason pairs, and preservation of a valid reason pair), unordered/duplicate revisions, duplicate event_id/transition_id values across records, and records outside the requested filter. Partial results are never returned as complete history. The isolated harness validates the logical algorithm only; it does not prove production storage completeness, retention policy, durable F10 transactions, target builds or hardware integration.

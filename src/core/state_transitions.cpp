@@ -290,6 +290,15 @@ TransitionHistoryResult get_transition_history(
             (i > 0 && read.records[i - 1].revision >= record.revision)) {
             return history_result(TransitionHistoryStatus::InvalidHistory);
         }
+
+        // F10 guarantees unique event_id and transition_id values; detect corrupted
+        // or incorrectly assembled history even if the adapter reports COMPLETE.
+        for (std::size_t j = 0; j < i; ++j) {
+            if (read.records[j].event_id == record.event_id ||
+                read.records[j].transition_id == record.transition_id) {
+                return history_result(TransitionHistoryStatus::InvalidHistory);
+            }
+        }
     }
 
     if (read.records.empty()) return history_result(TransitionHistoryStatus::Empty);

@@ -1,7 +1,19 @@
 #include "recovery.hpp"
 
+#include <string_view>
+
 namespace dockstation::core {
 namespace {
+
+bool has_non_whitespace(std::string_view value) noexcept {
+    for (const char ch : value) {
+        if (ch != ' ' && ch != '\t' && ch != '\n' && ch != '\r' &&
+            ch != '\f' && ch != '\v') {
+            return true;
+        }
+    }
+    return false;
+}
 
 bool is_known_state(StationState state) noexcept {
     switch (state) {
@@ -41,7 +53,7 @@ bool is_valid_snapshot(const StationStateSnapshot& snapshot) noexcept {
     if (snapshot.revision == 0) {
         return snapshot.transition_id.empty();
     }
-    return !snapshot.transition_id.empty();
+    return has_non_whitespace(snapshot.transition_id);
 }
 
 }  // namespace
@@ -194,7 +206,8 @@ RecoveryReconciliationResult reconcile_after_restart(
     // Проверяем уникальность, качество и нормализованное состояние каждой подсистемы.
     for (std::size_t i = 0; i < reports.subsystem_report_count; ++i) {
         const RecoverySubsystemReport& report = reports.subsystem_reports[i];
-        if (report.subsystem_id.empty() || !is_known_recovery_quality(report.quality)) {
+        if (!has_non_whitespace(report.subsystem_id) ||
+            !is_known_recovery_quality(report.quality)) {
             return {RecoveryReconciliationStatus::InvalidInput,
                     checked_subsystems, checked_operations};
         }
@@ -239,7 +252,8 @@ RecoveryReconciliationResult reconcile_after_restart(
 
     for (std::size_t i = 0; i < reports.unfinished_operation_count; ++i) {
         const OperationRecord& saved = reports.unfinished_operations[i];
-        if (saved.request.operation_id.empty() || saved.request.correlation_id.empty() ||
+        if (!has_non_whitespace(saved.request.operation_id) ||
+            !has_non_whitespace(saved.request.correlation_id) ||
             !is_unfinished_lifecycle(saved.status)) {
             return {RecoveryReconciliationStatus::InvalidInput,
                     checked_subsystems, checked_operations};
@@ -273,7 +287,8 @@ RecoveryReconciliationResult reconcile_after_restart(
     // Проверяем каждый отчёт исполнителя; неизвестный или устаревший результат не закрывает операцию.
     for (std::size_t i = 0; i < reports.operation_report_count; ++i) {
         const RecoveryOperationReport& report = reports.operation_reports[i];
-        if (report.operation_id.empty() || report.correlation_id.empty() ||
+        if (!has_non_whitespace(report.operation_id) ||
+            !has_non_whitespace(report.correlation_id) ||
             !is_known_recovery_quality(report.quality) ||
             !is_known_recovery_outcome(report.outcome)) {
             return {RecoveryReconciliationStatus::InvalidInput,

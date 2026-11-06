@@ -158,6 +158,13 @@ int main() {
            "positive revision requires transition id");
 
     reset(repository, requester);
+    repository.loaded.snapshot.revision = 1;
+    repository.loaded.snapshot.transition_id = " \t";
+    result = begin_recovery(repository, requester);
+    expect(result.status == RecoveryStartStatus::InvalidSnapshot,
+           "positive revision rejects whitespace-only transition id");
+
+    reset(repository, requester);
     repository.loaded.snapshot.revision = 0;
     repository.loaded.snapshot.transition_id = "unexpected-transition";
     result = begin_recovery(repository, requester);

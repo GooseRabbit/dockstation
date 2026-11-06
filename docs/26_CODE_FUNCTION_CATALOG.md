@@ -42,11 +42,16 @@
 
 | Функция | Назначение |
 |---|---|
-| `TransitionDecision resolve_transition(State state, const Event& event, const TransitionContext& context)` | Определяет, разрешён ли переход из текущего состояния по поступившему событию. Неизвестные переходы отклоняет. |
+| `TransitionResult resolve_transition(StationState current_state, const Event& event, const TransitionContext& context = {}) noexcept` **(реализована; SSM-F05)** | Определяет, разрешён ли переход из текущего состояния по поступившему событию. Неизвестные переходы отклоняет. |
 | `TransitionCommitResult commit_transition(const TransitionPlan& plan, const TransitionEvidence& evidence, StationStateRepository& repository, StateChangedPublisher& publisher) noexcept` **(реализована)** | Повторно проверяет допуск F05, атомарно сохраняет snapshot/историю/событие с новой revision и только после этого публикует StateChanged. |
-| `FailureDispositionResult resolve_failure_disposition(const Failure& failure) noexcept` **(реализована)** | По точному FAIL-коду возвращает предварительную реакцию из `docs/09`, §6; неизвестный код не получает выдуманной реакции. Не меняет состояние и не запускает оборудование. |
 | `SnapshotReadResult get_snapshot(StationStateSnapshotReader& reader) noexcept` **(реализована; SSM-F16)** | Однократно читает последний подтверждённый snapshot, проверяет state и revision/transition_id; возвращает optional snapshot только при AVAILABLE и не подставляет состояние при ошибке. |
 | `TransitionHistoryResult get_transition_history(const TransitionHistoryFilter& filter, TransitionHistoryReader& reader) noexcept` **(реализована; SSM-F17)** | Читает подтверждённую историю; проверяет фильтр, целостность записей и порядок revision; отличает EMPTY, INCOMPLETE и ошибки. Не меняет состояние. |
+
+### src/core/failure_disposition.cpp
+
+| Функция | Назначение |
+|---|---|
+| `FailureDispositionResult resolve_failure_disposition(const Failure& failure) noexcept` **(реализована)** | По точному FAIL-коду возвращает предварительную реакцию из `docs/09`, §6; неизвестный код не получает выдуманной реакции. Не меняет состояние и не запускает оборудование. |
 
 ### src/core/operations.cpp
 
@@ -56,8 +61,8 @@
 | `PersistResult persist_operation_intent(const ActionRequest& request, StateRepository& repository)` | Передаёт ActionRequest в StateRepository; только впервые устойчиво сохранённая запись разрешает последующий dispatch, повторная запись или ошибка отправку не разрешают. |
 | `DispatchResult dispatch_action_request(const ActionRequest& request, const PersistResult& persistence, ActionDispatcher& dispatcher)` | Передаёт запрос только при точном подтверждении новой записи F07; получатель дедуплицирует по operation_id, а ACCEPTED не означает физическое начало действия. |
 | `OperationUpdateResult handle_operation_update(const OperationUpdate& update, const SourceCursor& source_cursor, OperationUpdateRepository& repository)` | Проверяет typed update, качество/повтор/порядок события, operation_id и correlation_id; применяет только разрешённый переход и атомарно фиксирует статус, событие и курсор источника. |
-| `OperationTimeoutResult handle_operation_timeout(const OperationTimeout& timeout, const SourceCursor& source_cursor, OperationUpdateRepository& repository) noexcept` **(реализована; отдельный harness 13/13, интегрированный запуск ожидает проверки)** | По подтверждённому таймерному событию переводит только в FAILED до отправки либо OUTCOME_UNKNOWN после возможной отправки; сохраняет событие и lifecycle атомарно. |
-| `FailureDispositionResult resolve_failure_disposition(const Failure& failure, const TransitionContext& context)` | Находит заранее утверждённую реакцию на конкретный отказ. Если правила нет, не придумывает его. |
+| `OperationTimeoutResult handle_operation_timeout(const OperationTimeout& timeout, const SourceCursor& source_cursor, OperationUpdateRepository& repository) noexcept` **(реализована; отдельный harness, интегрированный запуск ожидает проверки)** | По подтверждённому таймерному событию переводит только в FAILED до отправки либо OUTCOME_UNKNOWN после возможной отправки; сохраняет событие и lifecycle атомарно. |
+
 
 ### src/core/recovery.cpp
 

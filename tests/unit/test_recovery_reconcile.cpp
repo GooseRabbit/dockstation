@@ -61,6 +61,33 @@ int main() {
     expect(reconcile_after_restart({StationState::Waiting, 0, "unexpected"},
              make_reports(subsystems, 2, nullptr, 0, nullptr, 0)).status ==
              RecoveryReconciliationStatus::InvalidInput, "zero revision cannot carry transition ID");
+    expect(reconcile_after_restart({StationState::Waiting, 2, " \t"},
+             make_reports(subsystems, 2, nullptr, 0, nullptr, 0)).status ==
+             RecoveryReconciliationStatus::InvalidInput, "whitespace-only snapshot transition ID rejected");
+
+    RecoverySubsystemReport blank_subsystem_id{" \t", RecoveryDataQuality::Valid,
+                                                RecoverySubsystemCondition::Safe};
+    expect(reconcile_after_restart(snapshot,
+             make_reports(&blank_subsystem_id, 1, nullptr, 0, nullptr, 0)).status ==
+             RecoveryReconciliationStatus::InvalidInput, "whitespace-only subsystem ID rejected");
+
+    OperationRecord blank_operation_id = started_operation;
+    blank_operation_id.request.operation_id = " \t";
+    expect(reconcile_after_restart(snapshot,
+             make_reports(subsystems, 2, &blank_operation_id, 1, nullptr, 0)).status ==
+             RecoveryReconciliationStatus::InvalidInput, "whitespace-only saved operation ID rejected");
+
+    OperationRecord blank_correlation_id = started_operation;
+    blank_correlation_id.request.correlation_id = " \t";
+    expect(reconcile_after_restart(snapshot,
+             make_reports(subsystems, 2, &blank_correlation_id, 1, nullptr, 0)).status ==
+             RecoveryReconciliationStatus::InvalidInput, "whitespace-only saved correlation ID rejected");
+
+    RecoveryOperationReport blank_report_id{" \t", "cmd-1", RecoveryDataQuality::Valid,
+                                               RecoveryOperationOutcome::Completed};
+    expect(reconcile_after_restart(snapshot,
+             make_reports(subsystems, 2, nullptr, 0, &blank_report_id, 1)).status ==
+             RecoveryReconciliationStatus::InvalidInput, "whitespace-only operation report ID rejected");
 
     RecoveryReports reports = make_reports(subsystems, 2, operations, 1, operation_reports, 1);
     reports.subsystem_collection = RecoveryCollectionStatus::Incomplete;
