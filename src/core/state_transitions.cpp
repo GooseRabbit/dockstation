@@ -156,4 +156,66 @@ TransitionCommitResult commit_transition(
             "Transition committed and published"};
 }
 
+
+
+namespace {
+bool is_known_station_state(StationState state) noexcept {
+    switch (state) {
+        case StationState::PoweredOff:
+        case StationState::Startup:
+        case StationState::SelfTest:
+        case StationState::Waiting:
+        case StationState::Detection:
+        case StationState::Authentication:
+        case StationState::Authorization:
+        case StationState::ReceptionPreparation:
+        case StationState::LidOpening:
+        case StationState::LandingGuidance:
+        case StationState::LandingConfirmation:
+        case StationState::LidClosing:
+        case StationState::EnclosedService:
+        case StationState::MissionWaiting:
+        case StationState::TakeoffPreparation:
+        case StationState::OpeningForTakeoff:
+        case StationState::Takeoff:
+        case StationState::SelfCleaning:
+        case StationState::LimitedMode:
+        case StationState::AwaitingIntervention:
+        case StationState::Recovery:
+        case StationState::Emergency:
+            return true;
+    }
+    return false;
+}
+
+bool is_valid_snapshot(const StationStateSnapshot& snapshot) noexcept {
+    if (!is_known_station_state(snapshot.state)) return false;
+    if (snapshot.revision == 0) return snapshot.transition_id.empty();
+    return has_non_whitespace(snapshot.transition_id);
+}
+}  // namespace
+
+SnapshotReadResult get_snapshot(StationStateSnapshotReader& reader) noexcept {
+    // Выполняем ровно одно чтение: повторять ошибочный запрос автоматически нельзя.
+    const SnapshotReadPortResult read = reader.read_snapshot();
+
+    switch (read.status) {
+        case SnapshotReadPortStatus::Found:
+            if (!read.snapshot.has_value() || !is_valid_snapshot(*read.snapshot)) {
+                return {SnapshotReadStatus::InvalidSnapshot, std::nullopt};
+            }
+            // Возвращаем ту же revision и transition_id без их изменения.
+            return {SnapshotReadStatus::Available, read.snapshot};
+
+        case SnapshotReadPortStatus::NotFound:
+            return {SnapshotReadStatus::NotFound, std::nullopt};
+
+        case SnapshotReadPortStatus::Error:
+            return {SnapshotReadStatus::ReadError, std::nullopt};
+    }
+
+    // Неизвестный код порта трактуется как ошибка, а не как успешное чтение.
+    return {SnapshotReadStatus::ReadError, std::nullopt};
+}
+
 }  // namespace dockstation::core

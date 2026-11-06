@@ -163,3 +163,11 @@ The F14 tests use fake recovery and report-request ports. They cover snapshot lo
     ./test_recovery_reconcile
 
 The F15 tests cover historical snapshot validation, complete/incomplete report collections, missing and stale data, unsafe and unknown subsystem conditions, duplicate subsystem IDs, full matching of unfinished operation records to executor reports by operation_id/correlation_id, unknown/extra/duplicate/missing operation reports, operation outcomes, and the contradiction between a persisted STARTED lifecycle and a current VALID NOT_EXECUTED report. The function is read-only: EvidenceComplete is not permission to resume work or a decision about the next global station state. The host harness uses compatible test declarations and does not prove the real adapter's report freshness, authenticity, completeness, recovery-attempt correlation, repository durability, target build or hardware behavior.
+
+
+## State snapshot read tests (SSM-F16)
+
+    g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -Isrc src/core/event_validation.cpp src/core/state_transitions.cpp tests/unit/test_snapshot_read.cpp -o test_snapshot_read
+    ./test_snapshot_read
+
+The F16 tests use a fake read-only StationStateSnapshotReader. They cover the initial revision-zero snapshot, a snapshot after transitions, exactly one repository read per function call, missing snapshot, repository error, unknown state, inconsistent revision/transition_id, whitespace-only transition ID, unknown port status, FOUND without a snapshot value, and absence of a snapshot value for every non-AVAILABLE result. The tests verify the logical read contract only; they do not prove production storage consistency, lifetime management in a real adapter, power-loss behavior, target builds or hardware integration.

@@ -48,11 +48,41 @@ struct TransitionResult {
 
 // Снимок содержит только поля, необходимые для атомарного сравнения и фиксации.
 // Полный диагностический snapshot станции будет расширен отдельной функцией чтения.
+// Минимальный глобальный snapshot для фиксации переходов и чтения через F16.
+ // Он не содержит полной диагностики подсистем и не доказывает физическое состояние оборудования.
 struct StationStateSnapshot {
     StationState state{StationState::PoweredOff};  // Последнее подтверждённое глобальное состояние.
-    std::uint64_t revision{0};  // Первая версия предварительно равна 0; далее +1 на переход.
-    std::string_view transition_id{};  // ID последнего сохранённого перехода; пустой до первой фиксации.
+    std::uint64_t revision{0};  // Версия: начальная предварительно 0, далее +1 на переход.
+    std::string_view transition_id{};  // ID последнего подтверждённого перехода.
 };
+
+// Результат чтения последнего подтверждённого snapshot из постоянного хранилища.
+enum class SnapshotReadPortStatus : std::uint8_t { Found, NotFound, Error };
+struct SnapshotReadPortResult {
+    SnapshotReadPortStatus status{SnapshotReadPortStatus::Error};
+    std::optional<StationStateSnapshot> snapshot{};
+};
+
+// Интерфейс только для чтения. Тот же адаптер хранилища может реализовать
+// его вместе с другими портами StateRepository.
+class StationStateSnapshotReader {
+public:
+    virtual ~StationStateSnapshotReader() = default;
+
+    // Возвращает state, revision и transition_id из одной атомарной записи.
+    // Память строки transition_id должна жить, пока вызывающий использует результат.
+    [[nodiscard]] virtual SnapshotReadPortResult read_snapshot() noexcept = 0;
+};
+
+enum class SnapshotReadStatus : std::uint8_t { Available, NotFound, InvalidSnapshot, ReadError };
+struct SnapshotReadResult {
+    SnapshotReadStatus status{SnapshotReadStatus::ReadError};
+    std::optional<StationStateSnapshot> snapshot{};
+};
+
+// F16: только читает и проверяет snapshot; не записывает данные и не меняет состояние.
+[[nodiscard]] SnapshotReadResult get_snapshot(
+    StationStateSnapshotReader& reader) noexcept;
 
 // План не разрешает переход сам по себе: F10 повторно сверяет его с результатом F05.
 // expected_state и expected_revision защищают от записи поверх более нового состояния.
