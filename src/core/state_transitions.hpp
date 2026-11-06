@@ -5,6 +5,7 @@
 #include <string_view>
 #include <vector>
 #include "event.hpp"
+#include "event_processing.hpp"
 namespace dockstation::core {
 // Полный перечень состояний взят из docs/04_OPERATIONAL_ALGORITHMS.md.
 // В этой реализации разрешены только три перехода первого согласованного среза.
@@ -156,7 +157,8 @@ struct TransitionEvidence {
 };
 
 enum class StationStateRepositoryStatus : std::uint8_t {
-    Committed, DuplicateEvent, EventConflict, TransitionIdConflict, SnapshotChanged, Error
+    Committed, DuplicateEvent, EventConflict, TransitionIdConflict,
+    SnapshotChanged, SourceCursorChanged, Error
 };
 
 // Специализированный логический порт транзакции глобального состояния.
@@ -166,13 +168,17 @@ class StationStateRepository {
 public:
     virtual ~StationStateRepository() = default;
 
-    // Одна атомарная операция: сравнить expected_state/revision; проверить уникальность
-    // event_id и transition_id; сохранить next_snapshot, историю переходов и исходный Event.
+    // Одна атомарная операция: сравнить expected_state/revision и все поля expected_cursor;
+    // проверить уникальность event_id и transition_id; сохранить next_snapshot, историю,
+    // исходный Event и продвинутый курсор источника. Новый last_sequence берётся из
+    // evidence.event.source_sequence; source/source_instance — из самого события.
     // Для повторного event_id сравнивается всё содержимое, кроме назначенного приёмником received_at.
+    // Несовпадение сохранённого курсора возвращается как SourceCursorChanged.
     // Ничего из перечисленного нельзя фиксировать частично. Все string_view копируются до возврата.
     [[nodiscard]] virtual StationStateRepositoryStatus commit_transition(
         const TransitionPlan& plan, const TransitionEvidence& evidence,
-        const StationStateSnapshot& next_snapshot) noexcept = 0;
+        const StationStateSnapshot& next_snapshot,
+        const SourceCursor& expected_cursor) noexcept = 0;
 };
 
 enum class StateChangedPublishStatus : std::uint8_t { Published, Rejected, Unknown };
@@ -195,7 +201,8 @@ public:
 
 enum class TransitionCommitStatus : std::uint8_t {
     Committed, CommittedNotificationNotConfirmed, DuplicateEvent, EventConflict,
-    TransitionIdConflict, SnapshotChanged, InvalidPlan, InvalidEvidence, RepositoryError
+    TransitionIdConflict, SnapshotChanged, SourceCursorChanged, StaleEvent,
+    EventOrderUnknown, InvalidPlan, InvalidEvidence, RepositoryError
 };
 struct TransitionCommitResult {
     TransitionCommitStatus status{TransitionCommitStatus::InvalidPlan};
@@ -208,11 +215,13 @@ struct TransitionCommitResult {
     }
 };
 
-// F10: повторно проверяет допуск F05, атомарно фиксирует новый snapshot и историю,
-// затем публикует StateChanged. Если публикация не подтверждена, запись уже сохранена:
-// повторять commit нельзя; требуется сверка/восстановление уведомления.
+// F10: повторно проверяет конверт F01, актуальность F04 и допуск F05; передаёт ожидаемый
+// SourceCursor репозиторию для атомарного compare-and-advance вместе с snapshot, историей
+// и событием; затем публикует StateChanged. Если публикация не подтверждена, запись уже
+// сохранена: повторять commit нельзя; требуется сверка/восстановление уведомления.
 [[nodiscard]] TransitionCommitResult commit_transition(
     const TransitionPlan& plan, const TransitionEvidence& evidence,
+    const SourceCursor& expected_cursor,
     StationStateRepository& repository, StateChangedPublisher& publisher) noexcept;
 
 }  // namespace dockstation::core

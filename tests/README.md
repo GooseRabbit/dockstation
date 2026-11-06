@@ -12,7 +12,7 @@ From the repository root:
     g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -Isrc src/core/event_validation.cpp tests/unit/test_event_validation.cpp -o test_event_validation
     ./test_event_validation
 
-    g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -Isrc src/core/event_validation.cpp src/core/state_transitions.cpp tests/unit/test_state_transitions.cpp -o test_state_transitions
+    g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -Isrc src/core/event_validation.cpp src/core/event_processing.cpp src/core/state_transitions.cpp tests/unit/test_state_transitions.cpp -o test_state_transitions
     ./test_state_transitions
 
     g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -Isrc src/core/event_processing.cpp tests/unit/test_event_freshness.cpp -o test_event_freshness
@@ -120,10 +120,10 @@ The `handle_operation_update()` tests use a fake `OperationUpdateRepository`. Th
 
 ## Global state transition commit tests
 
-    g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -Isrc src/core/event_validation.cpp src/core/state_transitions.cpp tests/unit/test_transition_commit.cpp -o test_transition_commit
+    g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -Isrc src/core/event_validation.cpp src/core/event_processing.cpp src/core/state_transitions.cpp tests/unit/test_transition_commit.cpp -o test_transition_commit
     ./test_transition_commit
 
-The commit_transition() tests use fake StationStateRepository and StateChangedPublisher ports. They cover all three currently approved startup transitions; event-envelope and quality validation; F05 prerequisites and target matching; empty transition IDs and revision overflow; repository errors, duplicate/conflicting event IDs, transition-ID conflicts and stale snapshots; publication only after confirmed persistence; and a publish failure after a successful commit. The test checks the logical port contract only. It does not prove real transaction durability, power-loss behavior, a production transition-ID generator, durable outbox/reliable delivery, ESP32/Arduino builds or hardware integration. The caller is responsible for the applicable F03/F04 checks before F10; the repository must still enforce event-ID uniqueness atomically.
+The commit_transition() tests use fake StationStateRepository and StateChangedPublisher ports. They cover all three currently approved startup transitions; event-envelope and quality validation; F04 current/stale/unordered cursor checks including zero and maximum sequence boundaries; forwarding of the expected source cursor; the atomic repository cursor-conflict result; F05 prerequisites and target matching; empty transition IDs and revision overflow; repository errors, duplicate/conflicting event IDs, transition-ID conflicts and stale snapshots; publication only after confirmed persistence; and a publish failure after a successful commit. The fake verifies the logical port contract only: it does not prove that a real adapter atomically compares and advances the persisted source cursor together with snapshot/history/event. It also does not prove transaction durability, power-loss behavior, a production transition-ID generator, durable outbox/reliable delivery, ESP32/Arduino builds or hardware integration. F03 duplicate detection remains atomically enforced by the repository during commit.
 
 
 ## Operation timeout tests (SSM-F11)

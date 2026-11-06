@@ -43,7 +43,7 @@
 | Функция | Назначение |
 |---|---|
 | `TransitionResult resolve_transition(StationState current_state, const Event& event, const TransitionContext& context = {}) noexcept` **(реализована; SSM-F05)** | Определяет, разрешён ли переход из текущего состояния по поступившему событию. Неизвестные переходы отклоняет. |
-| `TransitionCommitResult commit_transition(const TransitionPlan& plan, const TransitionEvidence& evidence, StationStateRepository& repository, StateChangedPublisher& publisher) noexcept` **(реализована)** | Повторно проверяет допуск F05, атомарно сохраняет snapshot/историю/событие с новой revision и только после этого публикует StateChanged. |
+| `TransitionCommitResult commit_transition(const TransitionPlan& plan, const TransitionEvidence& evidence, const SourceCursor& expected_cursor, StationStateRepository& repository, StateChangedPublisher& publisher) noexcept` **(реализована)** | Повторно проверяет F01/F04/F05; передаёт ожидаемый SourceCursor для атомарного сравнения и продвижения вместе с snapshot/историей/событием, затем публикует StateChanged только после подтверждённой фиксации. |
 | `SnapshotReadResult get_snapshot(StationStateSnapshotReader& reader) noexcept` **(реализована; SSM-F16)** | Однократно читает последний подтверждённый snapshot, проверяет state и revision/transition_id; возвращает optional snapshot только при AVAILABLE и не подставляет состояние при ошибке. |
 | `TransitionHistoryResult get_transition_history(const TransitionHistoryFilter& filter, TransitionHistoryReader& reader) noexcept` **(реализована; SSM-F17)** | Читает подтверждённую историю; проверяет фильтр, целостность записей и порядок revision; отличает EMPTY, INCOMPLETE и ошибки. Не меняет состояние. |
 

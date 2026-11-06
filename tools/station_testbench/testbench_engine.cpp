@@ -55,6 +55,9 @@ std::string_view commit_status_name(TransitionCommitStatus status) noexcept {
         case TransitionCommitStatus::EventConflict: return "EVENT_CONFLICT";
         case TransitionCommitStatus::TransitionIdConflict: return "TRANSITION_ID_CONFLICT";
         case TransitionCommitStatus::SnapshotChanged: return "SNAPSHOT_CHANGED";
+        case TransitionCommitStatus::SourceCursorChanged: return "SOURCE_CURSOR_CHANGED";
+        case TransitionCommitStatus::StaleEvent: return "STALE_EVENT";
+        case TransitionCommitStatus::EventOrderUnknown: return "EVENT_ORDER_UNKNOWN";
         case TransitionCommitStatus::InvalidPlan: return "INVALID_PLAN";
         case TransitionCommitStatus::InvalidEvidence: return "INVALID_EVIDENCE";
         case TransitionCommitStatus::RepositoryError: return "REPOSITORY_ERROR";
@@ -93,6 +96,7 @@ public:
         committed_event_types_.clear();
         committed_transition_ids_.clear();
         events_.clear();
+        last_source_sequence_.reset();
     }
 
     [[nodiscard]] bool has_last_event() const noexcept {
@@ -115,10 +119,19 @@ public:
     StationStateRepositoryStatus commit_transition(
         const TransitionPlan& plan,
         const TransitionEvidence& evidence,
-        const StationStateSnapshot& next_snapshot) noexcept override {
+        const StationStateSnapshot& next_snapshot,
+        const SourceCursor& expected_cursor) noexcept override {
         // Compare-and-set semantics: a stale plan cannot overwrite a newer snapshot.
         if (plan.expected_state != state_ || plan.expected_revision != revision_) {
             return StationStateRepositoryStatus::SnapshotChanged;
+        }
+
+        // Simulate the repository's atomic compare-and-advance of this test source cursor.
+        // A mismatched cursor means another accepted event changed the source position.
+        if (expected_cursor.source != "station-testbench" ||
+            expected_cursor.source_instance.has_value() ||
+            expected_cursor.last_sequence != last_source_sequence_) {
+            return StationStateRepositoryStatus::SourceCursorChanged;
         }
 
         // Reuse F03 at the storage boundary so duplicate IDs cannot be committed twice.
@@ -158,6 +171,8 @@ public:
         state_ = next_snapshot.state;
         revision_ = next_snapshot.revision;
         transition_id_ = std::string(plan.transition_id);
+        // Store the event sequence in the same in-memory commit as snapshot/history/event.
+        last_source_sequence_ = evidence.event.source_sequence;
         return StationStateRepositoryStatus::Committed;
     }
 
@@ -228,6 +243,7 @@ private:
     std::vector<std::string> committed_event_types_{};
     std::vector<std::string> committed_transition_ids_{};
     std::vector<StoredEvent> events_{};
+    std::optional<std::uint64_t> last_source_sequence_{};
 };
 
 class MemoryPublisher final : public StateChangedPublisher {
@@ -350,11 +366,11 @@ void attempt_transition(std::string_view event_type,
                               transition_id};
     const TransitionEvidence evidence{event, context};
 
-    // F10 repeats F01/F05 checks, commits to the in-memory repository, and publishes StateChanged.
+    // F10 repeats F01/F04/F05 checks and atomically commits the source cursor with the transition.
     const TransitionCommitResult committed =
-        commit_transition(plan, evidence, repository, publisher);
+        commit_transition(plan, evidence, cursor, repository, publisher);
     const bool success = committed.status == TransitionCommitStatus::Committed;
-    if (success) {
+    if (committed.committed()) {
         last_accepted_sequence = event.source_sequence;
     }
     const std::string details = "F02=" + std::string(event_category_name(category)) +

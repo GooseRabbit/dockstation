@@ -78,6 +78,7 @@ TransitionCommitResult commit_result(TransitionCommitStatus status,
 TransitionCommitResult commit_transition(
     const TransitionPlan& plan,
     const TransitionEvidence& evidence,
+    const SourceCursor& expected_cursor,
     StationStateRepository& repository,
     StateChangedPublisher& publisher) noexcept {
     // Не принимаем пустой ID записи истории и не допускаем переполнения revision.
@@ -99,6 +100,20 @@ TransitionCommitResult commit_transition(
                              "Event quality_status must be VALID");
     }
 
+    // Повторяем F04 перед записью: курсор должен относиться к источнику и сессии
+    // события, а его номер должен быть первым или строго больше последнего принятого.
+    // Окончательную защиту от гонки выполняет атомарное сравнение курсора в репозитории.
+    const EventFreshnessResult freshness = check_event_freshness(
+        evidence.event, expected_cursor);
+    if (freshness.status == EventFreshnessStatus::Stale) {
+        return commit_result(TransitionCommitStatus::StaleEvent, "STALE_EVENT",
+                             "Event source_sequence is older than the expected source cursor");
+    }
+    if (freshness.status != EventFreshnessStatus::Current) {
+        return commit_result(TransitionCommitStatus::EventOrderUnknown, "EVENT_ORDER_UNKNOWN",
+                             "Event source, session or sequence cannot be ordered against the expected cursor");
+    }
+
     // Повторно вызываем F05, чтобы входной план не мог обойти согласованные правила.
     const TransitionResult decision = resolve_transition(
         plan.expected_state, evidence.event, evidence.context);
@@ -115,10 +130,10 @@ TransitionCommitResult commit_transition(
     const StationStateSnapshot next_snapshot{
         plan.next_state, plan.expected_revision + 1U, plan.transition_id};
 
-    // Репозиторий обязан атомарно проверить состояние/версию, дедупликацию event_id
-    // и уникальность transition_id, затем сохранить snapshot, историю и исходный Event.
+    // Репозиторий обязан атомарно сравнить состояние/версию и expected_cursor,
+    // проверить уникальность ID, затем сохранить snapshot, историю, Event и новый курсор.
     const StationStateRepositoryStatus saved = repository.commit_transition(
-        plan, evidence, next_snapshot);
+        plan, evidence, next_snapshot, expected_cursor);
     switch (saved) {
         case StationStateRepositoryStatus::Committed:
             break;
@@ -135,6 +150,10 @@ TransitionCommitResult commit_transition(
         case StationStateRepositoryStatus::SnapshotChanged:
             return commit_result(TransitionCommitStatus::SnapshotChanged, "STATE_SNAPSHOT_CHANGED",
                                  "Stored state or revision no longer matches the transition plan");
+        case StationStateRepositoryStatus::SourceCursorChanged:
+            return commit_result(TransitionCommitStatus::SourceCursorChanged,
+                                 "SOURCE_CURSOR_CHANGED",
+                                 "Stored source cursor no longer matches the expected cursor");
         case StationStateRepositoryStatus::Error:
         default:
             return commit_result(TransitionCommitStatus::RepositoryError, "STATE_REPOSITORY_ERROR",
