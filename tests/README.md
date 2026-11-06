@@ -167,7 +167,7 @@ The F15 tests cover historical snapshot validation, complete/incomplete report c
 
 ## State snapshot read tests (SSM-F16)
 
-    g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -Isrc src/core/event_validation.cpp src/core/state_transitions.cpp tests/unit/test_snapshot_read.cpp -o test_snapshot_read
+    g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -Isrc src/core/event_validation.cpp src/core/event_processing.cpp src/core/state_transitions.cpp tests/unit/test_snapshot_read.cpp -o test_snapshot_read
     ./test_snapshot_read
 
 The F16 tests use a fake read-only StationStateSnapshotReader. They cover the initial revision-zero snapshot, a snapshot after transitions, exactly one repository read per function call, missing snapshot, repository error, unknown state, inconsistent revision/transition_id, whitespace-only transition ID, unknown port status, FOUND without a snapshot value, and absence of a snapshot value for every non-AVAILABLE result. The tests verify the logical read contract only; they do not prove production storage consistency, lifetime management in a real adapter, power-loss behavior, target builds or hardware integration.
@@ -175,7 +175,7 @@ The F16 tests use a fake read-only StationStateSnapshotReader. They cover the in
 
 ## Transition history read tests (SSM-F17)
 
-    g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -fno-exceptions -fno-rtti -Isrc src/core/event_validation.cpp src/core/state_transitions.cpp tests/unit/test_transition_history.cpp -o test_transition_history
+    g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -fno-exceptions -fno-rtti -Isrc src/core/event_validation.cpp src/core/event_processing.cpp src/core/state_transitions.cpp tests/unit/test_transition_history.cpp -o test_transition_history
     ./test_transition_history
 
 The F17 tests use a fake read-only TransitionHistoryReader. They cover an empty complete selection, ordered records, inclusive revision/state filtering, invalid filters rejected before repository access, incomplete/error/unknown port statuses, invalid records (unknown/equal states, zero revision, empty IDs, malformed reason pairs, and preservation of a valid reason pair), unordered/duplicate revisions, duplicate event_id/transition_id values across records, and records outside the requested filter. Partial results are never returned as complete history. The isolated harness validates the logical algorithm only; it does not prove production storage completeness, retention policy, durable F10 transactions, target builds or hardware integration.

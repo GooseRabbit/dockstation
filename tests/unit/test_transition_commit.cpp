@@ -82,6 +82,7 @@ int main() {
         expect("repository called exactly once", repository.calls == 1);
         expect("repository receives expected state and revision", repository.received_plan.expected_state == StationState::PoweredOff && repository.received_plan.expected_revision == 0);
         expect("repository receives next snapshot", repository.received_next.state == StationState::Startup && repository.received_next.revision == 1);
+        expect("repository receives the cursor checked by F04", repository.received_cursor.source == "startup-service" && !repository.received_cursor.source_instance.has_value() && !repository.received_cursor.last_sequence.has_value());
         expect("publisher called only after repository commit", publisher.calls == 1);
         expect("StateChanged has correct state/revision/event IDs", publisher.received.old_state == StationState::PoweredOff && publisher.received.new_state == StationState::Startup && publisher.received.revision == 1 && publisher.received.event_id == "evt-1" && publisher.received.transition_id == "tr-1");
     }
@@ -302,13 +303,13 @@ int main() {
     {
         FakeRepository repository;
         FakePublisher publisher;
-        Event stale_event = make_event("evt-21", "STARTUP_REQUESTED");
-        stale_event.source_sequence = 1;
-        const TransitionEvidence evidence = evidence_for(stale_event);
+        const TransitionEvidence evidence = evidence_for(make_event("evt-21", "STARTUP_REQUESTED"));
         const SourceCursor cursor{"startup-service", std::nullopt, 2};
+        Event stale_event = evidence.event;
+        stale_event.source_sequence = 1;
         const auto result = commit_transition(
             TransitionPlan{StationState::PoweredOff, 2, StationState::Startup, "tr-21"},
-            evidence, cursor, repository, publisher);
+            evidence_for(stale_event), cursor, repository, publisher);
         expect("regressed source sequence is rejected as stale", result.status == TransitionCommitStatus::StaleEvent && result.reason_code == "STALE_EVENT");
         expect("stale event never reaches repository or publisher", repository.calls == 0 && publisher.calls == 0);
     }

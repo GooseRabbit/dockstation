@@ -371,6 +371,7 @@ void attempt_transition(std::string_view event_type,
         commit_transition(plan, evidence, cursor, repository, publisher);
     const bool success = committed.status == TransitionCommitStatus::Committed;
     if (committed.committed()) {
+        // Keep the GUI scenario cursor aligned even if StateChanged publication was not confirmed.
         last_accepted_sequence = event.source_sequence;
     }
     const std::string details = "F02=" + std::string(event_category_name(category)) +
