@@ -1,6 +1,9 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+
+#include "operations.hpp"
 
 #include "state_transitions.hpp"
 
@@ -86,5 +89,60 @@ struct RecoveryStartResult {
 [[nodiscard]] RecoveryStartResult begin_recovery(
     RecoveryRepository& repository, // Чтение snapshot и устойчивое сохранение маркера восстановления.
     RecoveryReportRequester& report_requester) noexcept; // Только запрос свежих данных от подсистем.
+
+
+// Нормализованное качество отчёта, определённое доверенным адаптером подсистемы.
+enum class RecoveryDataQuality : std::uint8_t { Valid, Stale, Invalid, Unavailable, Unknown, Error };
+// Состояние подсистемы после её собственной проверки; пороги и аппаратные детали здесь не задаются.
+enum class RecoverySubsystemCondition : std::uint8_t { Safe, Unsafe, Unknown };
+
+struct RecoverySubsystemReport {
+    std::string_view subsystem_id{}; // Уникальный логический ID сводного отчёта подсистемы.
+    RecoveryDataQuality quality{RecoveryDataQuality::Unknown}; // Достоверность и актуальность отчёта.
+    RecoverySubsystemCondition condition{RecoverySubsystemCondition::Unknown}; // Нормализованный результат проверки.
+};
+
+// Фактический результат незавершённой операции, подтверждённый её исполнительным модулем.
+enum class RecoveryOperationOutcome : std::uint8_t {
+    NotExecuted, InProgress, Completed, Failed, Cancelled, Unknown
+};
+
+struct RecoveryOperationReport {
+    std::string_view operation_id{}; // Должен совпасть с сохранённой записью операции.
+    std::string_view correlation_id{}; // Защита от сопоставления с чужим запросом.
+    RecoveryDataQuality quality{RecoveryDataQuality::Unknown}; // Качество свежего отчёта исполнителя.
+    RecoveryOperationOutcome outcome{RecoveryOperationOutcome::Unknown}; // Фактический исход, не команда на повтор.
+};
+
+enum class RecoveryCollectionStatus : std::uint8_t { Complete, Incomplete, Error };
+
+// Агрегат: все применимые сводные отчёты и полный список незавершённых операций.
+// Массивы и все string_view внутри них должны оставаться действительными до возврата F15.
+struct RecoveryReports {
+    RecoveryCollectionStatus subsystem_collection{RecoveryCollectionStatus::Error};
+    const RecoverySubsystemReport* subsystem_reports{nullptr};
+    std::size_t subsystem_report_count{0};
+    RecoveryCollectionStatus operation_collection{RecoveryCollectionStatus::Error};
+    const OperationRecord* unfinished_operations{nullptr};
+    std::size_t unfinished_operation_count{0};
+    const RecoveryOperationReport* operation_reports{nullptr};
+    std::size_t operation_report_count{0};
+};
+
+enum class RecoveryReconciliationStatus : std::uint8_t {
+    EvidenceComplete, Incomplete, SubsystemUnsafe, OperationInProgress, Conflict, InvalidInput
+};
+
+struct RecoveryReconciliationResult {
+    RecoveryReconciliationStatus status{RecoveryReconciliationStatus::InvalidInput};
+    std::size_t checked_subsystem_count{0};
+    std::size_t checked_operation_count{0};
+};
+
+// EvidenceComplete означает только полноту и непротиворечивость входных сведений.
+// Это не подтверждение соответствия глобального state физике и не разрешение на действия.
+// Функция не меняет state, не снимает RECOVERY_IN_PROGRESS и не возобновляет операции.
+[[nodiscard]] RecoveryReconciliationResult reconcile_after_restart(
+    const StationStateSnapshot& snapshot, const RecoveryReports& reports) noexcept;
 
 }  // namespace dockstation::core

@@ -64,7 +64,7 @@
 | Функция | Назначение |
 |---|---|
 | `RecoveryStartResult begin_recovery(RecoveryRepository& repository, RecoveryReportRequester& report_requester) noexcept` **(реализована; SSM-F14)** | Загружает и проверяет последний snapshot, устойчиво отмечает RECOVERY_IN_PROGRESS и запрашивает свежие отчёты; не выполняет сверку и физические действия. |
-| `RecoveryResult reconcile_after_restart(const StateSnapshot& snapshot, const EquipmentReports& reports)` | Сравнивает сохранённое состояние с фактическими отчётами оборудования и определяет, что можно безопасно делать дальше. |
+| `RecoveryReconciliationResult reconcile_after_restart(const StationStateSnapshot& snapshot, const RecoveryReports& reports) noexcept` **(реализована; SSM-F15)** | Проверяет полноту и качество нормализованных отчётов подсистем, сопоставляет незавершённые операции по operation_id/correlation_id; возвращает EvidenceComplete только для полного непротиворечивого набора. Не выбирает глобальное состояние, не снимает маркер и не возобновляет действия. |
 
 ---
 

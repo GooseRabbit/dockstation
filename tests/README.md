@@ -156,3 +156,10 @@ The F13 tests cover the ordered common pipeline: envelope validation, exact even
     ./test_recovery_start
 
 The F14 tests use fake recovery and report-request ports. They cover snapshot loading, malformed/unknown state and revision linkage, persistence of the RECOVERY_IN_PROGRESS marker before report requests, repeated/idempotent entry, snapshot races, repository and report-request errors, unknown enum values, and prevention of downstream calls when prerequisites are not confirmed. The isolated host harness does not prove the real storage adapter, report transport, correlation of asynchronous subsystem reports, F15 reconciliation, target build or hardware behavior.
+
+## Recovery reconciliation tests (SSM-F15)
+
+    g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -Isrc src/core/recovery.cpp tests/unit/test_recovery_reconcile.cpp -o test_recovery_reconcile
+    ./test_recovery_reconcile
+
+The F15 tests cover historical snapshot validation, complete/incomplete report collections, missing and stale data, unsafe and unknown subsystem conditions, duplicate subsystem IDs, full matching of unfinished operation records to executor reports by operation_id/correlation_id, unknown/extra/duplicate/missing operation reports, operation outcomes, and the contradiction between a persisted STARTED lifecycle and a current VALID NOT_EXECUTED report. The function is read-only: EvidenceComplete is not permission to resume work or a decision about the next global station state. The host harness uses compatible test declarations and does not prove the real adapter's report freshness, authenticity, completeness, recovery-attempt correlation, repository durability, target build or hardware behavior.
