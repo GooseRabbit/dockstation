@@ -1,6 +1,7 @@
 #include "state_transitions.hpp"
 #include "event_validation.hpp"
 #include <limits>
+#include <utility>
 namespace dockstation::core {
 namespace {
 constexpr TransitionResult allowed(StationState next_state) noexcept {
@@ -216,6 +217,85 @@ SnapshotReadResult get_snapshot(StationStateSnapshotReader& reader) noexcept {
 
     // Неизвестный код порта трактуется как ошибка, а не как успешное чтение.
     return {SnapshotReadStatus::ReadError, std::nullopt};
+}
+
+
+namespace {
+bool is_valid_history_record(const TransitionHistoryRecord& record) noexcept {
+    // История содержит только подтверждённые переходы с корректными ссылками.
+    if (!is_known_station_state(record.from_state) ||
+        !is_known_station_state(record.to_state) ||
+        record.from_state == record.to_state ||
+        record.revision == 0 ||
+        !has_non_whitespace(record.event_id) ||
+        !has_non_whitespace(record.transition_id)) {
+        return false;
+    }
+    // Причина записывается только как согласованная пара; пустая причина не считается известной.
+    if (record.reason_code.has_value() != record.reason_text.has_value()) return false;
+    if (record.reason_code.has_value() &&
+        (!has_non_whitespace(*record.reason_code) ||
+         !has_non_whitespace(*record.reason_text))) {
+        return false;
+    }
+    return true;
+}
+
+bool matches_history_filter(const TransitionHistoryRecord& record,
+                            const TransitionHistoryFilter& filter) noexcept {
+    if (filter.minimum_revision.has_value() &&
+        record.revision < *filter.minimum_revision) return false;
+    if (filter.maximum_revision.has_value() &&
+        record.revision > *filter.maximum_revision) return false;
+    if (filter.resulting_state.has_value() &&
+        record.to_state != *filter.resulting_state) return false;
+    return true;
+}
+
+TransitionHistoryResult history_result(TransitionHistoryStatus status) noexcept {
+    return {status, {}};
+}
+}  // namespace
+
+TransitionHistoryResult get_transition_history(
+    const TransitionHistoryFilter& filter,
+    TransitionHistoryReader& reader) noexcept {
+    // Отклоняем противоречивый диапазон и неизвестное значение enum до чтения хранилища.
+    if ((filter.minimum_revision.has_value() &&
+         filter.maximum_revision.has_value() &&
+         *filter.minimum_revision > *filter.maximum_revision) ||
+        (filter.resulting_state.has_value() &&
+         !is_known_station_state(*filter.resulting_state))) {
+        return history_result(TransitionHistoryStatus::InvalidFilter);
+    }
+
+    // Выполняем ровно один запрос. Частичный набор нельзя выдавать за полную историю.
+    TransitionHistoryPortResult read = reader.read_transition_history(filter);
+    switch (read.status) {
+        case TransitionHistoryPortStatus::Complete:
+            break;
+        case TransitionHistoryPortStatus::Incomplete:
+            return history_result(TransitionHistoryStatus::Incomplete);
+        case TransitionHistoryPortStatus::Error:
+            return history_result(TransitionHistoryStatus::ReadError);
+        default:
+            return history_result(TransitionHistoryStatus::ReadError);
+    }
+
+    // Проверяем каждую запись, соответствие фильтру и строгий порядок revision.
+    for (std::size_t i = 0; i < read.records.size(); ++i) {
+        const TransitionHistoryRecord& record = read.records[i];
+        if (!is_valid_history_record(record) ||
+            !matches_history_filter(record, filter) ||
+            (i > 0 && read.records[i - 1].revision >= record.revision)) {
+            return history_result(TransitionHistoryStatus::InvalidHistory);
+        }
+    }
+
+    if (read.records.empty()) return history_result(TransitionHistoryStatus::Empty);
+
+    // Записи используют владеющие строки, поэтому результат не зависит от буфера reader.
+    return {TransitionHistoryStatus::Available, std::move(read.records)};
 }
 
 }  // namespace dockstation::core

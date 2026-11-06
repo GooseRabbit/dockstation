@@ -1,7 +1,9 @@
 #pragma once
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <string_view>
+#include <vector>
 #include "event.hpp"
 namespace dockstation::core {
 // Полный перечень состояний взят из docs/04_OPERATIONAL_ALGORITHMS.md.
@@ -46,10 +48,8 @@ struct TransitionResult {
     const TransitionContext& context = {}) noexcept;
 
 
-// Снимок содержит только поля, необходимые для атомарного сравнения и фиксации.
-// Полный диагностический snapshot станции будет расширен отдельной функцией чтения.
 // Минимальный глобальный snapshot для фиксации переходов и чтения через F16.
- // Он не содержит полной диагностики подсистем и не доказывает физическое состояние оборудования.
+// Он не содержит полной диагностики подсистем и не доказывает физическое состояние оборудования.
 struct StationStateSnapshot {
     StationState state{StationState::PoweredOff};  // Последнее подтверждённое глобальное состояние.
     std::uint64_t revision{0};  // Версия: начальная предварительно 0, далее +1 на переход.
@@ -83,6 +83,61 @@ struct SnapshotReadResult {
 // F16: только читает и проверяет snapshot; не записывает данные и не меняет состояние.
 [[nodiscard]] SnapshotReadResult get_snapshot(
     StationStateSnapshotReader& reader) noexcept;
+
+// Контракт чтения истории подтверждённых глобальных переходов (SSM-F17).
+struct TransitionHistoryRecord {
+    StationState from_state{StationState::PoweredOff};
+    StationState to_state{StationState::PoweredOff};
+    std::uint64_t revision{0};  // Revision после подтверждённого перехода.
+    std::string event_id;       // Ссылка на исходное нормализованное событие.
+    std::string transition_id;  // Уникальный ID записи перехода.
+    std::optional<std::string> reason_code{};
+    std::optional<std::string> reason_text{};
+};
+
+// Границы revision включительные. resulting_state фильтрует по целевому состоянию.
+struct TransitionHistoryFilter {
+    std::optional<std::uint64_t> minimum_revision{};
+    std::optional<std::uint64_t> maximum_revision{};
+    std::optional<StationState> resulting_state{};
+};
+
+enum class TransitionHistoryPortStatus : std::uint8_t {
+    Complete,    // Полный набор в пределах действующей политики хранения.
+    Incomplete,  // Адаптер не может подтвердить полноту выборки.
+    Error        // Ошибка чтения.
+};
+
+struct TransitionHistoryPortResult {
+    TransitionHistoryPortStatus status{TransitionHistoryPortStatus::Error};
+    std::vector<TransitionHistoryRecord> records{};
+};
+
+class TransitionHistoryReader {
+public:
+    virtual ~TransitionHistoryReader() = default;
+
+    // Читает ту же долговременную историю, в которую F10 фиксирует переходы.
+    // Каждая подходящая запись возвращается ровно один раз и по возрастанию revision.
+    // При COMPLETE возвращается полный соответствующий фильтру набор.
+    // При INCOMPLETE частичные записи могут присутствовать, но F17 их не выдаёт.
+    [[nodiscard]] virtual TransitionHistoryPortResult read_transition_history(
+        const TransitionHistoryFilter& filter) noexcept = 0;
+};
+
+enum class TransitionHistoryStatus : std::uint8_t {
+    Available, Empty, Incomplete, InvalidFilter, InvalidHistory, ReadError
+};
+
+struct TransitionHistoryResult {
+    TransitionHistoryStatus status{TransitionHistoryStatus::ReadError};
+    std::vector<TransitionHistoryRecord> records{};
+};
+
+// F17: возвращает проверенную историю без изменения snapshot, истории или оборудования.
+[[nodiscard]] TransitionHistoryResult get_transition_history(
+    const TransitionHistoryFilter& filter,
+    TransitionHistoryReader& reader) noexcept;
 
 // План не разрешает переход сам по себе: F10 повторно сверяет его с результатом F05.
 // expected_state и expected_revision защищают от записи поверх более нового состояния.

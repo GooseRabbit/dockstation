@@ -46,7 +46,7 @@
 | `TransitionCommitResult commit_transition(const TransitionPlan& plan, const TransitionEvidence& evidence, StationStateRepository& repository, StateChangedPublisher& publisher) noexcept` **(реализована)** | Повторно проверяет допуск F05, атомарно сохраняет snapshot/историю/событие с новой revision и только после этого публикует StateChanged. |
 | `FailureDispositionResult resolve_failure_disposition(const Failure& failure) noexcept` **(реализована)** | По точному FAIL-коду возвращает предварительную реакцию из `docs/09`, §6; неизвестный код не получает выдуманной реакции. Не меняет состояние и не запускает оборудование. |
 | `SnapshotReadResult get_snapshot(StationStateSnapshotReader& reader) noexcept` **(реализована; SSM-F16)** | Однократно читает последний подтверждённый snapshot, проверяет state и revision/transition_id; возвращает optional snapshot только при AVAILABLE и не подставляет состояние при ошибке. |
-| `std::vector<TransitionRecord> get_transition_history(const HistoryFilter& filter)` | Возвращает историю подтверждённых переходов по заданному фильтру. |
+| `TransitionHistoryResult get_transition_history(const TransitionHistoryFilter& filter, TransitionHistoryReader& reader) noexcept` **(реализована; SSM-F17)** | Читает подтверждённую историю; проверяет фильтр, целостность записей и порядок revision; отличает EMPTY, INCOMPLETE и ошибки. Не меняет состояние. |
 
 ### src/core/operations.cpp
 
