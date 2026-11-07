@@ -451,6 +451,12 @@ StateChanged публикуется только после подтверждё
 
 Адаптер события преобразует распознанный статус в типизированное поле `OperationUpdate.next_status`; F09 не разбирает транспортный payload и не выбирает формат JSON. При этом исходный `Event` сохраняется как доказательство источника обновления.
 
+Для общего входного контура F13 профильный `OperationUpdateEventProcessor` принимает только точную пару `OPERATION_STATUS_UPDATED / Operation` и требует `quality_status = VALID` до разбора данных. Он вызывает `OperationUpdateDecoderPort::decode_next_status(const Event&)`; доверенный адаптер преобразует payload конкретного формата в типизированный `OperationLifecycleStatus`. Формат payload этим интерфейсом не задаётся.
+
+Процессор не изменяет исходный `Event` и передаёт его вместе с тем же `expected_cursor`, который F13 использовала для F04, в F09 `handle_operation_update()`. Только F09 проверяет lifecycle matrix, `operation_id`, `correlation_id`, дубликаты и порядок, а затем просит `OperationUpdateRepository` атомарно сохранить lifecycle, событие и курсор.
+
+`Applied` отображается в `NoStateChange` (изменился lifecycle операции, но не глобальное состояние станции); `Duplicate` и `EventConflict` сохраняются; отклоняющие результаты F09 отображаются в `Rejected`; конкурентные изменения операции/курсора — в `ConcurrentUpdate`; ошибка репозитория и неизвестный код — в `Error`. `StaleEvent`/`EventOrderUnknown`, неожиданно возвращённые F09 после прохождения F13 с тем же immutable Event/SourceCursor, считаются ошибкой согласованности. `UnsupportedPayload` адаптера отклоняется; ошибка, неизвестный статус декодера или `Decoded` без `next_status` не считаются успехом.
+
 Для обычного обновления F09 требует:
 - корректный конверт события с `event_type = OPERATION_STATUS_UPDATED`, `operation_id`, `correlation_id` и непустыми обязательными полями;
 - `quality_status = VALID`;

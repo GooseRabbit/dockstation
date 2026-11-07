@@ -44,6 +44,13 @@
 |---|---|
 | `EventProcessorStatus GlobalTransitionProcessor::process(const Event& event, EventCategory category, const SourceCursor& expected_cursor) noexcept` **(реализована; профильная часть SSM-F13)** | Обрабатывает только три согласованные стартовые пары; читает snapshot, получает доверенный контекст, применяет F05 и передаёт план/доказательства в F10 с исходным курсором. Не разбирает payload, не расширяет матрицу переходов и не управляет оборудованием. |
 
+### src/core/operation_event_processor.cpp
+
+| Элемент | Назначение |
+|---|---|
+| `OperationUpdateDecoderPort::decode_next_status(const Event& event)` | Логический порт доверенного адаптера: преобразует payload конкретного формата в типизированный `OperationLifecycleStatus`; не меняет событие и не фиксирует состояние. |
+| `OperationUpdateEventProcessor::process(const Event& event, EventCategory category, const SourceCursor& expected_cursor) noexcept` **(реализована; профильная связка F13 → F09)** | Обрабатывает только `OPERATION_STATUS_UPDATED / Operation`, требует `VALID`, вызывает адаптер, передаёт исходное событие и курсор в F09 и отображает её результат в общий статус F13. Не меняет глобальное состояние станции и не выполняет физических действий. |
+
 ### src/core/state_transitions.cpp
 
 | Функция | Назначение |

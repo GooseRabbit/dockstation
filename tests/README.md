@@ -156,6 +156,13 @@ The F13 tests cover the ordered common pipeline: envelope validation, exact even
 
 The tests cover the three approved startup event/category pairs, unsupported pairs, non-VALID quality, missing/error snapshots, unavailable/error/unknown context results, discarding partial positive context, UNKNOWN recovery status, transition-ID provider failures, F05 rejection before ID generation, F10 commit result mapping, unchanged expected source cursor, and publication uncertainty after a committed transition. The separate `test_event_handling.cpp` suite also checks that COMMITTED_NOTIFICATION_NOT_CONFIRMED is preserved through the F13 result mapping. Repository fakes validate the transaction contract only; they do not prove durable storage, physical atomicity, outbox delivery, target builds or hardware.
 
+## Operation event processor contract tests (F13 → F09 adapter)
+
+    g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -fno-exceptions -fno-rtti -Isrc src/core/operation_event_processor.cpp tests/contract/test_operation_event_processor_contract.cpp -o test_operation_event_processor_contract
+    ./test_operation_event_processor_contract
+
+This contract harness defines a stub for `handle_operation_update()` so it can test event/category gating, exact quality gating, opaque-payload decoder behavior, forwarding of the unchanged Event and SourceCursor, and F09-result mapping. It does not test the real F09 function, actual repository adapters, durable storage, target builds or hardware. The real F09 algorithm remains covered separately by `tests/unit/test_operation_update.cpp`.
+
 
 ## Recovery start tests (SSM-F14)
 
