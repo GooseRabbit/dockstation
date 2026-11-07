@@ -21,7 +21,7 @@ void expect(bool condition, std::string_view description) {
     ++checks;
     if (!condition) {
         ++failures;
-        std::cout << "FAIL: " << description << '\\n';
+        std::cout << "FAIL: " << description << '\n';
     }
 }
 
@@ -272,7 +272,7 @@ int main() {
                "F11 is called once after valid decoding");
     }
 
-    std::cout << "Checks: " << checks << '\\n';
-    std::cout << "Failures: " << failures << '\\n';
+    std::cout << "Checks: " << checks << '\n';
+    std::cout << "Failures: " << failures << '\n';
     return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
