@@ -263,8 +263,8 @@ run_startup_self_test(context)
 **Результат:**
 
 - `PASS` — ConfigurationManager доступен, результат VALID и snapshot согласован с теми же schema_version и configuration_revision.
-- `FAIL` — ConfigurationManager достоверно сообщает NOT_FOUND, INVALID или другую завершённую ошибку текущей конфигурации, из-за которой она не может использоваться.
-- `UNKNOWN` — менеджер/результат недоступен, результат нельзя достоверно получить либо поля результата и snapshot противоречат друг другу или не позволяют подтвердить их связь.
+- `FAIL` — ConfigurationManager достоверно сообщает NOT_FOUND, DECODE_ERROR, UNSUPPORTED_VERSION или INVALID: текущая сохранённая конфигурация подтверждённо не может использоваться.
+- `UNKNOWN` — менеджер/результат недоступен, получен UNAVAILABLE, READ_ERROR или INTERNAL_ERROR, результат нельзя достоверно получить либо поля результата и snapshot противоречат друг другу или не позволяют подтвердить их связь.
 
 Если результат VALID получен без snapshot, это несогласованный ответ зависимости; он не считается PASS.
 
