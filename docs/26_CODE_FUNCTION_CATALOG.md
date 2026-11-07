@@ -38,6 +38,14 @@
 |---|---|
 | `EventHandlingResult handle_event(const Event& event, const EventValidationPolicy& validation_policy, const SourceCursor& source_cursor, EventRepository& event_repository, EventProcessorPort& processor) noexcept` **(реализована; SSM-F13)** | Выполняет F01–F04 в фиксированном порядке и передаёт прошедшее F01 проверку конверта, известное, новое и упорядоченное событие профильному обработчику. Не разбирает payload, не продвигает курсор и не выполняет физические действия. |
 
+### src/core/event_processor_router.cpp
+
+| Элемент | Назначение |
+|---|---|
+| `EventProcessorRoute` | Связывает точные `event_type` и `EventCategory` с невладеющим указателем на один профильный `EventProcessorPort`. |
+| `EventProcessorRouter::is_configured() const noexcept` | Сообщает, прошла ли таблица маршрутов проверку: она непуста, содержит точные непустые ключи, известные категории, ненулевые указатели и не содержит повторных пар. |
+| `EventProcessorRouter::process(const Event&, EventCategory, const SourceCursor&) noexcept` **(реализована; 38 контрактных проверок)** | Выбирает ровно один профиль по точной паре type/category и передаёт ему исходное событие/курсор. Нет маршрута — UNSUPPORTED; недействительная конфигурация, неоднозначность или несогласованный ответ выбранного профиля — ERROR. Не выполняет F01–F04 и не меняет состояние. |
+
 ### src/core/global_transition_processor.cpp
 
 | Функция | Назначение |
