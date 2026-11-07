@@ -65,9 +65,11 @@
 19. [План реализации StationStateManager по функциям](docs/20_STATION_STATE_MANAGER_IMPLEMENTATION_PLAN.md) — согласованные небольшие задачи и тесты.
 20. [Самодиагностика станции](docs/21_STATION_SELF_DIAGNOSTICS.md) — черновик функций стартовой диагностики.
 21. [План реализации самодиагностики по функциям](docs/22_STATION_SELF_DIAGNOSTICS_IMPLEMENTATION_PLAN.md) — черновик пофункциональной реализации.
-22. [Операторское приложение](docs/23_OPERATOR_APPLICATION.md) — Windows-клиент, три способа подключения, мониторинг и управление.
-23. [Идентичность станции и криптографическая защита](docs/24_STATION_IDENTITY_AND_CRYPTOGRAPHIC_SECURITY.md) — Station ID, provisioning, ключи, сертификаты и защита команд.
-24. [План реализации StationIdentityManager](docs/25_STATION_IDENTITY_MANAGER_IMPLEMENTATION_PLAN.md) — функции регистрации и управления идентичностью станции.
+22. [Спецификация ConfigurationManager](docs/27_CONFIGURATION_MANAGER.md) — загрузка, проверка и предоставление проверенной конфигурации.
+23. [План реализации ConfigurationManager](docs/28_CONFIGURATION_MANAGER_IMPLEMENTATION_PLAN.md) — черновик последовательных задач реализации.
+24. [Операторское приложение](docs/23_OPERATOR_APPLICATION.md) — Windows-клиент, три способа подключения, мониторинг и управление.
+25. [Идентичность станции и криптографическая защита](docs/24_STATION_IDENTITY_AND_CRYPTOGRAPHIC_SECURITY.md) — Station ID, provisioning, ключи, сертификаты и защита команд.
+26. [План реализации StationIdentityManager](docs/25_STATION_IDENTITY_MANAGER_IMPLEMENTATION_PLAN.md) — функции регистрации и управления идентичностью станции.
 
 Исторические материалы, не являющиеся текущими заданиями или рабочими инструкциями:
 - [Первое задание Claude на аудит](docs/14_FIRST_CLAUDE_REVIEW_PROMPT.md).

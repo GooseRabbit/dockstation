@@ -488,11 +488,16 @@
 
 | Функция | Назначение |
 |---|---|
-| `ConfigurationLoadResult load_configuration()` | Загружает сохранённую конфигурацию станции. |
-| `ConfigurationValidationResult validate_configuration(const Configuration& configuration)` | Проверяет версию, обязательные поля, диапазоны и внутреннюю согласованность конфигурации. |
-| `ConfigurationSaveResult save_configuration(const Configuration& configuration)` | Сохраняет новую конфигурацию с контролем целостности. |
-| `ConfigurationRevision get_configuration_revision()` | Возвращает номер/идентификатор текущей версии конфигурации. |
-| `ConfigurationApplyResult apply_configuration_change(const ConfigurationChange& change, const AuthorizationContext& authorization)` | Применяет разрешённое изменение конфигурации и записывает его в аудит. |
+| `ConfigurationLoadResult load_configuration()` | Координирует чтение сохранённой записи, декодирование, обязательные проверки и создание проверенного снимка. CFG-F07. |
+| `ConfigurationValidationResult validate_configuration_schema_version(const ConfigurationCandidate& candidate)` | Проверяет поддержку версии схемы. CFG-F01. |
+| `ConfigurationValidationResult validate_required_configuration_fields(const ConfigurationCandidate& candidate)` | Проверяет обязательные поля только по утверждённым требованиям. CFG-F02. |
+| `ConfigurationValidationResult validate_configuration_values(const ConfigurationCandidate& candidate)` | Проверяет типы, значения, диапазоны и единицы только при наличии утверждённых критериев. CFG-F03. |
+| `ConfigurationValidationResult validate_configuration_consistency(const ConfigurationCandidate& candidate)` | Проверяет утверждённые логические зависимости параметров. CFG-F04. |
+| `ConfigurationValidationResult validate_configuration(const ConfigurationCandidate& candidate)` | Объединяет обязательные проверки и их ошибки/предупреждения. CFG-F05. |
+| `ConfigurationSnapshotResult build_validated_configuration_snapshot(const ConfigurationCandidate& candidate, const ConfigurationValidationResult& validation)` | Создаёт снимок только при успешной проверке. CFG-F06. |
+| `ConfigurationRevisionResult get_configuration_revision()` | Возвращает ревизию активного проверенного снимка; при его отсутствии отвечает явно. CFG-F08. |
+| `ConfigurationSaveResult save_configuration(const Configuration& configuration)` | Возможная последующая функция; не входит в первый read-only срез. |
+| `ConfigurationApplyResult apply_configuration_change(const ConfigurationChange& change, const AuthorizationContext& authorization)` | Возможная последующая функция управляемого изменения и аудита; не входит в первый read-only срез. |
 
 ---
 
