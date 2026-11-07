@@ -228,6 +228,7 @@ int main() {
         {EventProcessorStatus::Duplicate, EventHandlingStatus::Duplicate},
         {EventProcessorStatus::EventConflict, EventHandlingStatus::EventConflict},
         {EventProcessorStatus::ConcurrentUpdate, EventHandlingStatus::ConcurrentUpdate},
+        {EventProcessorStatus::CommittedNotificationNotConfirmed, EventHandlingStatus::CommittedNotificationNotConfirmed},
         {EventProcessorStatus::Error, EventHandlingStatus::ProcessingError}
     };
     for (const auto& mapping : mappings) {

@@ -15,6 +15,7 @@ enum class EventProcessorStatus : std::uint8_t {
     Duplicate,         // Повтор обнаружен при атомарной повторной проверке.
     EventConflict,     // event_id уже связан с другим содержимым.
     ConcurrentUpdate,  // Ожидаемое состояние/курсор изменились до фиксации.
+    CommittedNotificationNotConfirmed, // Изменение уже сохранено, но публикация StateChanged не подтверждена.
     Error              // Результат обработки или фиксации не подтверждён.
 };
 
@@ -37,7 +38,7 @@ enum class EventHandlingStatus : std::uint8_t {
     Processed, NoStateChange, Rejected, Unsupported,
     Duplicate, EventConflict, InvalidEvent, UnknownEventType,
     StaleEvent, EventOrderUnknown, RepositoryError,
-    ConcurrentUpdate, ProcessingError
+    ConcurrentUpdate, CommittedNotificationNotConfirmed, ProcessingError
 };
 
 struct EventHandlingResult {

@@ -75,6 +75,9 @@ EventHandlingResult handle_event(
         case EventProcessorStatus::ConcurrentUpdate:
             return {EventHandlingStatus::ConcurrentUpdate, category,
                     EventValidationError::None, freshness.reason};
+        case EventProcessorStatus::CommittedNotificationNotConfirmed:
+            return {EventHandlingStatus::CommittedNotificationNotConfirmed, category,
+                    EventValidationError::None, freshness.reason};
         case EventProcessorStatus::Error:
             return {EventHandlingStatus::ProcessingError, category,
                     EventValidationError::None, freshness.reason};
