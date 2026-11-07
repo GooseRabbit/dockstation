@@ -118,7 +118,28 @@ struct ConfigurationIssueListView {
     std::size_t size{0};
 };
 
-struct ConfigurationValidationResult;
+// Результат одной или нескольких обязательных проверок конфигурации.
+enum class ConfigurationValidationStatus : std::uint8_t {
+    Valid,               // Все выполненные обязательные проверки пройдены.
+    Invalid,             // Данные кандидата нарушают обязательное правило.
+    UnsupportedVersion,  // Версия схемы не входит в явный набор поддерживаемых.
+    InternalError        // Политика проверки или внутренняя обработка некорректна.
+};
+
+// Значение по умолчанию fail-closed: отсутствие результата не означает VALID.
+struct ConfigurationValidationResult {
+    ConfigurationValidationStatus status{ConfigurationValidationStatus::InternalError};
+    ConfigurationIssueListView issues{};
+};
+
+// Явный набор допустимых версий схемы. Тип не владеет памятью; массив должен
+// оставаться доступным во время проверки. Пустой набор не разрешает ни одну
+// версию и считается ошибкой конфигурации политики.
+struct ConfigurationSchemaVersionSetView {
+    const std::string_view* versions{nullptr};
+    std::size_t size{0};
+};
+
 struct ConfigurationSnapshotResult;
 
 // Проверенный снимок. Его поля и документ должны относиться к одной ревизии.

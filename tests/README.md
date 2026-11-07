@@ -1,6 +1,6 @@
 # Host unit and contract tests
 
-The StationStateManager unit/contract tests and the ConfigurationManager type/port contract test are intentionally independent of Arduino APIs and physical hardware drivers. The code is written against C++17 as a
+The StationStateManager unit/contract tests and the ConfigurationManager type/port and schema-version tests are intentionally independent of Arduino APIs and physical hardware drivers. The code is written against C++17 as a
 provisional portable implementation; the final language/toolchain decision is
 still open in docs/12_DECISIONS_AND_OPEN_QUESTIONS.md.
 
@@ -41,13 +41,26 @@ ConfigurationDecoderPort boundaries. It does not load a real configuration,
 parse a concrete storage format, validate station-specific parameters, or prove
 backing-storage lifetime in a production adapter.
 
+## Configuration manager schema-version test (CFG-F01)
+
+From the repository root:
+
+    g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -fno-exceptions -fno-rtti -Isrc src/configuration/configuration_manager.cpp tests/unit/test_configuration_schema_version.cpp -o test_configuration_schema_version
+    ./test_configuration_schema_version
+
+The 19-check test covers exact matching against an explicitly supplied version
+set, unsupported and case-mismatched versions, missing and malformed identifiers,
+embedded NUL, and invalid/empty/duplicate policy data. The example identifiers
+are test fixtures only; they do not declare the supported DockStation schema
+version. This test does not load persisted data or configure a production policy.
+
 ## One-command host test run (Windows)
 
 From the repository root, with the MSYS2 UCRT64 GCC toolchain available in PATH:
 
     tools\\run_host_tests.bat
 
-The script compiles and runs all 23 currently registered unit and contract test
+The script compiles and runs all 24 currently registered unit and contract test
 programs, placing executables under build/host-tests. It stops at the first
 compile error or failed test. It is a host-only test runner; it does not build
 ESP32 firmware or test physical hardware/persistent-storage adapters.
