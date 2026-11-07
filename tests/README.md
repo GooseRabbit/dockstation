@@ -27,6 +27,18 @@ From the repository root:
 On Windows, use .exe for the output name and run ./test_event_validation.exe
 from PowerShell if a compatible GCC/Clang toolchain is installed.
 
+## One-command host test run (Windows)
+
+From the repository root, with the MSYS2 UCRT64 GCC toolchain available in PATH:
+
+    tools\\run_host_tests.bat
+
+The script compiles and runs all 22 currently registered unit and contract test
+programs, placing executables under build/host-tests. It stops at the first
+compile error or failed test. It is a host-only test runner; it does not build
+ESP32 firmware or test physical hardware/persistent-storage adapters.
+
+
 ## Scope
 
 The tests cover the common event envelope only: required fields, documented
@@ -182,10 +194,31 @@ The 38-check contract test covers all five currently registered exact routes,
 single-recipient dispatch, unchanged Event/SourceCursor forwarding, unmatched
 pairs, all known processor statuses, duplicate route keys, invalid/empty route
 tables, null processors, unknown categories, and unexpected profile results.
-The isolated review build used local copies of the current common interface
-declarations; it is not a full repository integration build. The application
-bootstrap that constructs all concrete profiles and passes the router to
-`handle_event()` remains to be integrated.
+The router contract harness tests the router independently. The application-facing
+composition and its combined F13 test are covered by the StationEventPipeline
+contract test below. Neither harness constructs production storage/decoder adapters
+or proves target/hardware integration.
+
+## Station event pipeline contract tests (F13 application-facing composition)
+
+    g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -fno-exceptions -fno-rtti -Isrc src/core/event_validation.cpp src/core/event_processing.cpp src/core/event_handling.cpp src/core/event_processor_router.cpp src/core/station_event_pipeline.cpp tests/contract/test_station_event_pipeline_contract.cpp -o test_station_event_pipeline_contract
+    ./test_station_event_pipeline_contract
+
+The 28-check contract harness compiles the production F01–F04, F13, router and
+StationEventPipeline source files. It covers all five configured event/category
+pairs, one-recipient routing, F01 invalid-envelope rejection, F02 unknown-type
+rejection, F03 duplicate/repository-error rejection, F04 stale/unordered rejection,
+known-but-unhandled event types, and an unexpected UNSUPPORTED response from a
+registered profile. The test supplies a fake EventRepository and recording profile
+ports; it verifies composition/common ingress, not the internal algorithms of the
+three concrete profile processors. Their behavior remains covered by the separate
+global-transition, operation-update and timeout unit/contract tests.
+
+The isolated review build used copies byte-identical to the common headers and
+F01–F04/F13/router source files from current main. GCC 14.2 and Clang 17 strict
+builds, GCC ASan/UBSan and Clang Static Analyzer passed. It is not a full checkout,
+persistent-storage, target or hardware integration test.
+
 
 ## Global transition profile processor tests (SSM-F13)
 

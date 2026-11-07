@@ -38,6 +38,14 @@
 |---|---|
 | `EventHandlingResult handle_event(const Event& event, const EventValidationPolicy& validation_policy, const SourceCursor& source_cursor, EventRepository& event_repository, EventProcessorPort& processor) noexcept` **(реализована; SSM-F13)** | Выполняет F01–F04 в фиксированном порядке и передаёт прошедшее F01 проверку конверта, известное, новое и упорядоченное событие профильному обработчику. Не разбирает payload, не продвигает курсор и не выполняет физические действия. |
 
+### src/core/station_event_pipeline.cpp
+
+| Элемент | Назначение |
+|---|---|
+| StationEventPipeline::StationEventPipeline(EventRepository&, EventProcessorPort&, EventProcessorPort&, EventProcessorPort&) noexcept | Создаёт стабильную таблицу из пяти согласованных пар для общего, operation и timeout профилей; ссылки на зависимости не владеются. |
+| StationEventPipeline::is_configured() const noexcept | Сообщает о готовности внутреннего EventProcessorRouter до запуска приёма событий. |
+| StationEventPipeline::handle(const Event&, const EventValidationPolicy&, const SourceCursor&) noexcept (реализована; 28 контрактных проверок) | Вызывает F13 с внутренним маршрутизатором: F01–F04, затем ровно один профиль из пяти зарегистрированных пар. Курсор не изменяет; pipeline запрещено копировать/перемещать. Не создаёт реальные профили или адаптеры хранения. |
+
 ### src/core/event_processor_router.cpp
 
 | Элемент | Назначение |
