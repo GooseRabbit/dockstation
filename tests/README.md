@@ -1,7 +1,6 @@
-# Host unit tests
+# Host unit and contract tests
 
-The StationStateManager host unit tests are intentionally independent of
-Arduino APIs and physical hardware drivers. The code is written against C++17 as a
+The StationStateManager unit/contract tests and the ConfigurationManager type/port contract test are intentionally independent of Arduino APIs and physical hardware drivers. The code is written against C++17 as a
 provisional portable implementation; the final language/toolchain decision is
 still open in docs/12_DECISIONS_AND_OPEN_QUESTIONS.md.
 
@@ -35,7 +34,7 @@ From the repository root:
     ./test_configuration_types
 
 The 31-check test covers the format-neutral typed value tree (including opaque
-values), candidate metadata, getter-only validated-snapshot construction,
+values), candidate metadata, compile-time restrictions on direct validated-snapshot construction,
 issue and warning views, default fail-closed statuses, distinct read/decode/load
 statuses, and fake implementations of the SettingsRepository and
 ConfigurationDecoderPort boundaries. It does not load a real configuration,
