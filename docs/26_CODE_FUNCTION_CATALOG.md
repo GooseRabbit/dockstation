@@ -1,7 +1,7 @@
 # Каталог предполагаемых функций DockStation
 
 **Статус:** предварительный рабочий каталог.  
-**Дата:** 2026-11-06.  
+**Дата:** 2026-11-07.  
 **Назначение:** показать, на какие отдельные функции может быть разбито программное обеспечение станции и совместно разрабатываемая бортовая часть.
 
 > **Важно:** приведённые функции, их названия, расположение по файлам и их количество могут измениться по мере проектирования, выбора БАС, оборудования, платформы и протоколов. Это предварительный ориентир, а не окончательное техническое задание.
@@ -51,6 +51,13 @@
 | `OperationUpdateDecoderPort::decode_next_status(const Event& event)` | Логический порт доверенного адаптера: преобразует payload конкретного формата в типизированный `OperationLifecycleStatus`; не меняет событие и не фиксирует состояние. |
 | `OperationUpdateEventProcessor::process(const Event& event, EventCategory category, const SourceCursor& expected_cursor) noexcept` **(реализована; профильная связка F13 → F09)** | Обрабатывает только `OPERATION_STATUS_UPDATED / Operation`, требует `VALID`, вызывает адаптер, передаёт исходное событие и курсор в F09 и отображает её результат в общий статус F13. Не меняет глобальное состояние станции и не выполняет физических действий. |
 
+### src/core/operation_timeout_event_processor.cpp
+
+| Элемент | Назначение |
+|---|---|
+| `OperationTimeoutDecoderPort::decode_timeout(const Event& event)` | Логический порт доверенного адаптера: преобразует непрозрачный payload в типизированные `OperationTimeoutType` и `DispatchCertainty`; формат сериализации не выбирает и событие не меняет. |
+| `OperationTimeoutEventProcessor::process(const Event& event, EventCategory category, const SourceCursor& expected_cursor) noexcept` **(реализована; профильная связка F13 → F11; контрактный harness — 65 проверок)** | Принимает только `OPERATION_TIMEOUT / Timer`, требует `VALID`, передаёт исходные Event/SourceCursor в F11 и отображает результат в статус F13. Контрактный harness использует заглушку F11; интегрированная сборка ядра и композиция профилей не проверены. |
+
 ### src/core/state_transitions.cpp
 
 | Функция | Назначение |
@@ -74,7 +81,7 @@
 | `PersistResult persist_operation_intent(const ActionRequest& request, StateRepository& repository)` | Передаёт ActionRequest в StateRepository; только впервые устойчиво сохранённая запись разрешает последующий dispatch, повторная запись или ошибка отправку не разрешают. |
 | `DispatchResult dispatch_action_request(const ActionRequest& request, const PersistResult& persistence, ActionDispatcher& dispatcher)` | Передаёт запрос только при точном подтверждении новой записи F07; получатель дедуплицирует по operation_id, а ACCEPTED не означает физическое начало действия. |
 | `OperationUpdateResult handle_operation_update(const OperationUpdate& update, const SourceCursor& source_cursor, OperationUpdateRepository& repository)` | Проверяет typed update, качество/повтор/порядок события, operation_id и correlation_id; применяет только разрешённый переход и атомарно фиксирует статус, событие и курсор источника. |
-| `OperationTimeoutResult handle_operation_timeout(const OperationTimeout& timeout, const SourceCursor& source_cursor, OperationUpdateRepository& repository) noexcept` **(реализована; отдельный harness, интегрированный запуск ожидает проверки)** | По подтверждённому таймерному событию переводит только в FAILED до отправки либо OUTCOME_UNKNOWN после возможной отправки; сохраняет событие и lifecycle атомарно. |
+| `OperationTimeoutResult handle_operation_timeout(const OperationTimeout& timeout, const SourceCursor& source_cursor, OperationUpdateRepository& repository) noexcept` **(реализована; отдельный модульный тест; полная интеграционная сборка ожидает проверки)** | По подтверждённому таймерному событию переводит только в FAILED до отправки либо OUTCOME_UNKNOWN после возможной отправки; сохраняет событие и lifecycle атомарно. |
 
 
 ### src/core/recovery.cpp

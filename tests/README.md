@@ -134,6 +134,27 @@ The commit_transition() tests use fake StationStateRepository and StateChangedPu
 The timeout tests cover UNKNOWN defaults for timeout type/certainty (fail closed), pre-dispatch timeout (FAILED only with explicit NotDispatched), dispatch/operation/cancellation timeout after possible delivery (OUTCOME_UNKNOWN), terminal and already-unknown operations, late timeouts, invalid event/type/certainty, F03 duplicate/conflict, F04 stale/unordered sequence, operation/correlation lookup, repository failures and concurrent updates. The test fake checks the logical transaction contract only; it does not test real monotonic timers, timeout durations, persistence durability, reboot recovery, outbox delivery, target builds or hardware. An integrated compile/run result must be recorded separately once executed.
 
 
+## Operation timeout event processor contract tests (F13 → F11 adapter)
+
+From the repository root, the contract harness can be built against the production
+headers. The harness supplies a stub for `handle_operation_timeout()`, so it tests
+the F13 adapter boundary rather than the F11 algorithm or repository transaction.
+
+    g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -fno-exceptions -fno-rtti -Isrc src/core/operation_timeout_event_processor.cpp tests/contract/test_operation_timeout_event_processor_contract.cpp -o test_operation_timeout_event_processor_contract
+    ./test_operation_timeout_event_processor_contract
+
+    clang++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -fno-exceptions -fno-rtti -Isrc src/core/operation_timeout_event_processor.cpp tests/contract/test_operation_timeout_event_processor_contract.cpp -o test_operation_timeout_event_processor_contract
+    ./test_operation_timeout_event_processor_contract
+
+The harness covers exact event/category routing, the VALID quality gate, decoder
+outcomes, UNKNOWN typed evidence, unchanged Event/SourceCursor forwarding, and
+mapping of every F11 result status including an unknown enum value. The isolated
+review run completed 65 checks with GCC 14.2, Clang 17, and GCC ASan/UBSan.
+That run used minimal interface fixtures matching the current declarations and
+stubbed F11; it is not evidence of a full production-checkout build, F11 algorithm
+correctness, durable repository behavior, Timer integration, target build, or
+hardware operation.
+
 ## Failure disposition lookup tests (SSM-F12)
 
     g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -Isrc src/core/failure_disposition.cpp tests/unit/test_failure_disposition.cpp -o test_failure_disposition
