@@ -38,6 +38,12 @@
 |---|---|
 | `EventHandlingResult handle_event(const Event& event, const EventValidationPolicy& validation_policy, const SourceCursor& source_cursor, EventRepository& event_repository, EventProcessorPort& processor) noexcept` **(реализована; SSM-F13)** | Выполняет F01–F04 в фиксированном порядке и передаёт прошедшее F01 проверку конверта, известное, новое и упорядоченное событие профильному обработчику. Не разбирает payload, не продвигает курсор и не выполняет физические действия. |
 
+### src/core/global_transition_processor.cpp
+
+| Функция | Назначение |
+|---|---|
+| `EventProcessorStatus GlobalTransitionProcessor::process(const Event& event, EventCategory category, const SourceCursor& expected_cursor) noexcept` **(реализована; профильная часть SSM-F13)** | Обрабатывает только три согласованные стартовые пары; читает snapshot, получает доверенный контекст, применяет F05 и передаёт план/доказательства в F10 с исходным курсором. Не разбирает payload, не расширяет матрицу переходов и не управляет оборудованием. |
+
 ### src/core/state_transitions.cpp
 
 | Функция | Назначение |

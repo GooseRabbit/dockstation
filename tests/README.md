@@ -149,6 +149,13 @@ The tests cover all 41 failure IDs from the current `docs/09`, §6 matrix, plus 
 
 The F13 tests cover the ordered common pipeline: envelope validation, exact event classification, duplicate/conflict/repository-error handling, source/session/sequence freshness, and delegation to the profile processor. They verify that invalid, unknown, duplicate, stale and unordered events do not reach the processor; registered categories and non-VALID data-quality statuses are forwarded unchanged for event-specific handling without parsing payload; processor outcomes are mapped without treating errors or unknown enum values as success. The profile processor must repeat event-ID/cursor checks atomically with its own state change to close races; F13's initial F03/F04 checks are read-only and F13 does not advance the cursor. This unit test does not implement or verify profile-specific payload adapters, durable transaction coordination, hardware, or full-system integration.
 
+## Global transition profile processor tests (SSM-F13)
+
+    g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -Isrc src/core/event_validation.cpp src/core/event_processing.cpp src/core/state_transitions.cpp src/core/global_transition_processor.cpp tests/unit/test_global_transition_processor.cpp -o test_global_transition_processor
+    ./test_global_transition_processor
+
+The tests cover the three approved startup event/category pairs, unsupported pairs, non-VALID quality, missing/error snapshots, unavailable/error/unknown context results, discarding partial positive context, UNKNOWN recovery status, transition-ID provider failures, F05 rejection before ID generation, F10 commit result mapping, unchanged expected source cursor, and publication uncertainty after a committed transition. The separate `test_event_handling.cpp` suite also checks that COMMITTED_NOTIFICATION_NOT_CONFIRMED is preserved through the F13 result mapping. Repository fakes validate the transaction contract only; they do not prove durable storage, physical atomicity, outbox delivery, target builds or hardware.
+
 
 ## Recovery start tests (SSM-F14)
 
