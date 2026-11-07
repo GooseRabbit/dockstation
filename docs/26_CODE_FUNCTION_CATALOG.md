@@ -484,6 +484,13 @@
 
 ## 15. Конфигурация станции
 
+### CFG-F00 — типы и логические порты
+
+| Файл | Состав | Назначение |
+|---|---|---|
+| `src/configuration/configuration_types.hpp` | `ConfigurationLoadStatus`, `ConfigurationIssueSeverity`, `ConfigurationValueType`, `ConfigurationValueView`, `ConfigurationDocumentView`, `ConfigurationCandidate`, `ConfigurationIssue`, `ValidatedConfigurationSnapshot`, `ConfigurationLoadResult` | Типизированное нейтральное представление конфигурации, проблем и результатов. View-типы не владеют памятью; снимок создаётся только через CFG-F06 |
+| `src/configuration/configuration_ports.hpp` | `SettingsReadStatus`, `SettingsRepository`, `ConfigurationDecodeStatus`, `ConfigurationDecoderPort` | Read-only границы получения сохранённой записи и её декодирования без выбора хранилища/формата |
+
 ### src/configuration/configuration_manager.cpp
 
 | Функция | Назначение |

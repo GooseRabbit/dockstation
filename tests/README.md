@@ -27,13 +27,28 @@ From the repository root:
 On Windows, use .exe for the output name and run ./test_event_validation.exe
 from PowerShell if a compatible GCC/Clang toolchain is installed.
 
+## Configuration manager type and port contract tests (CFG-F00)
+
+From the repository root:
+
+    g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -fno-exceptions -fno-rtti -Isrc tests/unit/test_configuration_types.cpp -o test_configuration_types
+    ./test_configuration_types
+
+The 31-check test covers the format-neutral typed value tree (including opaque
+values), candidate metadata, getter-only validated-snapshot construction,
+issue and warning views, default fail-closed statuses, distinct read/decode/load
+statuses, and fake implementations of the SettingsRepository and
+ConfigurationDecoderPort boundaries. It does not load a real configuration,
+parse a concrete storage format, validate station-specific parameters, or prove
+backing-storage lifetime in a production adapter.
+
 ## One-command host test run (Windows)
 
 From the repository root, with the MSYS2 UCRT64 GCC toolchain available in PATH:
 
     tools\\run_host_tests.bat
 
-The script compiles and runs all 22 currently registered unit and contract test
+The script compiles and runs all 23 currently registered unit and contract test
 programs, placing executables under build/host-tests. It stops at the first
 compile error or failed test. It is a host-only test runner; it does not build
 ESP32 firmware or test physical hardware/persistent-storage adapters.
