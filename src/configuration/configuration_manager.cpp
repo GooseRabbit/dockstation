@@ -90,4 +90,156 @@ ConfigurationValidationResult validate_configuration_schema_version(
                        &kUnsupportedVersionIssue);
 }
 
+
+namespace {
+
+const ConfigurationIssue kInvalidRequiredFieldPolicyIssue{
+    "REQUIRED_FIELD_POLICY_INVALID", std::nullopt, ConfigurationIssueSeverity::Error,
+    "Required-field policy is empty, malformed or contains duplicate paths."};
+const ConfigurationIssue kRequiredFieldIssueBufferTooSmall{
+    "REQUIRED_FIELD_ISSUE_BUFFER_TOO_SMALL", std::nullopt,
+    ConfigurationIssueSeverity::Error,
+    "Issue buffer cannot hold every required-field validation issue."};
+const ConfigurationIssue kInvalidConfigurationDocumentIssue{
+    "CONFIGURATION_DOCUMENT_VIEW_INVALID", std::nullopt,
+    ConfigurationIssueSeverity::Error,
+    "Configuration document contains an invalid object view."};
+const ConfigurationIssue kRequiredFieldMissingTemplate{
+    "REQUIRED_FIELD_MISSING", std::nullopt, ConfigurationIssueSeverity::Error,
+    "A required configuration field is missing."};
+const ConfigurationIssue kRequiredFieldPathUnresolvableTemplate{
+    "REQUIRED_FIELD_PATH_UNRESOLVABLE", std::nullopt,
+    ConfigurationIssueSeverity::Error,
+    "A parent of the required configuration field is not an object."};
+const ConfigurationIssue kRequiredFieldPathAmbiguousTemplate{
+    "REQUIRED_FIELD_PATH_AMBIGUOUS", std::nullopt,
+    ConfigurationIssueSeverity::Error,
+    "A required configuration field path is ambiguous because an object contains duplicate names."};
+
+bool paths_equal(const ConfigurationRequiredFieldPathView& left,
+                 const ConfigurationRequiredFieldPathView& right) noexcept {
+    if (left.size != right.size) return false;
+    for (std::size_t i = 0; i < left.size; ++i) {
+        if (left.segments[i] != right.segments[i]) return false;
+    }
+    return true;
+}
+
+bool is_valid_required_field_set(
+    const ConfigurationRequiredFieldSetView& required_fields) noexcept {
+    if (required_fields.fields == nullptr || required_fields.size == 0) return false;
+    for (std::size_t i = 0; i < required_fields.size; ++i) {
+        const ConfigurationRequiredFieldPathView& field = required_fields.fields[i];
+        if (field.segments == nullptr || field.size == 0 || field.diagnostic_path.empty()) {
+            return false;
+        }
+        for (std::size_t segment = 0; segment < field.size; ++segment) {
+            if (field.segments[segment].empty()) return false;
+        }
+        for (std::size_t previous = 0; previous < i; ++previous) {
+            const ConfigurationRequiredFieldPathView& earlier = required_fields.fields[previous];
+            if (field.diagnostic_path == earlier.diagnostic_path || paths_equal(field, earlier)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+enum class RequiredFieldLookupStatus : std::uint8_t {
+    Present, Missing, Unresolvable, Ambiguous, InvalidDocument
+};
+
+RequiredFieldLookupStatus lookup_required_field(
+    const ConfigurationDocumentView& document,
+    const ConfigurationRequiredFieldPathView& path) noexcept {
+    ConfigurationValueView current = document.root;
+    for (std::size_t segment = 0; segment < path.size; ++segment) {
+        if (current.type != ConfigurationValueType::Object) {
+            return RequiredFieldLookupStatus::Unresolvable;
+        }
+        const ConfigurationObjectView object = current.value.object_value;
+        if (object.size > 0 && object.entries == nullptr) {
+            return RequiredFieldLookupStatus::InvalidDocument;
+        }
+
+        const ConfigurationValueView* matched_value = nullptr;
+        std::size_t match_count = 0;
+        for (std::size_t entry = 0; entry < object.size; ++entry) {
+            if (object.entries[entry].name == path.segments[segment]) {
+                ++match_count;
+                matched_value = &object.entries[entry].value;
+            }
+        }
+        if (match_count == 0) return RequiredFieldLookupStatus::Missing;
+        if (match_count > 1) return RequiredFieldLookupStatus::Ambiguous;
+        current = *matched_value;
+    }
+    // Null/Unknown считаются присутствующими; их тип/значение проверяет CFG-F03.
+    return RequiredFieldLookupStatus::Present;
+}
+
+const ConfigurationIssue& issue_template_for(RequiredFieldLookupStatus status) noexcept {
+    switch (status) {
+        case RequiredFieldLookupStatus::Missing: return kRequiredFieldMissingTemplate;
+        case RequiredFieldLookupStatus::Unresolvable: return kRequiredFieldPathUnresolvableTemplate;
+        case RequiredFieldLookupStatus::Ambiguous: return kRequiredFieldPathAmbiguousTemplate;
+        case RequiredFieldLookupStatus::Present:
+        case RequiredFieldLookupStatus::InvalidDocument: break;
+    }
+    return kInvalidConfigurationDocumentIssue;
+}
+
+}  // namespace
+
+ConfigurationValidationResult validate_required_configuration_fields(
+    const ConfigurationCandidate& candidate,
+    const ConfigurationRequiredFieldSetView& required_fields,
+    ConfigurationIssue* issue_buffer,
+    std::size_t issue_capacity) noexcept {
+    if (!is_valid_required_field_set(required_fields)) {
+        return make_result(ConfigurationValidationStatus::InternalError,
+                           &kInvalidRequiredFieldPolicyIssue);
+    }
+
+    // Первый проход определяет объём результата; частичный список не публикуется.
+    std::size_t issue_count = 0;
+    for (std::size_t i = 0; i < required_fields.size; ++i) {
+        const auto lookup = lookup_required_field(candidate.document, required_fields.fields[i]);
+        if (lookup == RequiredFieldLookupStatus::InvalidDocument) {
+            return make_result(ConfigurationValidationStatus::InternalError,
+                               &kInvalidConfigurationDocumentIssue);
+        }
+        if (lookup != RequiredFieldLookupStatus::Present) ++issue_count;
+    }
+
+    if (issue_count == 0) {
+        return make_result(ConfigurationValidationStatus::Valid, nullptr);
+    }
+    if (issue_buffer == nullptr || issue_capacity < issue_count) {
+        return make_result(ConfigurationValidationStatus::InternalError,
+                           &kRequiredFieldIssueBufferTooSmall);
+    }
+
+    // Второй проход заполняет caller-owned буфер проблем.
+    std::size_t output_index = 0;
+    for (std::size_t i = 0; i < required_fields.size; ++i) {
+        const ConfigurationRequiredFieldPathView& path = required_fields.fields[i];
+        const auto lookup = lookup_required_field(candidate.document, path);
+        if (lookup == RequiredFieldLookupStatus::InvalidDocument) {
+            return make_result(ConfigurationValidationStatus::InternalError,
+                               &kInvalidConfigurationDocumentIssue);
+        }
+        if (lookup == RequiredFieldLookupStatus::Present) continue;
+
+        const ConfigurationIssue& issue_template = issue_template_for(lookup);
+        issue_buffer[output_index++] = {
+            issue_template.reason_code, path.diagnostic_path,
+            issue_template.severity, issue_template.description};
+    }
+
+    return {ConfigurationValidationStatus::Invalid,
+            ConfigurationIssueListView{issue_buffer, output_index}};
+}
+
 }  // namespace dockstation::configuration

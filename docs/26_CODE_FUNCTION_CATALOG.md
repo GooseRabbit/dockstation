@@ -500,13 +500,21 @@
 | `src/configuration/configuration_manager.cpp` | Реализация CFG-F01 | Точное сопоставление идентификаторов и формирование статусов/issues без встроенного production-набора |
 | `tests/unit/test_configuration_schema_version.cpp` | 19 host-проверок | Позитивные, негативные и граничные проверки CFG-F01 |
 
+### CFG-F02 — проверка обязательных полей
+
+| Файл | Состав | Назначение |
+|---|---|---|
+| `src/configuration/configuration_types.hpp` | `ConfigurationRequiredFieldPathView`, `ConfigurationRequiredFieldSetView` | Явная политика обязательных полей как не владеющие памятью сегментированные пути |
+| `src/configuration/configuration_manager.hpp/.cpp` | `validate_required_configuration_fields()` | Проверяет наличие обязательных путей и формирует полный список issues в caller-owned buffer |
+| `tests/unit/test_configuration_required_fields.cpp` | 25 host-проверок | Наличие и отсутствие полей, вложенные пути, Null/Unknown, неоднозначные ключи, повреждённые views и граничная ёмкость буфера |
+
 ### src/configuration/configuration_manager.cpp
 
 | Функция | Назначение |
 |---|---|
 | `ConfigurationLoadResult load_configuration()` | Координирует чтение сохранённой записи, декодирование, обязательные проверки и создание проверенного снимка. CFG-F07. |
 | `ConfigurationValidationResult validate_configuration_schema_version(const ConfigurationCandidate& candidate, const ConfigurationSchemaVersionSetView& supported_versions) noexcept` | Точно сопоставляет версию кандидата с явным набором; не выбирает production-версии и не нормализует строку. CFG-F01. |
-| `ConfigurationValidationResult validate_required_configuration_fields(const ConfigurationCandidate& candidate)` | Проверяет обязательные поля только по утверждённым требованиям. CFG-F02. |
+| `ConfigurationValidationResult validate_required_configuration_fields(const ConfigurationCandidate& candidate, const ConfigurationRequiredFieldSetView& required_fields, ConfigurationIssue* issue_buffer, std::size_t issue_capacity) noexcept` | Проверяет только наличие путей из явно переданной политики; тип и значение не валидирует. CFG-F02. |
 | `ConfigurationValidationResult validate_configuration_values(const ConfigurationCandidate& candidate)` | Проверяет типы, значения, диапазоны и единицы только при наличии утверждённых критериев. CFG-F03. |
 | `ConfigurationValidationResult validate_configuration_consistency(const ConfigurationCandidate& candidate)` | Проверяет утверждённые логические зависимости параметров. CFG-F04. |
 | `ConfigurationValidationResult validate_configuration(const ConfigurationCandidate& candidate)` | Объединяет обязательные проверки и их ошибки/предупреждения. CFG-F05. |

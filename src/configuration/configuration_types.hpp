@@ -140,6 +140,22 @@ struct ConfigurationSchemaVersionSetView {
     std::size_t size{0};
 };
 
+// Один обязательный путь в дереве конфигурации. Путь задаётся сегментами,
+// поэтому имена полей не требуют специальных правил экранирования разделителей.
+// diagnostic_path — готовое диагностическое имя того же пути для ConfigurationIssue.
+struct ConfigurationRequiredFieldPathView {
+    const std::string_view* segments{nullptr};
+    std::size_t size{0};
+    std::string_view diagnostic_path{};
+};
+
+// Явный набор обязательных путей. Память и строки принадлежат вызывающему коду.
+// Набор должен быть непустым и не содержать повторяющихся путей.
+struct ConfigurationRequiredFieldSetView {
+    const ConfigurationRequiredFieldPathView* fields{nullptr};
+    std::size_t size{0};
+};
+
 struct ConfigurationSnapshotResult;
 
 // Проверенный снимок. Его поля и документ должны относиться к одной ревизии.

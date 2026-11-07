@@ -10,4 +10,14 @@ namespace dockstation::configuration {
     const ConfigurationCandidate& candidate,
     const ConfigurationSchemaVersionSetView& supported_versions) noexcept;
 
+// Проверяет только наличие явно перечисленных обязательных полей.
+// issue_buffer и его память принадлежат вызывающему коду; размер должен быть
+// достаточен для всех найденных проблем. При нехватке места возвращается
+// InternalError без публикации неполного списка issues.
+[[nodiscard]] ConfigurationValidationResult validate_required_configuration_fields(
+    const ConfigurationCandidate& candidate,
+    const ConfigurationRequiredFieldSetView& required_fields,
+    ConfigurationIssue* issue_buffer,
+    std::size_t issue_capacity) noexcept;
+
 }  // namespace dockstation::configuration
