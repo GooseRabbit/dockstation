@@ -49,9 +49,10 @@ call :run_strict test_configuration_values src\configuration\configuration_manag
 call :run_strict test_configuration_consistency src\configuration\configuration_consistency.cpp tests\unit\test_configuration_consistency.cpp || goto :failed
 call :run_strict test_configuration_validation_contract src\configuration\configuration_validation.cpp tests\contract\test_configuration_validation_contract.cpp || goto :failed
 call :run_strict test_configuration_snapshot src\configuration\configuration_snapshot.cpp tests\unit\test_configuration_snapshot.cpp || goto :failed
+call :run_strict test_configuration_load_contract src\configuration\configuration_load.cpp tests\contract\test_configuration_load_contract.cpp || goto :failed
 
 echo.
-echo [SUCCESS] All 29 host test programs passed.
+echo [SUCCESS] All 30 host test programs passed.
 echo Note: host tests do not replace target builds, persistent-storage validation, or hardware tests.
 exit /b 0
 

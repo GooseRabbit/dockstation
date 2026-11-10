@@ -512,7 +512,7 @@
 
 | Функция | Назначение |
 |---|---|
-| `ConfigurationLoadResult load_configuration()` | Координирует чтение сохранённой записи, декодирование, обязательные проверки и создание проверенного снимка. CFG-F07. |
+| `ConfigurationLoadResult load_configuration(SettingsRepository& repository, ConfigurationDecoderPort& decoder, const ConfigurationValidationPolicyView& policy, ConfigurationIssue* issue_buffer, std::size_t issue_capacity) noexcept` (файл `configuration_load.cpp`) | Выполняет один read → decode → F05 → F06 проход, отображает статусы портов и создаёт snapshot только при VALID; нарушения контрактов закрывает через INTERNAL_ERROR. CFG-F07. |
 | `ConfigurationValidationResult validate_configuration_schema_version(const ConfigurationCandidate& candidate, const ConfigurationSchemaVersionSetView& supported_versions) noexcept` | Точно сопоставляет версию кандидата с явным набором; не выбирает production-версии и не нормализует строку. CFG-F01. |
 | `ConfigurationValidationResult validate_required_configuration_fields(const ConfigurationCandidate& candidate, const ConfigurationRequiredFieldSetView& required_fields, ConfigurationIssue* issue_buffer, std::size_t issue_capacity) noexcept` | Проверяет только наличие путей из явно переданной политики; тип и значение не валидирует. CFG-F02. |
 | `ConfigurationValidationResult validate_configuration_values(const ConfigurationCandidate& candidate)` | Проверяет типы, значения, диапазоны и единицы только при наличии утверждённых критериев. CFG-F03. |

@@ -1010,3 +1010,62 @@ CFG-F05 записывает в результат `validated_schema_version` и
 изменять опубликованные данные весь срок использования снимка. Функция не
 повторяет CFG-F01…F05, не загружает и не записывает конфигурацию, не назначает
 значения и не выдаёт разрешения на физические операции.
+
+
+### 27.13. Полная загрузка конфигурации (CFG-F07)
+
+`load_configuration(repository, decoder, policy, issue_buffer, issue_capacity)`
+выполняет один последовательный read-only проход:
+
+1. Один раз вызывает `SettingsRepository::read_current()`.
+2. Только для `FOUND` передаёт запись в `ConfigurationDecoderPort::decode()`.
+3. Только для `DECODED` передаёт кандидата в CFG-F05 с переданной политикой и
+   caller-owned буфером issues.
+4. Только при согласованном результате CFG-F05 `VALID` вызывает CFG-F06.
+5. Возвращает `ConfigurationLoadResult`; статус `VALID` допускается только
+   вместе с присутствующим snapshot той же schema_version/revision.
+
+Отображение результатов портов:
+
+| Источник | Результат | ConfigurationLoadStatus |
+|---|---|---|
+| SettingsRepository | NOT_FOUND | NOT_FOUND |
+| SettingsRepository | UNAVAILABLE | UNAVAILABLE |
+| SettingsRepository | READ_ERROR | READ_ERROR |
+| ConfigurationDecoderPort | INVALID_RECORD | DECODE_ERROR |
+| ConfigurationDecoderPort | UNSUPPORTED_VERSION | UNSUPPORTED_VERSION |
+| ConfigurationDecoderPort | ERROR | INTERNAL_ERROR |
+| CFG-F05 | INVALID | INVALID |
+| CFG-F05 | UNSUPPORTED_VERSION | UNSUPPORTED_VERSION |
+| CFG-F05 / CFG-F06 | INTERNAL_ERROR или нарушение контракта | INTERNAL_ERROR |
+| CFG-F05 → CFG-F06 | VALID и snapshot присутствует | VALID |
+
+Неизвестные значения enum, несовместимое сочетание статуса и данных порта,
+`FOUND` с ненулевой длиной и null-указателем, несвязанный с кандидатом
+результат F05, `VALID` с `ERROR` или отсутствие snapshot после успешной
+проверки закрывают загрузку через `INTERNAL_ERROR`. F06 вызывается только
+после `VALID` от F05; поэтому любой ответ F06, отличный от `VALID` или
+`INTERNAL_ERROR`, является нарушением внутреннего контракта и не превращается
+в ошибку данных `INVALID`/ `UNSUPPORTED_VERSION`. Ни частичный документ, ни
+предыдущий snapshot не подставляются. Статусы `NOT_FOUND`, `UNAVAILABLE`,
+`READ_ERROR`, `DECODE_ERROR`, `UNSUPPORTED_VERSION` и `INVALID` остаются
+различимыми.
+
+Результат F05 использует тот же `issue_buffer`, который передал вызывающий
+код. Его память должна оставаться действительной, пока используется
+`ConfigurationLoadResult.issues`. Статические диагностические issues F07 имеют
+статический срок жизни. Версия и ревизия указываются в результате только если
+они достоверно известны из успешно декодированного кандидата.
+
+Байтовое представление записи от SettingsRepository требуется только на время
+вызова декодера. Строки, дерево и прочие backing-буферы кандидата должны
+оставаться доступными и неизменными на весь срок использования возвращённого
+snapshot. Это обязанность ConfigurationDecoderPort/адаптера; F07 не копирует
+конфигурацию и не выбирает формат или физическое хранилище.
+
+F07 не повторяет алгоритмы F01-F06, не выполняет повторные чтения, не исправляет
+или мигрирует данные, не записывает настройки, не выбирает значения по
+умолчанию и не выдаёт разрешения на физические действия. Host-контрактные
+тесты с fake-портами не доказывают срок жизни реального накопителя, работу
+production-декодера, сохранность данных при отключении питания, целевую сборку
+или аппаратную интеграцию.

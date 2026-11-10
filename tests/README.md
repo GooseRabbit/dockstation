@@ -1,6 +1,6 @@
 # Host unit and contract tests
 
-The StationStateManager unit/contract tests and the ConfigurationManager type/port, schema-version, required-field, value-validation, consistency-validation, combined-validation and validated-snapshot tests are intentionally independent of Arduino APIs and physical hardware drivers. The code is written against C++17 as a
+The StationStateManager unit/contract tests and the ConfigurationManager type/port, schema-version, required-field, value-validation, consistency-validation, combined-validation, validated-snapshot and configuration-load contract tests are intentionally independent of Arduino APIs and physical hardware drivers. The code is written against C++17 as a
 provisional portable implementation; the final language/toolchain decision is
 still open in docs/12_DECISIONS_AND_OPEN_QUESTIONS.md.
 
@@ -359,3 +359,15 @@ g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -fno-exceptions -fno-rtti -Isrc 
 ```
 
 The 24-check unit test covers snapshot creation from a VALID result, preservation of schema/revision/document identity and WARNINGs, no snapshot for INVALID/UNSUPPORTED_VERSION/INTERNAL_ERROR, exact F05 candidate binding, non-empty identity, malformed issue lists, contradictory severity/status combinations and unknown enum values. It uses synthetic in-memory views; it does not prove production backing-storage lifetime, storage adapters, target builds or hardware integration.
+
+
+## Configuration manager load contract test (CFG-F07)
+
+From the repository root:
+
+```sh
+g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -fno-exceptions -fno-rtti -Isrc src/configuration/configuration_load.cpp tests/contract/test_configuration_load_contract.cpp -o test_configuration_load_contract
+./test_configuration_load_contract
+```
+
+The 30-check contract harness uses fake SettingsRepository and ConfigurationDecoderPort implementations and controlled F05/F06 test doubles to isolate the CFG-F07 orchestration. It covers one-read/one-decode sequencing, all repository and decoder status mappings, validation status propagation, issue/warning preservation, candidate identity binding, contradictory port results, malformed issues, and snapshot presence/identity checks. It does not test the individual F01-F06 algorithms, a production decoder or storage adapter, backing-storage lifetime, target builds, or hardware integration.

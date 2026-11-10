@@ -47,4 +47,16 @@ namespace dockstation::configuration {
     const ConfigurationCandidate& candidate,
     const ConfigurationValidationResult& validation) noexcept;
 
+class SettingsRepository;
+class ConfigurationDecoderPort;
+
+// Reads one persisted record, decodes it, validates the decoded candidate and
+// publishes a snapshot only after all validation stages succeed.
+[[nodiscard]] ConfigurationLoadResult load_configuration(
+    SettingsRepository& repository,
+    ConfigurationDecoderPort& decoder,
+    const ConfigurationValidationPolicyView& policy,
+    ConfigurationIssue* issue_buffer,
+    std::size_t issue_capacity) noexcept;
+
 }  // namespace dockstation::configuration
