@@ -686,3 +686,10 @@
 | Функция | Назначение |
 |---|---|
 | `ConfigurationValidationResult validate_configuration_values(candidate, rules, issue_buffer, issue_capacity) noexcept` **(реализована; CFG-F03)** | Проверяет точные типы, явные скалярные перечни и числовые границы конфигурационных полей. Не задаёт production-правила, не преобразует единицы и не выбирает формат хранения. |
+
+
+### src/configuration/configuration_consistency.cpp
+
+| Функция | Назначение |
+|---|---|
+| ConfigurationValidationResult validate_configuration_consistency(candidate, rules, issue_buffer, issue_capacity) noexcept (реализована; CFG-F04) | Проверяет прямые отношения между двумя скалярными полями по явной политике: равенство/неравенство и числовой порядок. Не задаёт производственные зависимости и не управляет станцией. |

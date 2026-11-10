@@ -173,6 +173,28 @@ struct ConfigurationValueRuleSetView {
     std::size_t size{0};
 };
 
+// Операция прямого сравнения двух скалярных параметров для CFG-F04.
+// Порядковые операции применимы только к числовым типам.
+enum class ConfigurationConsistencyOperator : std::uint8_t {
+    Equal, NotEqual, LessThan, LessThanOrEqual, GreaterThan, GreaterThanOrEqual
+};
+
+// Одно явное отношение между двумя полями конфигурации.
+// Оба поля должны иметь один expected_type; diagnostic_path описывает отношение.
+struct ConfigurationConsistencyRuleView {
+    ConfigurationRequiredFieldPathView left_path{};
+    ConfigurationRequiredFieldPathView right_path{};
+    ConfigurationValueType expected_type{ConfigurationValueType::Unknown};
+    ConfigurationConsistencyOperator operation{ConfigurationConsistencyOperator::Equal};
+    std::string_view diagnostic_path{};
+};
+
+// Невладеющий непустой набор правил CFG-F04.
+struct ConfigurationConsistencyRuleSetView {
+    const ConfigurationConsistencyRuleView* rules{nullptr};
+    std::size_t size{0};
+};
+
 struct ConfigurationSnapshotResult;
 
 // Проверенный снимок. Его поля и документ должны относиться к одной ревизии.

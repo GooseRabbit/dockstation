@@ -26,4 +26,11 @@ namespace dockstation::configuration {
     ConfigurationIssue* issue_buffer,
     std::size_t issue_capacity) noexcept;
 
+// Проверяет прямые отношения между двумя полями по явному набору правил.
+[[nodiscard]] ConfigurationValidationResult validate_configuration_consistency(
+    const ConfigurationCandidate& candidate,
+    const ConfigurationConsistencyRuleSetView& rules,
+    ConfigurationIssue* issue_buffer,
+    std::size_t issue_capacity) noexcept;
+
 }  // namespace dockstation::configuration
