@@ -1,6 +1,6 @@
 # Host unit and contract tests
 
-The StationStateManager unit/contract tests and the ConfigurationManager type/port, schema-version, required-field, value-validation and consistency-validation tests are intentionally independent of Arduino APIs and physical hardware drivers. The code is written against C++17 as a
+The StationStateManager unit/contract tests and the ConfigurationManager type/port, schema-version, required-field, value-validation, consistency-validation and combined-validation contract tests are intentionally independent of Arduino APIs and physical hardware drivers. The code is written against C++17 as a
 provisional portable implementation; the final language/toolchain decision is
 still open in docs/12_DECISIONS_AND_OPEN_QUESTIONS.md.
 
@@ -73,7 +73,7 @@ From the repository root, with the MSYS2 UCRT64 GCC toolchain available in PATH:
 
     tools\\run_host_tests.bat
 
-The script compiles and runs all 27 currently registered unit and contract test
+The script compiles and runs all 28 currently registered unit and contract test
 programs, placing executables under build/host-tests. It stops at the first
 compile error or failed test. It is a host-only test runner; it does not build
 ESP32 firmware or test physical hardware/persistent-storage adapters.
@@ -331,3 +331,18 @@ unresolvable paths, malformed object views, non-finite numbers, invalid and
 duplicate policies, and fail-closed issue-buffer handling. Test fields and
 relations are synthetic fixtures only; they do not define production station
 dependencies.
+
+
+## Configuration manager combined-validation contract test (CFG-F05)
+
+From the repository root:
+
+    g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -fno-exceptions -fno-rtti -Isrc src/configuration/configuration_validation.cpp tests/contract/test_configuration_validation_contract.cpp -o test_configuration_validation_contract
+    ./test_configuration_validation_contract
+
+The 24-check contract harness uses test doubles for CFG-F01 through CFG-F04
+to isolate the CFG-F05 orchestration. It verifies schema-version short-circuiting,
+aggregation/order of F02-F04 issues, preservation of non-blocking WARNINGs, INVALID versus INTERNAL_ERROR precedence,
+worst-case issue-buffer sizing, overflow protection, and fail-closed handling
+of unexpected subordinate statuses. It does not replace the individual F01-F04
+unit tests or prove an end-to-end configuration load.

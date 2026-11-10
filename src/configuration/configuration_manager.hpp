@@ -33,4 +33,13 @@ namespace dockstation::configuration {
     ConfigurationIssue* issue_buffer,
     std::size_t issue_capacity) noexcept;
 
+// Выполняет все обязательные проверки F01-F04 в согласованном порядке и
+// возвращает единый список проблем, включая необязательные WARNING. Буфер должен
+// вмещать 1 + сумму размеров наборов F02-F04 (один слот для WARNING от F01).
+[[nodiscard]] ConfigurationValidationResult validate_configuration(
+    const ConfigurationCandidate& candidate,
+    const ConfigurationValidationPolicyView& policy,
+    ConfigurationIssue* issue_buffer,
+    std::size_t issue_capacity) noexcept;
+
 }  // namespace dockstation::configuration

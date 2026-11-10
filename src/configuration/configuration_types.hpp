@@ -195,6 +195,15 @@ struct ConfigurationConsistencyRuleSetView {
     std::size_t size{0};
 };
 
+// Политика объединённой проверки CFG-F05. Все четыре набора должны быть
+// заданы явно; пустые наборы не трактуются как пропуск проверки.
+struct ConfigurationValidationPolicyView {
+    ConfigurationSchemaVersionSetView supported_versions{};
+    ConfigurationRequiredFieldSetView required_fields{};
+    ConfigurationValueRuleSetView value_rules{};
+    ConfigurationConsistencyRuleSetView consistency_rules{};
+};
+
 struct ConfigurationSnapshotResult;
 
 // Проверенный снимок. Его поля и документ должны относиться к одной ревизии.

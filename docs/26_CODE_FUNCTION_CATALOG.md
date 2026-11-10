@@ -693,3 +693,10 @@
 | Функция | Назначение |
 |---|---|
 | ConfigurationValidationResult validate_configuration_consistency(candidate, rules, issue_buffer, issue_capacity) noexcept (реализована; CFG-F04) | Проверяет прямые отношения между двумя скалярными полями по явной политике: равенство/неравенство и числовой порядок. Не задаёт производственные зависимости и не управляет станцией. |
+
+
+### src/configuration/configuration_validation.cpp
+
+| Функция | Назначение |
+|---|---|
+| `ConfigurationValidationResult validate_configuration(candidate, policy, issue_buffer, issue_capacity) noexcept` **(реализована; CFG-F05)** | Сначала проверяет версию, затем объединяет проверки обязательных полей, значений и согласованности. Возвращает общий статус и issues; не создаёт snapshot. |
