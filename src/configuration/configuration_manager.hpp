@@ -59,4 +59,11 @@ class ConfigurationDecoderPort;
     ConfigurationIssue* issue_buffer,
     std::size_t issue_capacity) noexcept;
 
+// Returns the revision only for a caller-designated active, internally
+// consistent VALID load result and its validated snapshot. An absent or
+// inconsistent active result returns std::nullopt. The returned view refers
+// to the snapshot's existing backing storage.
+[[nodiscard]] std::optional<std::string_view> get_configuration_revision(
+    const ConfigurationLoadResult& active_configuration) noexcept;
+
 }  // namespace dockstation::configuration

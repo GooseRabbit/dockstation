@@ -371,3 +371,20 @@ g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -fno-exceptions -fno-rtti -Isrc 
 ```
 
 The 30-check contract harness uses fake SettingsRepository and ConfigurationDecoderPort implementations and controlled F05/F06 test doubles to isolate the CFG-F07 orchestration. It covers one-read/one-decode sequencing, all repository and decoder status mappings, validation status propagation, issue/warning preservation, candidate identity binding, contradictory port results, malformed issues, and snapshot presence/identity checks. It does not test the individual F01-F06 algorithms, a production decoder or storage adapter, backing-storage lifetime, target builds, or hardware integration.
+
+## Configuration manager active revision test (CFG-F08)
+
+From the repository root:
+
+```sh
+g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -fno-exceptions -fno-rtti -Isrc src/configuration/configuration_snapshot.cpp src/configuration/configuration_revision.cpp tests/unit/test_configuration_revision.cpp -o test_configuration_revision
+./test_configuration_revision
+```
+
+The 19-check unit test covers revision retrieval from a consistent VALID load
+result, preservation of a well-formed WARNING, absent/non-VALID snapshots,
+missing or mismatched schema/revision metadata, and malformed/error issue lists.
+The caller supplies the load result it currently treats as active; this getter
+does not create or own global active state. The returned string view retains the
+snapshot backing-storage lifetime requirement. The test uses in-memory views and
+does not validate a production storage adapter, target build or hardware.
