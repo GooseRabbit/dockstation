@@ -488,7 +488,7 @@
 
 | Файл | Состав | Назначение |
 |---|---|---|
-| `src/configuration/configuration_types.hpp` | `ConfigurationLoadStatus`, `ConfigurationIssueSeverity`, `ConfigurationValueType`, `ConfigurationValueView`, `ConfigurationDocumentView`, `ConfigurationCandidate`, `ConfigurationIssue`, `ValidatedConfigurationSnapshot`, `ConfigurationLoadResult` | Базовые типы и нейтральное представление конфигурации CFG-F00. View-типы не владеют памятью; снимок создаётся только через CFG-F06 |
+| `src/configuration/configuration_types.hpp` | `ConfigurationLoadStatus`, `ConfigurationIssueSeverity`, `ConfigurationValueType`, `ConfigurationValueView`, `ConfigurationDocumentView`, `ConfigurationCandidate`, `ConfigurationIssue`, `ConfigurationValidationResult`, `ConfigurationSnapshotResult`, `ValidatedConfigurationSnapshot`, `ConfigurationLoadResult` | Базовые типы и нейтральное представление конфигурации CFG-F00. View-типы не владеют памятью; снимок создаётся только через CFG-F06 |
 | `src/configuration/configuration_ports.hpp` | `SettingsReadStatus`, `SettingsRepository`, `ConfigurationDecodeStatus`, `ConfigurationDecoderPort` | Read-only границы получения сохранённой записи и её декодирования без выбора хранилища/формата |
 
 ### CFG-F01 — проверка версии схемы
@@ -517,8 +517,8 @@
 | `ConfigurationValidationResult validate_required_configuration_fields(const ConfigurationCandidate& candidate, const ConfigurationRequiredFieldSetView& required_fields, ConfigurationIssue* issue_buffer, std::size_t issue_capacity) noexcept` | Проверяет только наличие путей из явно переданной политики; тип и значение не валидирует. CFG-F02. |
 | `ConfigurationValidationResult validate_configuration_values(const ConfigurationCandidate& candidate)` | Проверяет типы, значения, диапазоны и единицы только при наличии утверждённых критериев. CFG-F03. |
 | `ConfigurationValidationResult validate_configuration_consistency(const ConfigurationCandidate& candidate)` | Проверяет утверждённые логические зависимости параметров. CFG-F04. |
-| `ConfigurationValidationResult validate_configuration(const ConfigurationCandidate& candidate)` | Объединяет обязательные проверки и их ошибки/предупреждения. CFG-F05. |
-| `ConfigurationSnapshotResult build_validated_configuration_snapshot(const ConfigurationCandidate& candidate, const ConfigurationValidationResult& validation)` | Создаёт снимок только при успешной проверке. CFG-F06. |
+| `ConfigurationValidationResult validate_configuration(const ConfigurationCandidate& candidate, const ConfigurationValidationPolicyView& policy, ConfigurationIssue* issue_buffer, std::size_t issue_capacity) noexcept` | Объединяет F01-F04, сохраняет WARNING и привязывает результат к точным schema_version/revision кандидата. CFG-F05. |
+| `ConfigurationSnapshotResult build_validated_configuration_snapshot(const ConfigurationCandidate& candidate, const ConfigurationValidationResult& validation) noexcept` (файл `configuration_snapshot.cpp`) | Сверяет привязку результата F05 к schema_version/revision кандидата, проверяет согласованность статуса/issues и создаёт getter-only snapshot без копирования документа. CFG-F06. |
 | `ConfigurationRevisionResult get_configuration_revision()` | Возвращает ревизию активного проверенного снимка; при его отсутствии отвечает явно. CFG-F08. |
 | `ConfigurationSaveResult save_configuration(const Configuration& configuration)` | Возможная последующая функция; не входит в первый read-only срез. |
 | `ConfigurationApplyResult apply_configuration_change(const ConfigurationChange& change, const AuthorizationContext& authorization)` | Возможная последующая функция управляемого изменения и аудита; не входит в первый read-only срез. |

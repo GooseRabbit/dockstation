@@ -187,6 +187,9 @@ int main() {
            "all four validation stages pass");
     expect(result.issues.size == 0 && result.issues.items == nullptr,
            "valid combined result has no issues");
+    expect(result.validated_schema_version == "test-v1" &&
+               result.validated_configuration_revision == "valid",
+           "combined result is bound to the exact candidate schema and revision");
 
     result = validate_configuration(make_candidate("test-v1", "schema_warning"),
                                     policy, issue_buffer, 4);
@@ -230,6 +233,9 @@ int main() {
                                     issue_buffer, 3);
     expect(result.status == ConfigurationValidationStatus::UnsupportedVersion,
            "unsupported schema version short-circuits later checks");
+    expect(result.validated_schema_version == "unknown-v9" &&
+               result.validated_configuration_revision == "valid",
+           "early schema failure retains the candidate identity");
     expect(has_reason(result, "SCHEMA_VERSION_UNSUPPORTED"),
            "schema-version issue is returned");
     expect(issue_buffer[0].reason_code == "SENTINEL",

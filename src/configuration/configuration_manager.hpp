@@ -42,4 +42,9 @@ namespace dockstation::configuration {
     ConfigurationIssue* issue_buffer,
     std::size_t issue_capacity) noexcept;
 
+// Creates a getter-only snapshot only for VALID and exact F05 candidate binding.
+[[nodiscard]] ConfigurationSnapshotResult build_validated_configuration_snapshot(
+    const ConfigurationCandidate& candidate,
+    const ConfigurationValidationResult& validation) noexcept;
+
 }  // namespace dockstation::configuration

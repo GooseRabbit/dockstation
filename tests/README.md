@@ -1,6 +1,6 @@
 # Host unit and contract tests
 
-The StationStateManager unit/contract tests and the ConfigurationManager type/port, schema-version, required-field, value-validation, consistency-validation and combined-validation contract tests are intentionally independent of Arduino APIs and physical hardware drivers. The code is written against C++17 as a
+The StationStateManager unit/contract tests and the ConfigurationManager type/port, schema-version, required-field, value-validation, consistency-validation, combined-validation and validated-snapshot tests are intentionally independent of Arduino APIs and physical hardware drivers. The code is written against C++17 as a
 provisional portable implementation; the final language/toolchain decision is
 still open in docs/12_DECISIONS_AND_OPEN_QUESTIONS.md.
 
@@ -340,9 +340,22 @@ From the repository root:
     g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -fno-exceptions -fno-rtti -Isrc src/configuration/configuration_validation.cpp tests/contract/test_configuration_validation_contract.cpp -o test_configuration_validation_contract
     ./test_configuration_validation_contract
 
-The 24-check contract harness uses test doubles for CFG-F01 through CFG-F04
+The 26-check contract harness uses test doubles for CFG-F01 through CFG-F04
 to isolate the CFG-F05 orchestration. It verifies schema-version short-circuiting,
 aggregation/order of F02-F04 issues, preservation of non-blocking WARNINGs, INVALID versus INTERNAL_ERROR precedence,
-worst-case issue-buffer sizing, overflow protection, and fail-closed handling
-of unexpected subordinate statuses. It does not replace the individual F01-F04
-unit tests or prove an end-to-end configuration load.
+worst-case issue-buffer sizing, overflow protection, fail-closed handling
+of unexpected subordinate statuses, and binding the result to the exact
+candidate schema version and revision. It does not replace the individual
+F01-F04 unit tests or prove an end-to-end configuration load.
+
+
+## Configuration manager validated snapshot test (CFG-F06)
+
+From the repository root:
+
+```sh
+g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -fno-exceptions -fno-rtti -Isrc src/configuration/configuration_snapshot.cpp tests/unit/test_configuration_snapshot.cpp -o test_configuration_snapshot
+./test_configuration_snapshot
+```
+
+The 24-check unit test covers snapshot creation from a VALID result, preservation of schema/revision/document identity and WARNINGs, no snapshot for INVALID/UNSUPPORTED_VERSION/INTERNAL_ERROR, exact F05 candidate binding, non-empty identity, malformed issue lists, contradictory severity/status combinations and unknown enum values. It uses synthetic in-memory views; it does not prove production backing-storage lifetime, storage adapters, target builds or hardware integration.

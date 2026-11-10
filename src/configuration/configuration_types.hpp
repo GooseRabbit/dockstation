@@ -130,6 +130,11 @@ enum class ConfigurationValidationStatus : std::uint8_t {
 struct ConfigurationValidationResult {
     ConfigurationValidationStatus status{ConfigurationValidationStatus::InternalError};
     ConfigurationIssueListView issues{};
+
+    // CFG-F05 binds the result to the exact candidate checked. CFG-F06 verifies
+    // these identifiers before it publishes a validated snapshot.
+    std::string_view validated_schema_version{};
+    std::string_view validated_configuration_revision{};
 };
 
 // Явный набор допустимых версий схемы. Тип не владеет памятью; массив должен
@@ -238,6 +243,14 @@ private:
     std::string_view schema_version_{};
     std::string_view configuration_revision_{};
     ConfigurationDocumentView document_{};
+};
+
+// Результат CFG-F06. Snapshot присутствует только при status == Valid;
+// issues остаются не владеющим памятью представлением результата проверки.
+struct ConfigurationSnapshotResult {
+    ConfigurationValidationStatus status{ConfigurationValidationStatus::InternalError};
+    std::optional<ValidatedConfigurationSnapshot> snapshot{};
+    ConfigurationIssueListView issues{};
 };
 
 // Результат загрузки ConfigurationManager. Контракт будущей реализации:

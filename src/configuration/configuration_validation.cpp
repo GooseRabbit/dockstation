@@ -110,6 +110,13 @@ ConfigurationValidationResult validate_configuration(
     const ConfigurationValidationPolicyView& policy,
     ConfigurationIssue* issue_buffer,
     std::size_t issue_capacity) noexcept {
+    const auto bind_to_candidate = [&candidate](
+        ConfigurationValidationResult result) noexcept {
+        result.validated_schema_version = candidate.schema_version;
+        result.validated_configuration_revision = candidate.configuration_revision;
+        return result;
+    };
+
     // Сначала проверяем версию. Данные неизвестной схемы нельзя проверять
     // по правилам другой/неподдерживаемой схемы.
     const ConfigurationValidationResult schema_result =
@@ -118,16 +125,17 @@ ConfigurationValidationResult validate_configuration(
         case ConfigurationValidationStatus::Invalid:
         case ConfigurationValidationStatus::UnsupportedVersion:
         case ConfigurationValidationStatus::InternalError:
-            return schema_result;
+            return bind_to_candidate(schema_result);
         case ConfigurationValidationStatus::Valid:
             break;
         default:
-            return make_result(ConfigurationValidationStatus::InternalError,
-                               &kUnexpectedSubvalidationStatus);
+            return bind_to_candidate(make_result(
+                ConfigurationValidationStatus::InternalError,
+                &kUnexpectedSubvalidationStatus));
     }
     if (!valid_policy_shape(policy)) {
-        return make_result(ConfigurationValidationStatus::InternalError,
-                           &kInvalidPolicyIssue);
+        return bind_to_candidate(make_result(
+            ConfigurationValidationStatus::InternalError, &kInvalidPolicyIssue));
     }
 
     // Резервируем worst-case ёмкость до запуска любой проверки, чтобы ошибка
@@ -137,12 +145,12 @@ ConfigurationValidationResult validate_configuration(
     if (!add_to_issue_capacity(policy.required_fields.size, maximum_issue_count) ||
         !add_to_issue_capacity(policy.value_rules.size, maximum_issue_count) ||
         !add_to_issue_capacity(policy.consistency_rules.size, maximum_issue_count)) {
-        return make_result(ConfigurationValidationStatus::InternalError,
-                           &kInvalidPolicyIssue);
+        return bind_to_candidate(make_result(
+            ConfigurationValidationStatus::InternalError, &kInvalidPolicyIssue));
     }
     if (issue_buffer == nullptr || issue_capacity < maximum_issue_count) {
-        return make_result(ConfigurationValidationStatus::InternalError,
-                           &kIssueBufferTooSmall);
+        return bind_to_candidate(make_result(
+            ConfigurationValidationStatus::InternalError, &kIssueBufferTooSmall));
     }
 
     std::size_t output_size = 0;
@@ -152,8 +160,8 @@ ConfigurationValidationResult validate_configuration(
     append_subresult(schema_result, issue_buffer, issue_capacity, output_size,
                      has_invalid, has_internal_error);
     if (has_internal_error) {
-        return {ConfigurationValidationStatus::InternalError,
-                ConfigurationIssueListView{issue_buffer, output_size}};
+        return bind_to_candidate({ConfigurationValidationStatus::InternalError,
+                                   ConfigurationIssueListView{issue_buffer, output_size}});
     }
 
     const ConfigurationValidationResult required_result =
@@ -178,18 +186,19 @@ ConfigurationValidationResult validate_configuration(
                      has_invalid, has_internal_error);
 
     if (has_internal_error) {
-        return {ConfigurationValidationStatus::InternalError,
-                ConfigurationIssueListView{issue_buffer, output_size}};
+        return bind_to_candidate({ConfigurationValidationStatus::InternalError,
+                                  ConfigurationIssueListView{issue_buffer, output_size}});
     }
     if (has_invalid) {
-        return {ConfigurationValidationStatus::Invalid,
-                ConfigurationIssueListView{issue_buffer, output_size}};
+        return bind_to_candidate({ConfigurationValidationStatus::Invalid,
+                                  ConfigurationIssueListView{issue_buffer, output_size}});
     }
     if (output_size == 0) {
-        return {ConfigurationValidationStatus::Valid, ConfigurationIssueListView{}};
+        return bind_to_candidate({ConfigurationValidationStatus::Valid,
+                                  ConfigurationIssueListView{}});
     }
-    return {ConfigurationValidationStatus::Valid,
-            ConfigurationIssueListView{issue_buffer, output_size}};
+    return bind_to_candidate({ConfigurationValidationStatus::Valid,
+                              ConfigurationIssueListView{issue_buffer, output_size}});
 }
 
 }  // namespace dockstation::configuration
