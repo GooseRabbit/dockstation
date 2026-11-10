@@ -254,6 +254,9 @@ RecoveryReconciliationResult reconcile_after_restart(
         const OperationRecord& saved = reports.unfinished_operations[i];
         if (!has_non_whitespace(saved.request.operation_id) ||
             !has_non_whitespace(saved.request.correlation_id) ||
+            !has_non_whitespace(saved.request.target_module) ||
+            !has_non_whitespace(saved.request.action) ||
+            saved.revision == 0U ||
             !is_unfinished_lifecycle(saved.status)) {
             return {RecoveryReconciliationStatus::InvalidInput,
                     checked_subsystems, checked_operations};

@@ -22,8 +22,9 @@ class OperationIdProvider {
 public:
     virtual ~OperationIdProvider() = default;
 
-    // При успехе записывает непустой ID в output. Выданное значение должно оставаться
-    // действительным и уникальным относительно ранее выданных/сохранённых операций.
+    // При успехе записывает ID, содержащий хотя бы один непробельный символ.
+    // Выданное значение должно оставаться действительным и уникальным относительно
+    // ранее выданных/сохранённых операций.
     [[nodiscard]] virtual bool next_operation_id(std::string_view& output) noexcept = 0;
 };
 
@@ -53,6 +54,7 @@ struct ActionRequestResult {
 
 // Формирует логический запрос и назначает ему ID. Функция не сохраняет запрос,
 // не отправляет его исполнителю и не управляет физическим оборудованием.
+// target_module, action и correlation_id в plan должны содержать непробельные символы.
 // Параметры: plan — логический план; id_provider — порт выдачи уникального operation_id.
 [[nodiscard]] ActionRequestResult create_action_request(
     const ActionPlan& plan,
@@ -134,7 +136,8 @@ enum class OperationLifecycleStatus : std::uint8_t {
     Requested, Accepted, Started, Completed, Failed, CancelRequested, Cancelled, OutcomeUnknown
 };
 
-// Сохранённая операция. F07 создаёт её со статусом Requested и revision=1.
+// Сохранённая операция. F07 создаёт её со статусом Requested и revision=1;
+// всякая возвращаемая запись обязана иметь revision > 0 и корректный ActionRequest.
 struct OperationRecord {
     ActionRequest request{};
     OperationLifecycleStatus status{OperationLifecycleStatus::Requested};

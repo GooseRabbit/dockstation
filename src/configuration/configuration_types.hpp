@@ -253,7 +253,7 @@ struct ConfigurationSnapshotResult {
     ConfigurationIssueListView issues{};
 };
 
-// Результат загрузки ConfigurationManager. Контракт будущей реализации:
+// Результат CFG-F07 загрузки ConfigurationManager:
 // snapshot присутствует только при status == Valid; при остальных статусах отсутствует.
 // Если revision/version известны, они относятся к той же записи, что и snapshot/result.
 struct ConfigurationLoadResult {

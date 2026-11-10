@@ -7,6 +7,16 @@
 namespace dockstation::core {
 namespace {
 
+bool has_non_whitespace(std::string_view value) noexcept {
+    for (const char character : value) {
+        if (character != ' ' && character != '\t' && character != '\n' &&
+            character != '\r' && character != '\f' && character != '\v') {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool same_optional_text(const std::optional<std::string_view>& left,
                         const std::optional<std::string_view>& right) noexcept {
     return left.has_value() == right.has_value() &&
@@ -69,6 +79,18 @@ bool is_allowed_operation_transition(OperationLifecycleStatus current,
     return false;
 }
 
+bool is_valid_action_request(const ActionRequest& request) noexcept {
+    return has_non_whitespace(request.operation_id) &&
+           has_non_whitespace(request.correlation_id) &&
+           has_non_whitespace(request.target_module) &&
+           has_non_whitespace(request.action);
+}
+
+bool is_valid_operation_record(const OperationRecord& record) noexcept {
+    return is_valid_action_request(record.request) &&
+           is_known_operation_status(record.status) && record.revision > 0U;
+}
+
 OperationUpdateResult update_result(OperationUpdateResultStatus status,
                                     OperationLifecycleStatus resulting_status = OperationLifecycleStatus::Requested,
                                     std::uint64_t revision = 0) noexcept {
@@ -81,7 +103,9 @@ ActionRequestResult create_action_request(
     const ActionPlan& plan,
     OperationIdProvider& id_provider) noexcept {
     // Нельзя сформировать запрос без логического получателя, действия и связи с источником.
-    if (plan.target_module.empty() || plan.action.empty() || plan.correlation_id.empty()) {
+    if (!has_non_whitespace(plan.target_module) ||
+        !has_non_whitespace(plan.action) ||
+        !has_non_whitespace(plan.correlation_id)) {
         return {ActionRequestStatus::InvalidPlan, {}};
     }
 
@@ -92,7 +116,7 @@ ActionRequestResult create_action_request(
     }
 
     // Пустой ID при заявленном успехе — нарушение контракта поставщика ID.
-    if (operation_id.empty()) {
+    if (!has_non_whitespace(operation_id)) {
         return {ActionRequestStatus::InvalidOperationId, {}};
     }
 
@@ -116,8 +140,7 @@ PersistResult persist_operation_intent(
     const ActionRequest& request,
     StateRepository& repository) noexcept {
     // Запрос может поступить не только напрямую из F06, поэтому обязательные поля проверяются повторно.
-    if (request.operation_id.empty() || request.correlation_id.empty() ||
-        request.target_module.empty() || request.action.empty()) {
+    if (!is_valid_action_request(request)) {
         return {PersistStatus::InvalidRequest, {}};
     }
 
@@ -148,8 +171,7 @@ DispatchResult dispatch_action_request(
     const PersistResult& persistence,
     ActionDispatcher& dispatcher) noexcept {
     // Повторно проверяем обязательные поля: F08 может вызываться не только из основного сценария.
-    if (request.operation_id.empty() || request.correlation_id.empty() ||
-        request.target_module.empty() || request.action.empty()) {
+    if (!is_valid_action_request(request)) {
         return {DispatchStatus::InvalidRequest};
     }
 
@@ -242,8 +264,8 @@ OperationUpdateResult handle_operation_update(
     }
 
     const OperationRecord& record = lookup.record;
-    if (record.request.operation_id != *update.event.operation_id ||
-        record.request.correlation_id.empty()) {
+    if (!is_valid_operation_record(record) ||
+        record.request.operation_id != *update.event.operation_id) {
         return update_result(OperationUpdateResultStatus::RepositoryError);
     }
     if (record.request.correlation_id != *update.event.correlation_id) {
@@ -377,8 +399,8 @@ OperationTimeoutResult handle_operation_timeout(
     }
 
     const OperationRecord& record = lookup.record;
-    if (record.request.operation_id != *timeout.event.operation_id ||
-        record.request.correlation_id.empty()) {
+    if (!is_valid_operation_record(record) ||
+        record.request.operation_id != *timeout.event.operation_id) {
         return result(OperationTimeoutResultStatus::RepositoryError);
     }
     if (record.request.correlation_id != *timeout.event.correlation_id) {

@@ -172,7 +172,7 @@ ConfigurationLoadResult load_configuration(
 
     switch (read_result.status) {
         case SettingsReadStatus::NotFound:
-            if (read_result.record.size != 0) {
+            if (has_record_payload(read_result.record)) {
                 return make_error(kRepositoryResultInvalid);
             }
             return make_result(ConfigurationLoadStatus::NotFound);

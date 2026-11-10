@@ -508,21 +508,20 @@
 | `src/configuration/configuration_manager.hpp/.cpp` | `validate_required_configuration_fields()` | Проверяет наличие обязательных путей и формирует полный список issues в caller-owned buffer |
 | `tests/unit/test_configuration_required_fields.cpp` | 25 host-проверок | Наличие и отсутствие полей, вложенные пути, Null/Unknown, неоднозначные ключи, повреждённые views и граничная ёмкость буфера |
 
-### src/configuration/configuration_manager.cpp
+### Публичный API ConfigurationManager (объявления в `configuration_manager.hpp`)
 
-| Функция | Назначение |
-|---|---|
-| `ConfigurationLoadResult load_configuration(SettingsRepository& repository, ConfigurationDecoderPort& decoder, const ConfigurationValidationPolicyView& policy, ConfigurationIssue* issue_buffer, std::size_t issue_capacity) noexcept` (файл `configuration_load.cpp`) | Выполняет один read → decode → F05 → F06 проход, отображает статусы портов и создаёт snapshot только при VALID; нарушения контрактов закрывает через INTERNAL_ERROR. CFG-F07. |
-| `ConfigurationValidationResult validate_configuration_schema_version(const ConfigurationCandidate& candidate, const ConfigurationSchemaVersionSetView& supported_versions) noexcept` | Точно сопоставляет версию кандидата с явным набором; не выбирает production-версии и не нормализует строку. CFG-F01. |
-| `ConfigurationValidationResult validate_required_configuration_fields(const ConfigurationCandidate& candidate, const ConfigurationRequiredFieldSetView& required_fields, ConfigurationIssue* issue_buffer, std::size_t issue_capacity) noexcept` | Проверяет только наличие путей из явно переданной политики; тип и значение не валидирует. CFG-F02. |
-| `ConfigurationValidationResult validate_configuration_values(const ConfigurationCandidate& candidate)` | Проверяет типы, значения, диапазоны и единицы только при наличии утверждённых критериев. CFG-F03. |
-| `ConfigurationValidationResult validate_configuration_consistency(const ConfigurationCandidate& candidate)` | Проверяет утверждённые логические зависимости параметров. CFG-F04. |
-| `ConfigurationValidationResult validate_configuration(const ConfigurationCandidate& candidate, const ConfigurationValidationPolicyView& policy, ConfigurationIssue* issue_buffer, std::size_t issue_capacity) noexcept` | Объединяет F01-F04, сохраняет WARNING и привязывает результат к точным schema_version/revision кандидата. CFG-F05. |
-| `ConfigurationSnapshotResult build_validated_configuration_snapshot(const ConfigurationCandidate& candidate, const ConfigurationValidationResult& validation) noexcept` (файл `configuration_snapshot.cpp`) | Сверяет привязку результата F05 к schema_version/revision кандидата, проверяет согласованность статуса/issues и создаёт getter-only snapshot без копирования документа. CFG-F06. |
-| `std::optional<std::string_view> get_configuration_revision(const ConfigurationLoadResult& active_configuration) noexcept` (файл `configuration_revision.cpp`) | Возвращает ревизию snapshot только у выбранного вызывающим слоем согласованного результата VALID; при отсутствии snapshot или противоречии metadata/issues возвращает std::nullopt. Не хранит глобальное активное состояние. CFG-F08. |
-| `ConfigurationSaveResult save_configuration(const Configuration& configuration)` | Возможная последующая функция; не входит в первый read-only срез. |
-| `ConfigurationApplyResult apply_configuration_change(const ConfigurationChange& change, const AuthorizationContext& authorization)` | Возможная последующая функция управляемого изменения и аудита; не входит в первый read-only срез. |
+| Функция | Реализация | Назначение |
+|---|---|---|
+| `validate_configuration_schema_version(candidate, supported_versions)` — CFG-F01 | `configuration_manager.cpp` | Точное сопоставление schema_version с явно переданным набором; production-версии не встроены. |
+| `validate_required_configuration_fields(candidate, required_fields, issue_buffer, issue_capacity)` — CFG-F02 | `configuration_manager.cpp` | Проверка наличия сегментированных путей; тип и значение проверяются отдельно. |
+| `validate_configuration_values(candidate, rules, issue_buffer, issue_capacity)` — CFG-F03 | `configuration_manager.cpp` | Проверка точных типов, скалярных допустимых значений и числовых границ; единицы не преобразуются и не проверяются без метаданных. |
+| `validate_configuration_consistency(candidate, rules, issue_buffer, issue_capacity)` — CFG-F04 | `configuration_consistency.cpp` | Проверка прямых отношений между двумя скалярными полями по явной политике. |
+| `validate_configuration(candidate, policy, issue_buffer, issue_capacity)` — CFG-F05 | `configuration_validation.cpp` | Оркестрация F01–F04, объединение issues и привязка результата к schema_version/revision кандидата. |
+| `build_validated_configuration_snapshot(candidate, validation)` — CFG-F06 | `configuration_snapshot.cpp` | Getter-only snapshot только после VALID и точного совпадения идентификаторов кандидата; дерево не копируется. |
+| `load_configuration(repository, decoder, policy, issue_buffer, issue_capacity)` — CFG-F07 | `configuration_load.cpp` | Один read → decode → F05 → F06 проход; нарушения портов и статусов закрываются через INTERNAL_ERROR. |
+| `get_configuration_revision(active_configuration)` — CFG-F08 | `configuration_revision.cpp` | Read-only извлечение ревизии из выбранного вызывающим слоем согласованного VALID результата; не хранит активное состояние. |
 
+Функции записи и применения конфигурации остаются будущими задачами и не входят в реализованный read-only срез CFG-F00…F08.
 ---
 
 ## 16. Идентичность станции — StationIdentityManager
@@ -680,23 +679,3 @@
 - Функции для выдвижной платформы или автоматической замены батареи не включены в основной перечень: эти механизмы пока не утверждены как функции первой версии.
 - Конкретные функции обмена с автопилотом, BMS, сервером и файловым накопителем будут уточнены после выбора БАС и протоколов.
 
-
-### src/configuration/configuration_manager.cpp
-
-| Функция | Назначение |
-|---|---|
-| `ConfigurationValidationResult validate_configuration_values(candidate, rules, issue_buffer, issue_capacity) noexcept` **(реализована; CFG-F03)** | Проверяет точные типы, явные скалярные перечни и числовые границы конфигурационных полей. Не задаёт production-правила, не преобразует единицы и не выбирает формат хранения. |
-
-
-### src/configuration/configuration_consistency.cpp
-
-| Функция | Назначение |
-|---|---|
-| ConfigurationValidationResult validate_configuration_consistency(candidate, rules, issue_buffer, issue_capacity) noexcept (реализована; CFG-F04) | Проверяет прямые отношения между двумя скалярными полями по явной политике: равенство/неравенство и числовой порядок. Не задаёт производственные зависимости и не управляет станцией. |
-
-
-### src/configuration/configuration_validation.cpp
-
-| Функция | Назначение |
-|---|---|
-| `ConfigurationValidationResult validate_configuration(candidate, policy, issue_buffer, issue_capacity) noexcept` **(реализована; CFG-F05)** | Сначала проверяет версию, затем объединяет проверки обязательных полей, значений и согласованности. Возвращает общий статус и issues; не создаёт snapshot. |
