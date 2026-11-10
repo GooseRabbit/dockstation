@@ -1,6 +1,6 @@
 # Host unit and contract tests
 
-The StationStateManager unit/contract tests and the ConfigurationManager type/port, schema-version and required-field tests are intentionally independent of Arduino APIs and physical hardware drivers. The code is written against C++17 as a
+The StationStateManager unit/contract tests and the ConfigurationManager type/port, schema-version, required-field and value-validation tests are intentionally independent of Arduino APIs and physical hardware drivers. The code is written against C++17 as a
 provisional portable implementation; the final language/toolchain decision is
 still open in docs/12_DECISIONS_AND_OPEN_QUESTIONS.md.
 
@@ -304,3 +304,15 @@ The F16 tests use a fake read-only StationStateSnapshotReader. They cover the in
     ./test_transition_history
 
 The F17 tests use a fake read-only TransitionHistoryReader. They cover an empty complete selection, ordered records, inclusive revision/state filtering, invalid filters rejected before repository access, incomplete/error/unknown port statuses, invalid records (unknown/equal states, zero revision, empty IDs, malformed reason pairs, and preservation of a valid reason pair), unordered/duplicate revisions, duplicate event_id/transition_id values across records, and records outside the requested filter. Partial results are never returned as complete history. The isolated harness validates the logical algorithm only; it does not prove production storage completeness, retention policy, durable F10 transactions, target builds or hardware integration.
+
+
+## Configuration manager value-validation test (CFG-F03)
+
+From the repository root:
+
+```sh
+g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -fno-exceptions -fno-rtti -Isrc src/configuration/configuration_manager.cpp tests/unit/test_configuration_values.cpp -o test_configuration_values
+./test_configuration_values
+```
+
+The test covers exact types, scalar allowed-value lists, signed-integer and floating-point boundaries, missing and ambiguous paths, malformed policies, non-finite values, and fail-closed issue-buffer handling. Test values are synthetic fixtures only; they do not define production station limits or modes.

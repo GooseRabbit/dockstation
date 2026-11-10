@@ -20,4 +20,10 @@ namespace dockstation::configuration {
     ConfigurationIssue* issue_buffer,
     std::size_t issue_capacity) noexcept;
 
+[[nodiscard]] ConfigurationValidationResult validate_configuration_values(
+    const ConfigurationCandidate& candidate,
+    const ConfigurationValueRuleSetView& rules,
+    ConfigurationIssue* issue_buffer,
+    std::size_t issue_capacity) noexcept;
+
 }  // namespace dockstation::configuration

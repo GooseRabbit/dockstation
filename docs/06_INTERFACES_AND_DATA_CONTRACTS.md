@@ -952,3 +952,12 @@ CFG-F02 проверяет только существование конечн�
 `INTERNAL_ERROR` и один статический issue `REQUIRED_FIELD_ISSUE_BUFFER_TOO_SMALL`,
 не публикуя усечённый список. Пустая/некорректная политика также возвращает
 `INTERNAL_ERROR`. Конкретный production-перечень остаётся открытым в CFG-Q02.
+
+
+### 27.9. Проверка типов и значений (CFG-F03)
+
+`ConfigurationValueRuleView` задаёт один путь и ожидаемый точный тип. Для числовых типов правило может содержать нижнюю и/или верхнюю границу; тип каждой границы обязан совпадать с типом поля. Для скалярных типов допускается явный список допустимых значений. Неявное приведение типов не выполняется.
+
+`ConfigurationValueRuleSetView` — непустой набор уникальных правил, передаваемый вызывающим кодом. Проверка не содержит production-диапазонов, перечней режимов или значений по умолчанию. Некорректная политика возвращает `INTERNAL_ERROR`; ошибки кандидата возвращают `INVALID` с проблемами, привязанными к диагностическому пути. При недостаточном буфере issues частичный список не публикуется.
+
+Коды проблем: `CONFIGURATION_VALUE_FIELD_MISSING`, `CONFIGURATION_VALUE_PATH_UNRESOLVABLE`, `CONFIGURATION_VALUE_PATH_AMBIGUOUS`, `CONFIGURATION_VALUE_TYPE_MISMATCH`, `CONFIGURATION_VALUE_BELOW_MINIMUM`, `CONFIGURATION_VALUE_ABOVE_MAXIMUM`, `CONFIGURATION_VALUE_NOT_ALLOWED`, `CONFIGURATION_VALUE_NOT_FINITE`. Плавающие числа NaN/Inf не принимаются. Единицы измерения пока не проверяются: текущий `ConfigurationValueView` не содержит их метаданных, а формат конфигурации ещё не выбран.

@@ -45,9 +45,10 @@ call :run_strict test_station_event_pipeline_contract src\core\event_validation.
 call :run_strict test_configuration_types tests\unit\test_configuration_types.cpp || goto :failed
 call :run_strict test_configuration_schema_version src\configuration\configuration_manager.cpp tests\unit\test_configuration_schema_version.cpp || goto :failed
 call :run_strict test_configuration_required_fields src\configuration\configuration_manager.cpp tests\unit\test_configuration_required_fields.cpp || goto :failed
+call :run_strict test_configuration_values src\configuration\configuration_manager.cpp tests\unit\test_configuration_values.cpp || goto :failed
 
 echo.
-echo [SUCCESS] All 25 host test programs passed.
+echo [SUCCESS] All 26 host test programs passed.
 echo Note: host tests do not replace target builds, persistent-storage validation, or hardware tests.
 exit /b 0
 

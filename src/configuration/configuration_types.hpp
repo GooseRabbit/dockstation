@@ -156,6 +156,23 @@ struct ConfigurationRequiredFieldSetView {
     std::size_t size{0};
 };
 
+struct ConfigurationValueRuleView {
+    ConfigurationRequiredFieldPathView path{};
+    ConfigurationValueType expected_type{ConfigurationValueType::Unknown};
+    bool has_minimum{false};
+    ConfigurationValueView minimum{};
+    bool has_maximum{false};
+    ConfigurationValueView maximum{};
+    const ConfigurationValueView* allowed_values{nullptr};
+    std::size_t allowed_values_size{0};
+};
+
+// Невладеющий явный набор правил CFG-F03.
+struct ConfigurationValueRuleSetView {
+    const ConfigurationValueRuleView* rules{nullptr};
+    std::size_t size{0};
+};
+
 struct ConfigurationSnapshotResult;
 
 // Проверенный снимок. Его поля и документ должны относиться к одной ревизии.
