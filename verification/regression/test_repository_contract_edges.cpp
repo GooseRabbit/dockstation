@@ -1,8 +1,8 @@
 // Run from the repository root:
- // g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -fno-exceptions -fno-rtti -Isrc \
- //   src/core/event_processing.cpp src/configuration/configuration_load.cpp \
- //   verification/regression/test_repository_contract_edges.cpp -o repository_contract_edges
- // ./repository_contract_edges
+// g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -fno-exceptions -fno-rtti -Isrc \
+//   src/core/event_processing.cpp src/configuration/configuration_load.cpp \
+//   verification/regression/test_repository_contract_edges.cpp -o repository_contract_edges
+// ./repository_contract_edges
 
 #include "configuration/configuration_manager.hpp"
 #include "configuration/configuration_ports.hpp"
@@ -110,7 +110,7 @@ void check_configuration_repository_contract() {
 
         expect(result.status == expected, description);
         expect(repository.calls == 1 && decoder.calls == 0,
-               "contradictory read result stops before decoding");
+               "repository status stops before decoder invocation");
     };
 
     load(SettingsReadStatus::Unavailable,
