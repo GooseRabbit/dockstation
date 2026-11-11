@@ -271,6 +271,74 @@ check_default_route() {
     return 0
 }
 
+# Check name resolution through the operating system's NSS resolver.
+# The target is supplied explicitly so diagnostics do not assume public Internet access.
+check_dns_resolution() {
+    local dns_name="${1:-${DOCKSTATION_DNS_CHECK_NAME:-}}"
+    local timeout_seconds="${2:-5}"
+    local dns_name_pattern='^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(\.([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?))*\.?$'
+    local normalized_length="${#dns_name}"
+    local resolution_output=""
+    local command_status=0
+
+    if [[ -z "$dns_name" ]]; then
+        printf '[WARN] DNS: контрольное имя не задано; установите DOCKSTATION_DNS_CHECK_NAME.\n'
+        return 1
+    fi
+
+    if [[ "$dns_name" == *"." ]]; then
+        normalized_length=$((normalized_length - 1))
+    fi
+
+    if ((normalized_length < 1 || normalized_length > 253)) ||
+        [[ ! "$dns_name" =~ $dns_name_pattern ]]; then
+        printf '[FAIL] DNS: некорректное контрольное имя: %s.\n' "$dns_name"
+        return 2
+    fi
+
+    if [[ ! "$timeout_seconds" =~ ^([1-9]|[1-5][0-9]|60)$ ]]; then
+        printf '[FAIL] DNS: тайм-аут должен быть целым числом от 1 до 60 секунд.\n'
+        return 2
+    fi
+
+    if ! command -v getent >/dev/null 2>&1; then
+        printf '[FAIL] DNS: команда getent не найдена.\n'
+        return 2
+    fi
+
+    if ! command -v timeout >/dev/null 2>&1; then
+        printf '[FAIL] DNS: команда timeout не найдена; проверку нельзя выполнить с ограничением времени.\n'
+        return 2
+    fi
+
+    if resolution_output="$(timeout --signal=TERM --kill-after=1s "${timeout_seconds}s" getent ahosts "$dns_name" 2>&1)"; then
+        if [[ -z "$resolution_output" ]]; then
+            printf '[WARN] DNS: команда getent не вернула адресов для имени "%s".\n' "$dns_name"
+            return 1
+        fi
+
+        printf '[PASS] DNS: имя "%s" разрешено системным механизмом имён.\n%s\n' \
+            "$dns_name" "$resolution_output"
+        return 0
+    else
+        command_status=$?
+    fi
+
+    if ((command_status == 124 || command_status == 137)); then
+        printf '[WARN] DNS: проверка имени "%s" превысила тайм-аут %s с.\n' \
+            "$dns_name" "$timeout_seconds"
+        return 1
+    fi
+
+    printf '[WARN] DNS: не удалось разрешить имя "%s" (код getent/timeout: %d)' \
+        "$dns_name" "$command_status"
+    if [[ -n "$resolution_output" ]]; then
+        printf ': %s' "$resolution_output"
+    fi
+    printf '\n'
+    return 1
+}
+
 # Do not run diagnostics when this file is sourced by a test harness.
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     overall_status=0
@@ -294,6 +362,15 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     fi
 
     if check_default_route; then
+        check_status=0
+    else
+        check_status=$?
+    fi
+    if ((check_status > overall_status)); then
+        overall_status=$check_status
+    fi
+
+    if check_dns_resolution "${DOCKSTATION_DNS_CHECK_NAME:-}"; then
         check_status=0
     else
         check_status=$?
