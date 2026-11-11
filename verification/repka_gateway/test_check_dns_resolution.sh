@@ -7,7 +7,7 @@ REPOSITORY_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
 SCRIPT_PATH="$REPOSITORY_ROOT/deployment/repka/check_network.sh"
 
 if [[ ! -f "$SCRIPT_PATH" ]]; then
-    printf 'FAIL: не найден скрипт: %s\\n' "$SCRIPT_PATH" >&2
+    printf 'FAIL: не найден скрипт: %s\n' "$SCRIPT_PATH" >&2
     exit 1
 fi
 
@@ -24,26 +24,26 @@ mkdir -p "$FAKE_BIN" "$GETENT_ONLY" "$EMPTY_BIN"
 cat > "$FAKE_BIN/getent" <<'FAKE_GETENT'
 #!/bin/bash
 if [[ "$#" -ne 2 || "$1" != "ahosts" || "$2" != "station-check.example" ]]; then
-    printf 'Unexpected getent arguments: %s\\n' "$*" >&2
+    printf 'Unexpected getent arguments: %s\n' "$*" >&2
     exit 64
 fi
 case "${FAKE_GETENT_MODE:-success}" in
     success)
-        printf '%s\\n' '192.0.2.10 STREAM station-check.example' '2001:db8::10 STREAM station-check.example'
+        printf '%s\n' '192.0.2.10 STREAM station-check.example' '2001:db8::10 STREAM station-check.example'
         ;;
     unresolved)
-        printf '%s\\n' 'Name or service not known' >&2
+        printf '%s\n' 'Name or service not known' >&2
         exit 2
         ;;
     error)
-        printf '%s\\n' 'simulated resolver failure' >&2
+        printf '%s\n' 'simulated resolver failure' >&2
         exit 1
         ;;
     empty)
         exit 0
         ;;
     *)
-        printf 'Unknown fake getent mode: %s\\n' "$FAKE_GETENT_MODE" >&2
+        printf 'Unknown fake getent mode: %s\n' "$FAKE_GETENT_MODE" >&2
         exit 65
         ;;
 esac
@@ -52,18 +52,18 @@ FAKE_GETENT
 cat > "$FAKE_BIN/timeout" <<'FAKE_TIMEOUT'
 #!/bin/bash
 if [[ "$#" -lt 5 || "$1" != "--signal=TERM" || "$2" != "--kill-after=1s" ]]; then
-    printf 'Unexpected timeout arguments: %s\\n' "$*" >&2
+    printf 'Unexpected timeout arguments: %s\n' "$*" >&2
     exit 64
 fi
 shift 2
 duration="$1"
 shift
 if [[ ! "$duration" =~ ^[1-9][0-9]*s$ ]]; then
-    printf 'Unexpected timeout value: %s\\n' "$duration" >&2
+    printf 'Unexpected timeout value: %s\n' "$duration" >&2
     exit 64
 fi
 if [[ "${FAKE_TIMEOUT_MODE:-normal}" == "timeout" ]]; then
-    printf '%s\\n' 'simulated timeout' >&2
+    printf '%s\n' 'simulated timeout' >&2
     exit 124
 fi
 exec "$@"
@@ -87,18 +87,18 @@ run_case() {
     fi
 
     if [[ "$actual_status" -ne "$expected_status" ]]; then
-        printf 'FAIL: %s: ожидался код %s, получен %s\\n%s\\n' \
+        printf 'FAIL: %s: ожидался код %s, получен %s\n%s\n' \
             "$description" "$expected_status" "$actual_status" "$output" >&2
         exit 1
     fi
 
     if [[ "$output" != *"$expected_text"* ]]; then
-        printf 'FAIL: %s: в выводе отсутствует "%s"\\n%s\\n' \
+        printf 'FAIL: %s: в выводе отсутствует "%s"\n%s\n' \
             "$description" "$expected_text" "$output" >&2
         exit 1
     fi
 
-    printf 'PASS: %s\\n' "$description"
+    printf 'PASS: %s\n' "$description"
 }
 
 export PATH="$FAKE_BIN:$ORIGINAL_PATH"
