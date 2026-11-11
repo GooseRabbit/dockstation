@@ -104,7 +104,7 @@ make_interface "$MIXED_ROOT" "enp5s0" "0"
 make_interface "$MIXED_ROOT" "enp6s0" "1"
 run_case "несколько Ethernet-интерфейсов" 0 "активен как минимум на одном интерфейсе (1 из 2)" "$MIXED_ROOT"
 
-# 6. A missing sysfs root is a diagnostic failure, not an empty success.
+# 8. A missing sysfs root is a diagnostic failure, not an empty success.
 run_case "недоступный sysfs-каталог" 2 "каталог сетевых интерфейсов недоступен" "$TEMP_ROOT/not-found"
 
 printf '\nВсе тесты check_ethernet_link пройдены.\n'

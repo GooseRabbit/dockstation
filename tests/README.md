@@ -73,7 +73,7 @@ From the repository root, with the MSYS2 UCRT64 GCC toolchain available in PATH:
 
     tools\\run_host_tests.bat
 
-The script compiles and runs all 28 currently registered unit and contract test
+The script compiles and runs all 31 currently registered unit and contract test
 programs, placing executables under build/host-tests. It stops at the first
 compile error or failed test. It is a host-only test runner; it does not build
 ESP32 firmware or test physical hardware/persistent-storage adapters.

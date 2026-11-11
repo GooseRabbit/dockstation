@@ -32,7 +32,7 @@ check_ethernet_link() {
         [[ -e "$interface_path/device" ]] || continue
 
         if [[ ! -r "$interface_path/type" ]] ||
-            ! IFS= read -r hardware_type < "$interface_patg/type"; then
+            ! IFS= read -r hardware_type < "$interface_path/type"; then
             printf '[UNKNOWN] Ethernet %s: невозможно прочитать тип интерфейса.\n' \
                 "$interface_name"
             ((unknown_count += 1))

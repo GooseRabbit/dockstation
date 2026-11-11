@@ -29,6 +29,25 @@ bool same_event_content(const Event& left, const Event& right) noexcept {
            same_optional_text(left.reason_text, right.reason_text);
 }
 
+// NOT_FOUND означает отсутствие всей записи, а не только пустой event_id.
+// Проверяем каждый член Event, чтобы повреждённый ответ адаптера не был принят за NEW.
+bool is_empty_event(const Event& event) noexcept {
+    return event.event_id.empty() &&
+           event.event_type.empty() &&
+           event.source.empty() &&
+           !event.source_instance.has_value() &&
+           !event.occurred_at.has_value() &&
+           event.received_at.empty() &&
+           !event.source_sequence.has_value() &&
+           !event.operation_id.has_value() &&
+           !event.correlation_id.has_value() &&
+           !event.payload.has_value() &&
+           event.quality_status.empty() &&
+           event.schema_version.empty() &&
+           !event.reason_code.has_value() &&
+           !event.reason_text.has_value();
+}
+
 }  // namespace
 
 DuplicateEventResult check_duplicate_event(
@@ -38,6 +57,9 @@ DuplicateEventResult check_duplicate_event(
 
     switch (lookup.status) {
         case EventRepositoryLookupStatus::NotFound:
+            if (!is_empty_event(lookup.event)) {
+                return {DuplicateEventStatus::RepositoryError};
+            }
             return {DuplicateEventStatus::New};
 
         case EventRepositoryLookupStatus::Found:

@@ -28,7 +28,7 @@
 | Функция | Назначение |
 |---|---|
 | `EventCategory classify_event(const Event& event) noexcept` **(уже есть)** | По точному `event_type` определяет одну из шести категорий из §2.1 документа `06`; неизвестный тип возвращает `Unknown`. Не меняет событие и не выполняет побочных действий. |
-| `DuplicateEventResult check_duplicate_event(const Event& event, EventRepository& repository) noexcept` **(уже есть)** | Проверяет сохранённое событие по `event_id`: NEW, DUPLICATE, CONFLICT или REPOSITORY_ERROR. Сравнение точное, кроме поля `received_at`, назначаемого принимающей стороной; репозиторий только читается. Не резервирует ID и не сохраняет результат обработки. |
+| `DuplicateEventResult check_duplicate_event(const Event& event, EventRepository& repository) noexcept` **(уже есть)** | Проверяет сохранённое событие по `event_id`: NEW, DUPLICATE, CONFLICT или REPOSITORY_ERROR. `NOT_FOUND` допускается только с полностью пустым представлением Event; заполненный Event при этом статусе считается ошибкой репозитория. Сравнение точное, кроме поля `received_at`, назначаемого принимающей стороной; репозиторий только читается. Не резервирует ID и не сохраняет результат обработки. |
 | `EventFreshnessResult check_event_freshness(const Event& event, const SourceCursor& cursor) noexcept` **(реализована)** | Сравнивает source_sequence в пределах одного источника/сессии; не использует календарное время, не меняет курсор. При новой сессии вызывающий слой предварительно подтверждает её и сбрасывает курсор. |
 
 

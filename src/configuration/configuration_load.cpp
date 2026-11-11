@@ -178,13 +178,13 @@ ConfigurationLoadResult load_configuration(
             return make_result(ConfigurationLoadStatus::NotFound);
 
         case SettingsReadStatus::Unavailable:
-            if (read_result.record.size != 0) {
+            if (has_record_payload(read_result.record)) {
                 return make_error(kRepositoryResultInvalid);
             }
             return make_result(ConfigurationLoadStatus::Unavailable);
 
         case SettingsReadStatus::ReadError:
-            if (read_result.record.size != 0) {
+            if (has_record_payload(read_result.record)) {
                 return make_error(kRepositoryResultInvalid);
             }
             return make_result(
