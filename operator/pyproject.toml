@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dockstation-operator"
+version = "0.1.0"
+description = "Read-only Windows operator client for the DockStation Linux diagnostic gateway"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.gui-scripts]
+dockstation-operator = "dockstation_operator.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests", "../verification/operator_app"]
