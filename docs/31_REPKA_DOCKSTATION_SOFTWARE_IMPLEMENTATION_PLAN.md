@@ -1,7 +1,7 @@
 # Полный план реализации программного комплекса DockStation на Repka Pi 5
 
 **Статус:** мастер-план реализации; последовательность разработки согласована, открытые платформенные, сетевые, серверные и аппаратные детали требуют отдельной проверки и решения.  
-**Редакция:** 0.1.  
+**Редакция:** 0.2.  
 **Дата:** 2026-11-11.  
 **Вычислительная платформа:** Repka Pi 5.  
 **Предполагаемая ОС:** официальная Repka OS; образ и версия проверяются перед развёртыванием.
@@ -337,8 +337,17 @@ USB/UART, пины и формат кадров остаются открыты�
 **StationIdentityManager — src/identity/station_identity_manager.cpp:**
 - validate_station_id_format(), generate_station_id(), validate_station_identity_record(), find_registration_conflicts(), validate_provisioning_context(), create_device_key_reference(), build_enrollment_request(), validate_enrollment_response(), persist_station_identity(), complete_station_enrollment(), verify_station_certificate(), begin_credential_rotation(), apply_credential_rotation(), revoke_station_credential(), retire_station(), validate_offline_enrollment_voucher(), synchronize_pending_enrollment(), recover_station_identity().
 
-**UserAccessManager — src/access/user_access_manager.cpp:**
-- create_password_verifier(), verify_password(), authenticate_user(), create_user_account(), change_user_password(), set_user_status(), bind_user_to_station(), update_user_station_permissions(), revoke_user_station_binding(), revoke_active_sessions(), authorize_command().
+**UserAccessManager — src/access/user_access_manager.cpp (локальная станция):**
+- verify_access_grant_signature(), validate_station_access_grant(), apply_signed_grant_revocation().
+- authorize_station_resource(), authorize_command(), revoke_local_sessions_for_grant().
+
+Центральный сервер DockStation ведёт единственный авторитетный реестр OwnerSpace, пользователей, членства, владельцев станций и делегированных grants. Он выполняет create_user_account(), authenticate_user(), create_owner_space(), add/update/revoke_owner_space_member(), assign/transfer_station_ownership(), list_accessible_stations(), grant/revoke_station_access(), authorize_station_resource(), authorize_command(), issue_signed_station_access_grant(), publish_signed_grant_revocation() и record_access_audit_event(). Эти серверные операции не размещаются в локальном UserAccessManager Repka Pi; backend/API/DB будут специфицированы отдельно.
+
+Обязательная модель доступа (DEC-055): пространство владения представляет частного владельца или организацию; одно пространство может иметь несколько станций и индивидуальных пользователей; пользователь может состоять в нескольких пространствах. Каждая станция принадлежит ровно одному OwnerSpace. Внешний сервисный специалист получает только явно делегированный доступ к конкретным станциям, функциям и сроку.
+
+Сервер проверяет OwnerSpace и station-scoped полномочия при каждом чтении/изменении ресурса: списки, телеметрия, история, журналы, файлы, видео, конфигурация, миссии, команды, результаты, подписки и экспорты. OwnerSpace/роль/permissions из тела запроса не считаются доверенными; принадлежность станции определяется по серверному реестру. Неавторизованный Station ID не раскрывает данные или метаданные. При неизвестном/просроченном праве доступ запрещается.
+
+Прямые Wi-Fi/проводные маршруты не обходят эту модель: станция проверяет локально подписанные полномочия в пределах срока их действия и применяет полученные подписанные отзывы. Полностью отключённая станция не может получить отзыв мгновенно; поэтому максимальный срок автономного grant и разрешённые офлайн-операции должны быть отдельно ограничены. Передача станции отзывает прежние привязки, делегирования, сессии и токены; Station ID сохраняется. Детальные требования и сценарии испытаний — docs/23, docs/24, docs/11 TEST-SW-113…123.
 
 **CommunicationService — src/communications/communication_service.cpp:**
 - connect_to_server(), connect_to_local_wifi(), connect_to_wired_service(), disconnect(), send_message(), receive_message(), get_connection_status().
@@ -346,7 +355,7 @@ USB/UART, пины и формат кадров остаются открыты�
 **ServerApi — src/communications/server_api.cpp:**
 - synchronize_missions(), upload_material_chunk(), request_material_receipt(), publish_station_telemetry().
 
-Серверной стороне нужна отдельная спецификация API/БД/пользователей/реестра станций/прав/аудита и очередей. Клиентская функция не заменяет серверную реализацию.
+Правила владения, tenant isolation, server-side authorization, локальной проверки подписанных grants и ограничений offline-доступа определены в docs/24; пользовательские сценарии — в docs/23. Детальные контракты серверного API/БД, миграции, очереди, подписание/отзыв grants и реализация аудита остаются отдельной серверной работой. Клиентская функция не заменяет серверную проверку полномочий.
 
 ## Этап 12. Полная версия Windows Operator Application
 
@@ -497,5 +506,6 @@ USB/UART, пины и формат кадров остаются открыты�
 | Редакция | Дата | Изменения |
 |---|---|---|
 | 0.1 | 2026-11-11 | Полная дорожная карта Gateway, Windows GUI, VM-лаборатории, ядра, ESP32, оборудования, файлов, сервера и приёмки. |
+| 0.2 | 2026-11-11 | Этап 11 дополнен реализацией OwnerSpace, multi-tenant изоляции, делегированных station grants, object-level авторизации каждого запроса и отзыва доступа при передаче станции. |
 
 **Ограничение:** это план. Функции не считаются реализованными до появления кода, проверок и, где требуется, аппаратных испытаний.

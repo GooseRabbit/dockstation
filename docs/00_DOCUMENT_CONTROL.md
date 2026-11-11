@@ -31,7 +31,8 @@
 - загрузка, проверка и предоставление конфигурации станции — `27_CONFIGURATION_MANAGER.md` и `28_CONFIGURATION_MANAGER_IMPLEMENTATION_PLAN.md`;
 - форматы сообщений и границы интерфейсов — `06_INTERFACES_AND_DATA_CONTRACTS.md`;
 - передача материалов и общий контур защиты — `07_DATA_TRANSFER_AND_SECURITY.md`;
-- детали Station ID, provisioning и криптографической защиты — `24_STATION_IDENTITY_AND_CRYPTOGRAPHIC_SECURITY.md`;
+- пользовательские сценарии операторского приложения, отображение доступных станций и управление правами — `23_OPERATOR_APPLICATION.md`;
+- Station ID, пространства владения OwnerSpace, членство пользователей, станционные полномочия, подписанные локальные grants, provisioning и криптографическая защита — `24_STATION_IDENTITY_AND_CRYPTOGRAPHIC_SECURITY.md`;
 - погодные данные и отдельные погодные разрешения — `08_WEATHER_SUBSYSTEM.md`;
 - опасности и реакции на отказы — `09_SAFETY_AND_FAILURES.md`;
 - физические узлы и их статус выбора — `10_HARDWARE_REGISTER.md`; предварительная конструкция роллетной крышки и защита от обледенения — `29_ROLLING_SHUTTER_COVER.md` (детализация позиций крышки, привода, дренажа и антиобледенения из реестра оборудования);

@@ -1,7 +1,7 @@
 # Каталог предполагаемых функций DockStation
 
 **Статус:** предварительный рабочий каталог.  
-**Дата:** 2026-11-10.  
+**Дата:** 2026-11-11.  
 **Назначение:** показать, на какие отдельные функции может быть разбито программное обеспечение станции и совместно разрабатываемая бортовая часть.
 
 > **Важно:** приведённые функции, их названия, расположение по файлам и их количество могут измениться по мере проектирования, выбора БАС, оборудования, платформы и протоколов. Это предварительный ориентир, а не окончательное техническое задание.
@@ -551,25 +551,37 @@
 
 ---
 
-## 17. Учётные записи и права — UserAccessManager
+## 17. Локальная проверка пользовательских полномочий — UserAccessManager
 
 ### src/access/user_access_manager.cpp
 
+Модуль на Repka Pi не является центральным реестром организаций или владельцев. Он проверяет подписанные полномочия, выданные доверенным сервером, для прямого локального доступа и дополнительно проверяет права для каждой операции.
+
 | Функция | Назначение |
 |---|---|
-| `PasswordVerifier create_password_verifier(std::string_view password)` | Создаёт проверочное значение пароля с использованием выбранного алгоритма хранения паролей. Сам алгоритм ещё не утверждён. |
-| `bool verify_password(std::string_view password, const PasswordVerifier& verifier)` | Проверяет введённый пароль по сохранённому проверочному значению. |
-| `AuthenticationResult authenticate_user(const LoginRequest& request)` | Проверяет учётную запись и создаёт пользовательскую сессию при успехе. |
-| `UserResult create_user_account(const UserProfile& profile, const AuthorizationContext& authorization)` | Создаёт индивидуальную учётную запись пользователя. |
-| `PasswordChangeResult change_user_password(UserId user_id, const PasswordChangeRequest& request)` | Меняет пароль пользователя по утверждённой процедуре. |
-| `UserStatusResult set_user_status(UserId user_id, UserStatus status)` | Блокирует или разблокирует учётную запись. |
-| `BindingResult bind_user_to_station(UserId user_id, StationId station_id, const PermissionSet& permissions)` | Создаёт связь пользователя с конкретной станцией и назначает полномочия. |
-| `PermissionUpdateResult update_user_station_permissions(UserId user_id, StationId station_id, const PermissionSet& permissions)` | Изменяет права пользователя в пределах выбранной станции. |
-| `BindingResult revoke_user_station_binding(UserId user_id, StationId station_id)` | Отвязывает пользователя от станции и прекращает доступ к ней. |
-| `SessionRevocationResult revoke_active_sessions(UserId user_id, StationId station_id)` | Отзывает активные сессии и токены после блокировки, смены прав или отвязки. |
-| `AuthorizationResult authorize_command(const UserContext& user, StationId station_id, CommandType command)` | Проверяет право пользователя выполнить конкретную команду для конкретной станции. |
+| `GrantSignatureResult verify_access_grant_signature(const SignedStationAccessGrant& grant, const TrustedIssuerSet& issuers)` | Проверяет криптографическую подпись локального grant по набору доверенных издателей. |
+| `GrantValidationResult validate_station_access_grant(const SignedStationAccessGrant& grant, StationId target_station, UserId actor, ResourceType resource, Permission permission, Timestamp now)` | Проверяет целевую станцию, пользователя, срок, ресурс и разрешение, указанные в подписанном grant. |
+| `RevocationResult apply_signed_grant_revocation(const SignedGrantRevocation& revocation)` | Проверяет и применяет полученное от сервера подписанное уведомление об отзыве grant. |
+| `ResourceAuthorizationResult authorize_station_resource(const LocalAccessContext& context, StationId station_id, ResourceType resource, Permission permission)` | Разрешает локальный доступ к ресурсу только при наличии действующего и проверенного полномочия; при неопределённости действует запрет по умолчанию. |
+| `AuthorizationResult authorize_command(const LocalAccessContext& context, StationId station_id, CommandType command)` | Проверяет локальный grant для команды; не заменяет локальные межблокировки и SafetyManager. |
+| `SessionRevocationResult revoke_local_sessions_for_grant(GrantId grant_id)` | Прекращает локальные сессии, основанные на отозванном или истёкшем grant. |
 
----
+### 17.1. Центральная серверная служба идентичности и авторизации
+
+Следующие функции относятся к центральному серверу DockStation, а не к локальному Linux Gateway/Repka Pi. Конкретный backend, кодовые каталоги, схема БД и API-контракты определяются отдельной серверной спецификацией.
+
+| Функция | Назначение |
+|---|---|
+| `create_user_account(), authenticate_user(), change_user_password(), set_user_status()` | Создание, аутентификация, изменение и блокировка индивидуальных пользовательских учётных записей. |
+| `create_owner_space(), add_owner_space_member(), update_owner_space_membership(), revoke_owner_space_membership()` | Создание OwnerSpace частного владельца/организации и управление членством пользователей в его пределах. |
+| `assign_station_owner(), transfer_station_ownership()` | Первичное назначение единственного владельца станции и контролируемая передача станции между OwnerSpace. |
+| `list_accessible_stations()` | Формирование списка только тех станций, к которым пользователь имеет действующий доступ. |
+| `grant_station_access(), revoke_station_access()` | Выдача, ограничение по функциям и сроку, а также отзыв прав пользователя на конкретные станции. |
+| `authorize_station_resource(), authorize_command()` | Проверка принадлежности Station ID, membership/grant и конкретного разрешения при каждом серверном запросе к данным или команде. |
+| `issue_signed_station_access_grant(), publish_signed_grant_revocation()` | Выпуск ограниченного локального grant и доставка подписанного отзыва подключённой станции. |
+| `record_access_audit_event()` | Запись успешных и отклонённых обращений, административных изменений и передачи владения без секретов. |
+
+Центральный сервер является источником истины для OwnerSpace, пользователей, членства, владения станциями и grants. Локальная станция не может самостоятельно создавать членство или менять владельца в центральном реестре. При потере связи локальная проверка действует только в пределах подписанного grant и утверждённой политики автономной работы.
 
 ## 18. Настольное приложение Windows
 
