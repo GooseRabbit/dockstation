@@ -49,6 +49,13 @@ case "${FAKE_IP_MODE:-}" in
             printf '%s\n' 'default via fe80::1 dev enp2s0'
         fi
         ;;
+    multiple)
+        if [[ "$family" == "ipv4" ]]; then
+            printf '%s\n' \
+                'default via 192.168.10.1 dev enp2s0 metric 100' \
+                'default via 192.168.20.1 dev enp3s0 metric 200'
+        fi
+        ;;
     none)
         exit 0
         ;;
@@ -115,6 +122,10 @@ run_case "только маршрут IPv4" 0 "Маршрут по умолча�
 FAKE_IP_MODE="ipv6-only"
 export FAKE_IP_MODE
 run_case "только маршрут IPv6" 0 "Маршрут по умолчанию IPv6"
+
+FAKE_IP_MODE="multiple"
+export FAKE_IP_MODE
+run_case "несколько default-маршрутов" 0 "обнаружено маршрутов по умолчанию: 2"
 
 FAKE_IP_MODE="none"
 export FAKE_IP_MODE
