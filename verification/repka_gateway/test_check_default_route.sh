@@ -7,7 +7,7 @@ REPOSITORY_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
 SCRIPT_PATH="$REPOSITORY_ROOT/deployment/repka/check_network.sh"
 
 if [[ ! -f "$SCRIPT_PATH" ]]; then
-    printf 'FAIL: не найден скрипт: %s\\n' "$SCRIPT_PATH" >&2
+    printf 'FAIL: не найден скрипт: %s\n' "$SCRIPT_PATH" >&2
     exit 1
 fi
 
@@ -26,7 +26,7 @@ case "$*" in
     "-4 -o route show default") family="ipv4" ;;
     "-6 -o route show default") family="ipv6" ;;
     *)
-        printf 'Unexpected arguments: %s\\n' "$*" >&2
+        printf 'Unexpected arguments: %s\n' "$*" >&2
         exit 64
         ;;
 esac
@@ -34,39 +34,39 @@ esac
 case "${FAKE_IP_MODE:-}" in
     both)
         if [[ "$family" == "ipv4" ]]; then
-            printf '%s\\n' 'default via 192.168.10.1 dev enp2s0 proto dhcp metric 100'
+            printf '%s\n' 'default via 192.168.10.1 dev enp2s0 proto dhcp metric 100'
         else
-            printf '%s\\n' 'default via fe80::1 dev enp2s0 proto ra metric 100'
+            printf '%s\n' 'default via fe80::1 dev enp2s0 proto ra metric 100'
         fi
         ;;
     ipv4-only)
         if [[ "$family" == "ipv4" ]]; then
-            printf '%s\\n' 'default via 192.168.10.1 dev enp2s0'
+            printf '%s\n' 'default via 192.168.10.1 dev enp2s0'
         fi
         ;;
     ipv6-only)
         if [[ "$family" == "ipv6" ]]; then
-            printf '%s\\n' 'default via fe80::1 dev enp2s0'
+            printf '%s\n' 'default via fe80::1 dev enp2s0'
         fi
         ;;
     none)
         exit 0
         ;;
     error)
-        printf 'simulated netlink error\\n' >&2
+        printf 'simulated netlink error\n' >&2
         exit 7
         ;;
     partial-error)
         if [[ "$family" == "ipv4" ]]; then
-            printf '%s\\n' 'default via 192.168.10.1 dev enp2s0'
+            printf '%s\n' 'default via 192.168.10.1 dev enp2s0'
         else
-            printf 'simulated IPv6 error\\n' >&2
+            printf 'simulated IPv6 error\n' >&2
             exit 7
         fi
         ;;
     malformed)
         if [[ "$family" == "ipv4" ]]; then
-            printf '%s\\n' '0.0.0.0/0 via 192.168.10.1 dev enp2s0'
+            printf '%s\n' '0.0.0.0/0 via 192.168.10.1 dev enp2s0'
         fi
         ;;
     *)
@@ -90,18 +90,18 @@ run_case() {
     fi
 
     if [[ "$actual_status" -ne "$expected_status" ]]; then
-        printf 'FAIL: %s: ожидался код %s, получен %s\\n%s\\n' \\
+        printf 'FAIL: %s: ожидался код %s, получен %s\n%s\n' \
             "$description" "$expected_status" "$actual_status" "$output" >&2
         exit 1
     fi
 
     if [[ "$output" != *"$expected_text"* ]]; then
-        printf 'FAIL: %s: в выводе отсутствует ожидаемый текст "%s"\\n%s\\n' \\
+        printf 'FAIL: %s: в выводе отсутствует ожидаемый текст "%s"\n%s\n' \
             "$description" "$expected_text" "$output" >&2
         exit 1
     fi
 
-    printf 'PASS: %s\\n' "$description"
+    printf 'PASS: %s\n' "$description"
 }
 
 FAKE_IP_MODE="both"
@@ -138,9 +138,9 @@ else
     actual_status=$?
 fi
 if [[ "$actual_status" -ne 2 || "$output" != *"не найдена"* ]]; then
-    printf 'FAIL: отсутствующая команда ip: ожидался код 2\\n%s\\n' "$output" >&2
+    printf 'FAIL: отсутствующая команда ip: ожидался код 2\n%s\n' "$output" >&2
     exit 1
 fi
-printf 'PASS: отсутствующая команда ip\\n'
+printf 'PASS: отсутствующая команда ip\n'
 
-printf '\\nВсе проверки check_default_route пройдены.\\n'
+printf '\nВсе проверки check_default_route пройдены.\n'

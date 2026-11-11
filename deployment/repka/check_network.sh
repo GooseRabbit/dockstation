@@ -194,7 +194,7 @@ check_default_route() {
     local unknown_count=0
 
     if ! command -v "$ip_command" >/dev/null 2>&1; then
-        printf '[FAIL] Маршрут: команда "%s" не найдена.\\n' "$ip_command"
+        printf '[FAIL] Маршрут: команда "%s" не найдена.\n' "$ip_command"
         return 2
     fi
 
@@ -215,18 +215,18 @@ check_default_route() {
         if [[ -n "$ipv4_output" ]]; then
             printf ': %s' "$ipv4_output"
         fi
-        printf '\\n'
+        printf '\n'
         ((unknown_count += 1))
     elif [[ -n "$ipv4_output" ]]; then
         while IFS= read -r line; do
             [[ -n "$line" ]] || continue
             route_kind="${line%%[[:space:]]*}"
             if [[ "$route_kind" != "default" ]]; then
-                printf '[UNKNOWN] Маршрут IPv4: неожиданный формат строки: %s\\n' "$line"
+                printf '[UNKNOWN] Маршрут IPv4: неожиданный формат строки: %s\n' "$line"
                 ((unknown_count += 1))
                 continue
             fi
-            printf '[PASS] Маршрут по умолчанию IPv4: %s\\n' "$line"
+            printf '[PASS] Маршрут по умолчанию IPv4: %s\n' "$line"
             ((route_count += 1))
         done <<< "$ipv4_output"
     fi
@@ -236,38 +236,38 @@ check_default_route() {
         if [[ -n "$ipv6_output" ]]; then
             printf ': %s' "$ipv6_output"
         fi
-        printf '\\n'
+        printf '\n'
         ((unknown_count += 1))
     elif [[ -n "$ipv6_output" ]]; then
         while IFS= read -r line; do
             [[ -n "$line" ]] || continue
             route_kind="${line%%[[:space:]]*}"
             if [[ "$route_kind" != "default" ]]; then
-                printf '[UNKNOWN] Маршрут IPv6: неожиданный формат строки: %s\\n' "$line"
+                printf '[UNKNOWN] Маршрут IPv6: неожиданный формат строки: %s\n' "$line"
                 ((unknown_count += 1))
                 continue
             fi
-            printf '[PASS] Маршрут по умолчанию IPv6: %s\\n' "$line"
+            printf '[PASS] Маршрут по умолчанию IPv6: %s\n' "$line"
             ((route_count += 1))
         done <<< "$ipv6_output"
     fi
 
     if ((unknown_count > 0)); then
         if ((route_count > 0)); then
-            printf '[WARN] Маршрут: обнаружено маршрутов по умолчанию: %d; проверка завершена не полностью.\\n' \\
+            printf '[WARN] Маршрут: обнаружено маршрутов по умолчанию: %d; проверка завершена не полностью.\n' \
                 "$route_count"
         else
-            printf '[WARN] Маршрут: не удалось достоверно определить наличие маршрута по умолчанию.\\n'
+            printf '[WARN] Маршрут: не удалось достоверно определить наличие маршрута по умолчанию.\n'
         fi
         return 1
     fi
 
     if ((route_count == 0)); then
-        printf '[WARN] Маршрут: маршруты по умолчанию IPv4/IPv6 не обнаружены.\\n'
+        printf '[WARN] Маршрут: маршруты по умолчанию IPv4/IPv6 не обнаружены.\n'
         return 1
     fi
 
-    printf '[PASS] Маршрут: обнаружено маршрутов по умолчанию: %d.\\n' "$route_count"
+    printf '[PASS] Маршрут: обнаружено маршрутов по умолчанию: %d.\n' "$route_count"
     return 0
 }
 
