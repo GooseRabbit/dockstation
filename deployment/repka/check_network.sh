@@ -180,6 +180,97 @@ read_ip_configuration() {
     return 0
 }
 
+# Check IPv4 and IPv6 default routes without changing routing configuration.
+# A missing route is a warning; command and output errors remain distinguishable.
+check_default_route() {
+    local ip_command="${1:-ip}"
+    local ipv4_output=""
+    local ipv6_output=""
+    local ipv4_status=0
+    local ipv6_status=0
+    local line
+    local route_kind
+    local route_count=0
+    local unknown_count=0
+
+    if ! command -v "$ip_command" >/dev/null 2>&1; then
+        printf '[FAIL] Маршрут: команда "%s" не найдена.\\n' "$ip_command"
+        return 2
+    fi
+
+    if ipv4_output="$("$ip_command" -4 -o route show default 2>&1)"; then
+        ipv4_status=0
+    else
+        ipv4_status=$?
+    fi
+
+    if ipv6_output="$("$ip_command" -6 -o route show default 2>&1)"; then
+        ipv6_status=0
+    else
+        ipv6_status=$?
+    fi
+
+    if ((ipv4_status != 0)); then
+        printf '[UNKNOWN] Маршрут IPv4: команда ip завершилась с кодом %d' "$ipv4_status"
+        if [[ -n "$ipv4_output" ]]; then
+            printf ': %s' "$ipv4_output"
+        fi
+        printf '\\n'
+        ((unknown_count += 1))
+    elif [[ -n "$ipv4_output" ]]; then
+        while IFS= read -r line; do
+            [[ -n "$line" ]] || continue
+            route_kind="${line%%[[:space:]]*}"
+            if [[ "$route_kind" != "default" ]]; then
+                printf '[UNKNOWN] Маршрут IPv4: неожиданный формат строки: %s\\n' "$line"
+                ((unknown_count += 1))
+                continue
+            fi
+            printf '[PASS] Маршрут по умолчанию IPv4: %s\\n' "$line"
+            ((route_count += 1))
+        done <<< "$ipv4_output"
+    fi
+
+    if ((ipv6_status != 0)); then
+        printf '[UNKNOWN] Маршрут IPv6: команда ip завершилась с кодом %d' "$ipv6_status"
+        if [[ -n "$ipv6_output" ]]; then
+            printf ': %s' "$ipv6_output"
+        fi
+        printf '\\n'
+        ((unknown_count += 1))
+    elif [[ -n "$ipv6_output" ]]; then
+        while IFS= read -r line; do
+            [[ -n "$line" ]] || continue
+            route_kind="${line%%[[:space:]]*}"
+            if [[ "$route_kind" != "default" ]]; then
+                printf '[UNKNOWN] Маршрут IPv6: неожиданный формат строки: %s\\n' "$line"
+                ((unknown_count += 1))
+                continue
+            fi
+            printf '[PASS] Маршрут по умолчанию IPv6: %s\\n' "$line"
+            ((route_count += 1))
+        done <<< "$ipv6_output"
+    fi
+
+    if ((unknown_count > 0)); then
+        if ((route_count > 0)); then
+            printf '[WARN] Маршрут: обнаружено маршрутов по умолчанию: %d; проверка завершена не полностью.\\n' \\
+                "$route_count"
+        else
+            printf '[WARN] Маршрут: не удалось достоверно определить наличие маршрута по умолчанию.\\n'
+        fi
+        return 1
+    fi
+
+    if ((route_count == 0)); then
+        printf '[WARN] Маршрут: маршруты по умолчанию IPv4/IPv6 не обнаружены.\\n'
+        return 1
+    fi
+
+    printf '[PASS] Маршрут: обнаружено маршрутов по умолчанию: %d.\\n' "$route_count"
+    return 0
+}
+
 # Do not run diagnostics when this file is sourced by a test harness.
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     overall_status=0
@@ -194,6 +285,15 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     fi
 
     if read_ip_configuration; then
+        check_status=0
+    else
+        check_status=$?
+    fi
+    if ((check_status > overall_status)); then
+        overall_status=$check_status
+    fi
+
+    if check_default_route; then
         check_status=0
     else
         check_status=$?
