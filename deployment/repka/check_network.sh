@@ -339,6 +339,169 @@ check_dns_resolution() {
     return 1
 }
 
+# Check SSH service units using systemd's read-only property interface.
+# Both service names and socket activation are recognized; this function never changes units.
+check_ssh_service() {
+    local systemctl_command="${1:-systemctl}"
+    local unit
+    local unit_output
+    local command_status
+    local property
+    local value
+    local load_state
+    local active_state
+    local sub_state
+    local unit_file_state
+    local unit_kind
+    local service_units_found=0
+    local socket_units_found=0
+    local active_services=0
+    local active_sockets=0
+    local unknown_count=0
+    local masked_count=0
+
+    if ! command -v "$systemctl_command" >/dev/null 2>&1; then
+        printf '[FAIL] SSH: команда "%s" не найдена.\n' "$systemctl_command"
+        return 2
+    fi
+
+    for unit in ssh.service sshd.service ssh.socket sshd.socket; do
+        unit_output=""
+        load_state=""
+        active_state=""
+        sub_state=""
+        unit_file_state=""
+
+        if unit_output="$("$systemctl_command" show --no-pager --property=LoadState,ActiveState,SubState,UnitFileState "$unit" 2>&1)"; then
+            command_status=0
+        else
+            command_status=$?
+        fi
+
+        if [[ "$unit_output" == *"System has not been booted with systemd"* ]] ||
+            [[ "$unit_output" == *"Failed to connect to bus"* ]] ||
+            [[ "$unit_output" == *"Failed to get D-Bus connection"* ]] ||
+            [[ "$unit_output" == *"Host is down"* ]]; then
+            printf '[WARN] SSH: менеджер systemd недоступен; состояние службы определить нельзя.\n'
+            return 1
+        fi
+
+        while IFS='=' read -r property value; do
+            case "$property" in
+                LoadState) load_state="$value" ;;
+                ActiveState) active_state="$value" ;;
+                SubState) sub_state="$value" ;;
+                UnitFileState) unit_file_state="$value" ;;
+            esac
+        done <<< "$unit_output"
+
+        if [[ "$load_state" == "not-found" ]]; then
+            continue
+        fi
+
+        if ((command_status != 0)) || [[ -z "$load_state" ]]; then
+            printf '[UNKNOWN] SSH %s: не удалось получить состояние unit' "$unit"
+            if ((command_status != 0)); then
+                printf ' (код systemctl: %d)' "$command_status"
+            fi
+            if [[ -n "$unit_output" ]]; then
+                printf ': %s' "$unit_output"
+            fi
+            printf '\n'
+            ((unknown_count += 1))
+            continue
+        fi
+
+        case "$unit" in
+            *.service)
+                unit_kind="служба"
+                ((service_units_found += 1))
+                ;;
+            *.socket)
+                unit_kind="сокет"
+                ((socket_units_found += 1))
+                ;;
+        esac
+
+        if [[ "$load_state" == "masked" || "$unit_file_state" == "masked" || "$unit_file_state" == "masked-runtime" ]]; then
+            printf '[WARN] SSH %s: unit замаскирован (LoadState=%s, UnitFileState=%s).\n' "$unit" "${load_state:-unknown}" "${unit_file_state:-unknown}"
+            ((masked_count += 1))
+            continue
+        fi
+
+        if [[ "$load_state" != "loaded" ]]; then
+            printf '[UNKNOWN] SSH %s: неожиданное состояние загрузки unit: %s.\n' "$unit" "$load_state"
+            ((unknown_count += 1))
+            continue
+        fi
+
+        if [[ "$active_state" == "active" ]]; then
+            if [[ "$unit_kind" == "служба" && "$sub_state" == "running" ]]; then
+                printf '[PASS] SSH %s: служба активна и выполняется.\n' "$unit"
+                ((active_services += 1))
+            elif [[ "$unit_kind" == "сокет" && "$sub_state" == "listening" ]]; then
+                printf '[PASS] SSH %s: сокет активен и ожидает подключений (socket activation).\n' "$unit"
+                ((active_sockets += 1))
+            else
+                printf '[WARN] SSH %s: ActiveState=active, но SubState=%s не подтверждает готовность.\n' "$unit" "${sub_state:-unknown}"
+                ((unknown_count += 1))
+            fi
+            continue
+        fi
+
+        case "$active_state" in
+            inactive)
+                printf '[WARN] SSH %s: %s остановлена (SubState=%s).\n' "$unit" "$unit_kind" "${sub_state:-unknown}"
+                ;;
+            failed)
+                printf '[WARN] SSH %s: %s завершилась с ошибкой (SubState=%s).\n' "$unit" "$unit_kind" "${sub_state:-unknown}"
+                ;;
+            activating|deactivating|reloading)
+                printf '[WARN] SSH %s: %s находится в переходном состоянии %s (%s).\n' "$unit" "$unit_kind" "$active_state" "${sub_state:-unknown}"
+                ;;
+            "")
+                printf '[UNKNOWN] SSH %s: systemd не вернул ActiveState.\n' "$unit"
+                ((unknown_count += 1))
+                ;;
+            *)
+                printf '[UNKNOWN] SSH %s: неизвестное ActiveState=%s (SubState=%s).\n' "$unit" "$active_state" "${sub_state:-unknown}"
+                ((unknown_count += 1))
+                ;;
+        esac
+    done
+
+    if ((active_services > 0 || active_sockets > 0)); then
+        if ((unknown_count > 0)); then
+            printf '[WARN] SSH: доступный SSH unit обнаружен, но часть состояний не удалось проверить.\n'
+            return 1
+        fi
+        if ((active_services > 0)); then
+            printf '[PASS] SSH: обнаружена активная SSH-служба (%d).\n' "$active_services"
+        else
+            printf '[PASS] SSH: доступен активный SSH-сокет для socket activation (%d).\n' "$active_sockets"
+        fi
+        return 0
+    fi
+
+    if ((unknown_count > 0)); then
+        printf '[WARN] SSH: состояние SSH-сервиса определить не удалось полностью.\n'
+        return 1
+    fi
+
+    if ((service_units_found + socket_units_found == 0)); then
+        printf '[FAIL] SSH: не обнаружены ssh.service/sshd.service или соответствующие socket units.\n'
+        return 2
+    fi
+
+    if ((masked_count > 0 && service_units_found + socket_units_found == masked_count)); then
+        printf '[WARN] SSH: все обнаруженные SSH units замаскированы.\n'
+        return 1
+    fi
+
+    printf '[WARN] SSH: SSH units найдены, но ни служба, ни сокет не готовы принимать подключения.\n'
+    return 1
+}
+
 # Do not run diagnostics when this file is sourced by a test harness.
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     overall_status=0
@@ -371,6 +534,15 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     fi
 
     if check_dns_resolution "${DOCKSTATION_DNS_CHECK_NAME:-}"; then
+        check_status=0
+    else
+        check_status=$?
+    fi
+    if ((check_status > overall_status)); then
+        overall_status=$check_status
+    fi
+
+    if check_ssh_service; then
         check_status=0
     else
         check_status=$?
