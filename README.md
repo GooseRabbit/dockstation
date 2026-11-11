@@ -71,7 +71,8 @@
 24. [Операторское приложение](docs/23_OPERATOR_APPLICATION.md) — Windows-клиент, три способа подключения, мониторинг и управление.
 25. [Идентичность станции и криптографическая защита](docs/24_STATION_IDENTITY_AND_CRYPTOGRAPHIC_SECURITY.md) — Station ID, provisioning, ключи, сертификаты и защита команд.
 26. [План реализации StationIdentityManager](docs/25_STATION_IDENTITY_MANAGER_IMPLEMENTATION_PLAN.md) — функции регистрации и управления идентичностью станции.
-27. [План сетевого подключения на Repka Pi 5](docs/30_REPKA_NETWORK_IMPLEMENTATION_PLAN.md) — Ethernet, SSH-туннель, диагностический API, Windows-клиент и дальнейшее расширение.
+27. [План сетевого подключения на Repka Pi 5](docs/30_REPKA_NETWORK_IMPLEMENTATION_PLAN.md) — Ethernet, SSH-туннель, диагностический API и первый графический Windows-клиент.
+28. [Полный мастер-план реализации DockStation на Repka Pi 5](docs/31_REPKA_DOCKSTATION_SOFTWARE_IMPLEMENTATION_PLAN.md) — основные программные подсистемы, файлы, функции, виртуальные испытания и путь к рабочему продукту.
 
 Исторические материалы, не являющиеся текущими заданиями или рабочими инструкциями:
 - [Первое задание Claude на аудит](docs/14_FIRST_CLAUDE_REVIEW_PROMPT.md).
