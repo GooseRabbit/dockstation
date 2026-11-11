@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+# Shared OS/architecture preflight and final-report helpers.
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/network_helpers.sh"
+
 # Read-only network diagnostics for the Repka/Linux deployment.
 # The functions are read-only and can be sourced for focused host verification.
 
@@ -506,6 +509,33 @@ check_ssh_service() {
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     overall_status=0
 
+    if require_command ip uname; then
+        check_status=0
+    else
+        check_status=$?
+    fi
+    if ((check_status > overall_status)); then
+        overall_status=$check_status
+    fi
+
+    if read_os_release; then
+        check_status=0
+    else
+        check_status=$?
+    fi
+    if ((check_status > overall_status)); then
+        overall_status=$check_status
+    fi
+
+    if check_architecture; then
+        check_status=0
+    else
+        check_status=$?
+    fi
+    if ((check_status > overall_status)); then
+        overall_status=$check_status
+    fi
+
     if check_ethernet_link; then
         check_status=0
     else
@@ -543,6 +573,15 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     fi
 
     if check_ssh_service; then
+        check_status=0
+    else
+        check_status=$?
+    fi
+    if ((check_status > overall_status)); then
+        overall_status=$check_status
+    fi
+
+    if print_diagnostics_report "$overall_status"; then
         check_status=0
     else
         check_status=$?
