@@ -126,7 +126,7 @@ LoggerResult rotate_locked(LoggerState& logger, bool force) {
     struct stat info {};
     if (::stat(logger.config.file_path.c_str(), &info) != 0) {
         if (errno == ENOENT) {
-            return {LoggerStatus::Available, {}};
+            return {LoggerStatus::Unavailable, "configured log file disappeared before rotation"};
         }
         return {LoggerStatus::Unavailable, "cannot inspect log file before rotation"};
     }
@@ -280,8 +280,15 @@ LoggerResult write_log_record(LogLevel level,
             return {LoggerStatus::Unavailable,
                     "cannot inspect configured log file before writing"};
         }
-        if (static_cast<std::uint64_t>(info.st_size) + record.size() >
-            logger.config.max_file_size_bytes) {
+        if (info.st_size < 0) {
+            return {LoggerStatus::Unavailable, "configured log file reports a negative size"};
+        }
+        const std::uint64_t current_size = static_cast<std::uint64_t>(info.st_size);
+        const std::uint64_t record_size = static_cast<std::uint64_t>(record.size());
+        const bool exceeds_limit =
+            current_size > logger.config.max_file_size_bytes ||
+            record_size > logger.config.max_file_size_bytes - current_size;
+        if (exceeds_limit) {
             const LoggerResult rotation = rotate_locked(logger, true);
             if (rotation.status != LoggerStatus::Available) {
                 return rotation;
