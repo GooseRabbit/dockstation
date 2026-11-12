@@ -71,7 +71,9 @@ int main() {
            "writes structured record");
     expect(write_log_record(LogLevel::Debug, "test", "secret check",
                             {{"password", "do-not-store"},
-                             {"access_token", "also-secret"}}).status ==
+                             {"access_token", "also-secret"},
+                             {"private key", "private-key-secret"},
+                             {"API key", "api-key-secret"}}).status ==
                LoggerStatus::Available,
            "writes record with sensitive fields");
     expect(flush_log().status == LoggerStatus::Available,
@@ -86,8 +88,12 @@ int main() {
            "record contains non-sensitive field");
     expect(current.find("do-not-store") == std::string::npos &&
                current.find("also-secret") == std::string::npos &&
+               current.find("private-key-secret") == std::string::npos &&
+               current.find("api-key-secret") == std::string::npos &&
                archived.find("do-not-store") == std::string::npos &&
                archived.find("also-secret") == std::string::npos &&
+               archived.find("private-key-secret") == std::string::npos &&
+               archived.find("api-key-secret") == std::string::npos &&
                (current.find("[REDACTED]") != std::string::npos ||
                 archived.find("[REDACTED]") != std::string::npos),
            "sensitive field values are redacted");
