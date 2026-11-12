@@ -23,7 +23,7 @@ void expect(bool condition, const char* name) {
 void expect_status_consistent(DiagnosticValueStatus status,
                               const std::string& reason,
                               const char* name) {
-    expect(status == DiagnosticValueStatus::Available ||
+    expect((status == DiagnosticValueStatus::Available && reason.empty()) ||
                (status == DiagnosticValueStatus::Unavailable && !reason.empty()),
            name);
 }
