@@ -69,6 +69,9 @@ int main() {
     expect(parse({"dockstation-gateway", "--api-port"}).status ==
                CommandLineParseStatus::InvalidArguments,
            "rejects option without a value");
+    expect(parse({"dockstation-gateway", "--log-file", "--no-log-stderr"}).status ==
+               CommandLineParseStatus::InvalidArguments,
+           "does not consume the next option as a file path value");
     expect(parse({"dockstation-gateway", "--unknown"}).status ==
                CommandLineParseStatus::InvalidArguments,
            "rejects unknown option");
