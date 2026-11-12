@@ -111,7 +111,7 @@ int main() {
     std::remove(log_path.c_str());
 
     result = run({"dockstation-bootstrap", "--log-file",
-                  "/tmp/dockstation_missing_bootstrap_dir/log.jsonl"});
+                  "/dev/null/dockstation_bootstrap.jsonl"});
     expect(result.exit_code == ApplicationExitCode::StartupFailure,
            "fails startup when the configured log sink cannot be opened");
 
