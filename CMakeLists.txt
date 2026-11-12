@@ -8,6 +8,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(CTest)
 
+find_package(Threads REQUIRED)
+
 option(DOCKSTATION_ENABLE_SANITIZERS
        "Enable AddressSanitizer and UndefinedBehaviorSanitizer for verification" OFF)
 
@@ -36,6 +38,9 @@ add_library(dockstation_linux_runtime STATIC
 )
 target_include_directories(dockstation_linux_runtime
     PUBLIC "${PROJECT_SOURCE_DIR}/src"
+)
+target_link_libraries(dockstation_linux_runtime
+    PUBLIC Threads::Threads
 )
 dockstation_apply_compile_policy(dockstation_linux_runtime)
 
