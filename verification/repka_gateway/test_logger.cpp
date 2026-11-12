@@ -76,26 +76,28 @@ int main() {
                              {"API key", "api-key-secret"}}).status ==
                LoggerStatus::Available,
            "writes record with sensitive fields");
+    const std::string escaped_text = "quote \" slash \\ line\nnext";
+    expect(write_log_record(LogLevel::Info, "test", escaped_text,
+                            {{"note", escaped_text}}).status ==
+               LoggerStatus::Available,
+           "writes quotes, backslashes and newlines for JSON escaping");
     expect(flush_log().status == LoggerStatus::Available,
            "flushes records before inspection");
     const std::string current = read_file(base);
     const std::string archived = read_file(base + ".1");
-    expect(current.find("\"level\":\"INFO\"") != std::string::npos ||
-               archived.find("\"level\":\"INFO\"") != std::string::npos,
+    const std::string older_archived = read_file(base + ".2");
+    const std::string all_logs = current + archived + older_archived;
+    expect(all_logs.find("\"level\":\"INFO\"") != std::string::npos,
            "record contains level");
-    expect(current.find("\"station_id\":\"station-test\"") != std::string::npos ||
-               archived.find("\"station_id\":\"station-test\"") != std::string::npos,
+    expect(all_logs.find("\"station_id\":\"station-test\"") != std::string::npos,
            "record contains non-sensitive field");
-    expect(current.find("do-not-store") == std::string::npos &&
-               current.find("also-secret") == std::string::npos &&
-               current.find("private-key-secret") == std::string::npos &&
-               current.find("api-key-secret") == std::string::npos &&
-               archived.find("do-not-store") == std::string::npos &&
-               archived.find("also-secret") == std::string::npos &&
-               archived.find("private-key-secret") == std::string::npos &&
-               archived.find("api-key-secret") == std::string::npos &&
-               (current.find("[REDACTED]") != std::string::npos ||
-                archived.find("[REDACTED]") != std::string::npos),
+    expect(all_logs.find("quote \\\" slash \\\\ line\\nnext") != std::string::npos,
+           "JSON string values escape quotes, backslashes and newlines");
+    expect(all_logs.find("do-not-store") == std::string::npos &&
+               all_logs.find("also-secret") == std::string::npos &&
+               all_logs.find("private-key-secret") == std::string::npos &&
+               all_logs.find("api-key-secret") == std::string::npos &&
+               all_logs.find("[REDACTED]") != std::string::npos,
            "sensitive field values are redacted");
 
     expect(write_log_record(LogLevel::Info, "test", "record to rotate").status ==
