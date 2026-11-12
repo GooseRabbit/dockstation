@@ -316,13 +316,13 @@ ApplicationRunResult run_application(int argc,
 
             if (startup_ok) {
                 startup_ok =
-                log_runtime_value("os_version",
+                    log_runtime_value("os_version",
                                   platform::linux_runtime::read_os_version()) &&
-                log_runtime_value("kernel_version",
+                    log_runtime_value("kernel_version",
                                   platform::linux_runtime::read_kernel_version()) &&
-                log_runtime_value("architecture",
+                    log_runtime_value("architecture",
                                   platform::linux_runtime::read_hardware_architecture()) &&
-                log_runtime_value("software_build",
+                    log_runtime_value("software_build",
                                   platform::linux_runtime::read_software_build_info());
             }
             if (startup_ok) {
