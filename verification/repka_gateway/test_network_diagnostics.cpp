@@ -133,6 +133,12 @@ int main() {
            "empty DNS hostname is rejected");
     expect(!invalid_dns.reason.empty(), "empty DNS hostname has an explanation");
 
+    const auto invalid_family = resolve_dns_name(
+        "localhost", static_cast<AddressFamily>(255U));
+    expect(invalid_family.status == NetworkDiagnosticStatus::Unavailable &&
+               !invalid_family.reason.empty(),
+           "unknown address family is rejected with an explanation");
+
     const auto invalid_tcp = check_tcp_reachability(
         "127.0.0.1", 80, std::chrono::milliseconds{0});
     expect(invalid_tcp.status == NetworkDiagnosticStatus::Unavailable,
