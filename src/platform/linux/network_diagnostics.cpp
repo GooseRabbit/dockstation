@@ -280,7 +280,8 @@ NetworkDiagnosticList<DefaultRouteInfo> read_default_route() {
     NetworkDiagnosticList<DefaultRouteInfo> result{};
 
     std::ifstream ipv4_file{kIpv4RoutesPath};
-    if (ipv4_file.is_open()) {
+    const bool ipv4_table_available = ipv4_file.is_open();
+    if (ipv4_table_available) {
         std::string line;
         std::getline(ipv4_file, line);  // Header.
         while (std::getline(ipv4_file, line)) {
@@ -318,7 +319,8 @@ NetworkDiagnosticList<DefaultRouteInfo> read_default_route() {
     }
 
     std::ifstream ipv6_file{kIpv6RoutesPath};
-    if (ipv6_file.is_open()) {
+    const bool ipv6_table_available = ipv6_file.is_open();
+    if (ipv6_table_available) {
         std::string line;
         while (std::getline(ipv6_file, line)) {
             std::istringstream row{line};
@@ -357,6 +359,12 @@ NetworkDiagnosticList<DefaultRouteInfo> read_default_route() {
             route.metric = metric;
             result.values.push_back(std::move(route));
         }
+    }
+
+    if (!ipv4_table_available && !ipv6_table_available) {
+        mark_unavailable(result,
+                         "Не удалось открыть таблицы маршрутов IPv4 и IPv6");
+        return result;
     }
 
     mark_available(result);
