@@ -121,9 +121,11 @@ int main() {
            "initializes logger for deleted-file handling test");
     expect(std::remove(removed_path.c_str()) == 0,
            "removes configured log path while logger remains open");
+    expect(rotate_log_files().status == LoggerStatus::Unavailable,
+           "reports unavailable when configured log path disappears before rotation");
     expect(write_log_record(LogLevel::Error, "test", "must not disappear").status ==
                LoggerStatus::Unavailable,
-           "reports unavailable when configured log path disappears");
+           "reports unavailable when configured log path disappears before writing");
     expect(shutdown_logger().status == LoggerStatus::Available,
            "shuts down after configured log path disappears");
 
