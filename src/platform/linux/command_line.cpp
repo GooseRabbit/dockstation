@@ -5,6 +5,7 @@
 #include <limits>
 #include <string_view>
 #include <system_error>
+#include <utility>
 
 namespace dockstation::platform::linux_runtime {
 namespace {
@@ -167,8 +168,8 @@ std::string command_line_help(const std::string& executable_name) {
         "  --log-file PATH                Дополнительный файл JSONL-журнала\n"
         "  --log-stderr                   Включить журналирование в stderr (по умолчанию)\n"
         "  --no-log-stderr                Отключить журналирование в stderr\n"
-        "  --log-max-file-size-bytes N    Максимальный размер файла журнала\n"
-        "  --log-max-rotated-files N      Число архивов журнала (не более 20)\n"
+        "  --log-max-file-size-bytes N    Максимальный размер файла журнала (по умолчанию 1048576 байт)\n"
+        "  --log-max-rotated-files N      Число архивов журнала (по умолчанию 3, не более 20)\n"
         "\n"
         "Адрес привязки API фиксирован: 127.0.0.1. Изменить его параметрами запуска нельзя.\n"
         "Файл конфигурации и переменные окружения на этом этапе не поддерживаются.\n";
