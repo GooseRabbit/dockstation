@@ -5,7 +5,9 @@
 #include <string>
 #include <vector>
 
+#include "platform/linux/network_diagnostics.hpp"
 #include "platform/linux/runtime_environment.hpp"
+#include "platform/linux/system_diagnostics.hpp"
 #include "platform/logging/logger.hpp"
 
 namespace dockstation::application::linux_app {
@@ -100,6 +102,123 @@ bool log_runtime_value(const char* name,
     }
     return write_log(LogLevel::Warning, "Runtime information unavailable",
                      {{name, value.reason}});
+}
+
+bool log_startup_diagnostics() {
+    using platform::logging::LogLevel;
+    using platform::linux_diagnostics::DiagnosticValueStatus;
+    using platform::linux_diagnostics::NetworkDiagnosticStatus;
+
+    const auto system = platform::linux_diagnostics::collect_system_diagnostics();
+    bool logging_ok = true;
+
+    const auto log_system_value = [&logging_ok](const char* name,
+                                                DiagnosticValueStatus status,
+                                                const std::string& value,
+                                                const std::string& reason) {
+        const bool written = status == DiagnosticValueStatus::Available
+            ? write_log(LogLevel::Info, "System diagnostic available",
+                        {{name, value}})
+            : write_log(LogLevel::Warning, "System diagnostic unavailable",
+                        {{name, reason}});
+        logging_ok = written && logging_ok;
+    };
+
+    log_system_value("uptime_seconds", system.uptime.status,
+                     std::to_string(system.uptime.seconds), system.uptime.reason);
+    log_system_value("memory_total_bytes", system.memory.status,
+                     std::to_string(system.memory.total_bytes) +
+                         "; available_bytes=" +
+                         std::to_string(system.memory.available_bytes) +
+                         "; used_percent=" +
+                         std::to_string(system.memory.used_percent),
+                     system.memory.reason);
+    log_system_value("root_storage_total_bytes", system.storage.status,
+                     std::to_string(system.storage.total_bytes) +
+                         "; available_bytes=" +
+                         std::to_string(system.storage.available_bytes) +
+                         "; used_percent=" +
+                         std::to_string(system.storage.used_percent),
+                     system.storage.reason);
+    log_system_value("cpu_temperature_celsius", system.cpu_temperature.status,
+                     std::to_string(system.cpu_temperature.celsius) +
+                         "; sensor_type=" + system.cpu_temperature.sensor_type,
+                     system.cpu_temperature.reason);
+    log_system_value("cpu_load_average", system.cpu_load.status,
+                     "1m=" + std::to_string(system.cpu_load.one_minute) +
+                         "; 5m=" + std::to_string(system.cpu_load.five_minutes) +
+                         "; 15m=" + std::to_string(system.cpu_load.fifteen_minutes) +
+                         "; runnable=" +
+                         std::to_string(system.cpu_load.runnable_tasks) +
+                         "; total=" + std::to_string(system.cpu_load.total_tasks),
+                     system.cpu_load.reason);
+
+    const auto network = platform::linux_diagnostics::collect_network_diagnostics();
+    const auto log_network_list = [&logging_ok](const char* name,
+                                                NetworkDiagnosticStatus status,
+                                                std::size_t count,
+                                                const std::string& reason) {
+        const bool written = status == NetworkDiagnosticStatus::Available
+            ? write_log(LogLevel::Info, "Network diagnostic list available",
+                        {{name, std::to_string(count)}})
+            : write_log(LogLevel::Warning, "Network diagnostic list unavailable",
+                        {{name, reason}});
+        logging_ok = written && logging_ok;
+    };
+
+    log_network_list("network_interfaces", network.interfaces.status,
+                     network.interfaces.values.size(), network.interfaces.reason);
+    log_network_list("network_addresses", network.addresses.status,
+                     network.addresses.values.size(), network.addresses.reason);
+    log_network_list("default_routes", network.default_routes.status,
+                     network.default_routes.values.size(),
+                     network.default_routes.reason);
+
+    for (const auto& interface : network.interfaces.values) {
+        logging_ok = write_log(
+            LogLevel::Info, "Network interface",
+            {{"name", interface.name},
+             {"index", std::to_string(interface.index)},
+             {"up", interface.is_up ? "true" : "false"},
+             {"running", interface.is_running ? "true" : "false"},
+             {"loopback", interface.is_loopback ? "true" : "false"},
+             {"mtu_available", interface.mtu_available ? "true" : "false"},
+             {"mtu", interface.mtu_available ? std::to_string(interface.mtu) : ""}}) &&
+            logging_ok;
+    }
+    for (const auto& address : network.addresses.values) {
+        const char* family = address.family ==
+                platform::linux_diagnostics::AddressFamily::IPv4
+            ? "IPv4"
+            : address.family == platform::linux_diagnostics::AddressFamily::IPv6
+                ? "IPv6" : "UNSPECIFIED";
+        logging_ok = write_log(
+            LogLevel::Info, "Network interface address",
+            {{"interface", address.interface_name},
+             {"family", family},
+             {"address", address.address},
+             {"prefix_available",
+              address.prefix_length_available ? "true" : "false"},
+             {"prefix_length",
+              address.prefix_length_available
+                  ? std::to_string(address.prefix_length) : ""}}) &&
+            logging_ok;
+    }
+    for (const auto& route : network.default_routes.values) {
+        const char* family = route.family ==
+                platform::linux_diagnostics::AddressFamily::IPv4
+            ? "IPv4"
+            : route.family == platform::linux_diagnostics::AddressFamily::IPv6
+                ? "IPv6" : "UNSPECIFIED";
+        logging_ok = write_log(
+            LogLevel::Info, "Network default route",
+            {{"family", family},
+             {"interface", route.interface_name},
+             {"gateway", route.gateway},
+             {"metric", std::to_string(route.metric)}}) &&
+            logging_ok;
+    }
+    return logging_ok;
 }
 
 }  // namespace
@@ -203,6 +322,9 @@ ApplicationRunResult run_application(int argc,
                                   platform::linux_runtime::read_hardware_architecture()) &&
                 log_runtime_value("software_build",
                                   platform::linux_runtime::read_software_build_info());
+            if (startup_ok) {
+                startup_ok = log_startup_diagnostics();
+            }
             if (!startup_ok) {
                 exit_code = ApplicationExitCode::StartupFailure;
             }
