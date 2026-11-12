@@ -208,7 +208,9 @@ NetworkDiagnosticList<NetworkInterfaceInfo> read_network_interfaces() {
 
         if (descriptor >= 0) {
             struct ifreq request {};
-            std::strncpy(request.ifr_name, item->if_name, IFNAMSIZ - 1);
+            const std::size_t name_length =
+                std::min(std::strlen(item->if_name), sizeof(request.ifr_name) - 1);
+            std::memcpy(request.ifr_name, item->if_name, name_length);
             if (::ioctl(descriptor, SIOCGIFFLAGS, &request) == 0) {
                 info.flags = static_cast<std::uint32_t>(
                     static_cast<unsigned short>(request.ifr_flags));
@@ -219,7 +221,9 @@ NetworkDiagnosticList<NetworkInterfaceInfo> read_network_interfaces() {
             }
 
             struct ifreq mtu_request {};
-            std::strncpy(mtu_request.ifr_name, item->if_name, IFNAMSIZ - 1);
+            const std::size_t mtu_name_length =
+                std::min(std::strlen(item->if_name), sizeof(mtu_request.ifr_name) - 1);
+            std::memcpy(mtu_request.ifr_name, item->if_name, mtu_name_length);
             if (::ioctl(descriptor, SIOCGIFMTU, &mtu_request) == 0 &&
                 mtu_request.ifr_mtu >= 0) {
                 info.mtu = static_cast<std::uint32_t>(mtu_request.ifr_mtu);
@@ -409,9 +413,10 @@ TcpReachabilityDiagnostic check_tcp_reachability(const std::string& host,
     result.port = port;
     const auto start = std::chrono::steady_clock::now();
 
-    if (host.empty() || port == 0 || timeout.count() <= 0) {
+    if (host.empty() || port == 0 || timeout.count() <= 0 ||
+        timeout > std::chrono::seconds{60}) {
         mark_unavailable(result,
-                         "Для TCP-проверки нужны host, port > 0 и timeout > 0");
+                         "Для TCP-проверки нужны host, port > 0 и timeout от 1 мс до 60 с");
         return result;
     }
 
