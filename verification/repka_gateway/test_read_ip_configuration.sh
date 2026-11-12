@@ -4,7 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPOSITORY_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
-SCRIPT_PATH="$REPOSITORY_ROOT/deployment/repka/check_network.sh"
+SCRIPT_PATH="$REPOSITORY_ROOT/repka/check_network.sh"
 
 if [[ ! -f "$SCRIPT_PATH" ]]; then
     printf 'FAIL: не найден скрипт: %s\n' "$SCRIPT_PATH" >&2

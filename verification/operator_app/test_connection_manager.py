@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from apps.repka_gateway.dockstation_gateway.server import create_server
+from repka_gateway.dockstation_gateway.server import create_server
 from dockstation_operator.api.station_api_client import ApiClientError
 from dockstation_operator.config.settings import ConnectionProfile
 from dockstation_operator.connection.connection_manager import ConnectionManager
@@ -83,7 +83,7 @@ def test_connection_manager_refuses_api_request_when_disconnected():
 
 
 def test_operator_api_client_accepts_actual_gateway_snapshot():
-    from apps.repka_gateway.dockstation_gateway.diagnostics import collect_diagnostics
+    from repka_gateway.dockstation_gateway.diagnostics import collect_diagnostics
     from dockstation_operator.api.station_api_client import StationApiClient
 
     snapshot = collect_diagnostics()
