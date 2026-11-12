@@ -1,7 +1,7 @@
 # Испытания и приёмка
 
 **Статус:** предварительный план.  
-**Редакция:** 2.0.
+**Редакция:** 2.1.
 **Дата актуализации:** 2026-11-12.
 
 ## 1. Назначение
@@ -314,6 +314,14 @@
 | TEST-HW-007 | Сквозной цикл закрытого обслуживания и автономных повторных циклов с выбранным БАС | Раздел 9, сценарии A–C; дополнительно испытания потери сервера и питания | REQ-BASE-003, REQ-BASE-006, REQ-BASE-009…011, REQ-DATA-013, REQ-MIS-006…010 |
 
 
+### 3.11. Сквозная проверка Operator — Gateway — тестовый адаптер
+
+Проверка `verification/integration/test_operator_test_adapter_flow.py` поднимает реальный loopback HTTP-сервер временного Python Gateway и использует `StationApiClient` из Windows Operator package. Запрос проходит через Gateway, `TestRequestService` и `TestRequestAdapter`, после чего Operator проверяет квитанцию.
+
+Ожидаемый результат: `TEST_ADAPTER_ACCEPTED`, `source=TEST_ADAPTER`, совпадающий `request_id` и строгое `physical_action_performed=false`. Дополнительно проверяется, что прежний GET health route остаётся доступен. Тестовый маршрут по умолчанию отключён; ручное включение в VM выполняется только явным флагом `--enable-test-adapter`.
+
+Это host integration test через loopback, а не проверка SSH-туннеля, Windows GUI, C++ Gateway, Repka Pi 5, ESP32 или физического оборудования.
+
 ## 4. Испытания механики
 
 ### 4.1. Крышка
@@ -535,7 +543,7 @@
 
 ## 14. Результат полного host CI (2026-11-12)
 
-Workflow `.github/workflows/linux-cmake.yml`, прогон [43221524755](https://github.com/GooseRabbit/dockstation/actions/runs/43221524755), завершился со статусом SUCCESS на Ubuntu 24.04 x86_64.
+Workflow `.github/workflows/linux-cmake.yml`, прогон [43293944730](https://github.com/GooseRabbit/dockstation/actions/runs/43293944730), завершился со статусом SUCCESS на Ubuntu 24.04 x86_64.
 
 | Проверка | Результат |
 |---|---:|
@@ -543,7 +551,7 @@ Workflow `.github/workflows/linux-cmake.yml`, прогон [43221524755](https:/
 | CTest с ASan/UBSan | 8/8 PASS |
 | Host unit/contract программы StationStateManager и ConfigurationManager | 31/31 PASS |
 | Python compileall | PASS |
-| Python pytest: Operator и временный Gateway | 76 PASS |
+| Python pytest: Operator, временный Gateway и сквозная integration test | 92 PASS |
 | Синтаксис shell-скриптов | PASS |
 | Shell-сценарии сетевой диагностики | PASS |
 

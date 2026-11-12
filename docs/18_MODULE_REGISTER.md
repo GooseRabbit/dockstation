@@ -1,7 +1,7 @@
 # Реестр программных модулей DockStation
 
 **Статус:** рабочий реестр предварительной программной архитектуры.  
-**Редакция:** 0.31  
+**Редакция:** 0.32  
 **Дата актуализации:** 2026-11-12.
 **Основание:** `docs/05_SOFTWARE_ARCHITECTURE.md`.
 
@@ -168,4 +168,4 @@
 
 ## 8. Подтверждённый host CI
 
-На 2026-11-12 единый workflow Linux full verification прошёл полностью: 8/8 CTest, 31/31 C++ host unit/contract программ, Python compileall, 76 Python pytest и все shell syntax/behavior checks. Это подтверждает host-проверки Ubuntu x86_64, но не целевую Repka Pi 5/ARM64 сборку и не аппаратную интеграцию.
+На 2026-11-12 единый workflow Linux full verification, прогон [43293944730](https://github.com/GooseRabbit/dockstation/actions/runs/43293944730), прошёл полностью: 8/8 CTest, 31/31 C++ host unit/contract программ, Python compileall, 92 Python pytest (включая новый сквозной сценарий Operator → временный Python Gateway → TestRequestService → TestRequestAdapter → Operator) и все shell syntax/behavior checks. Это подтверждает host-проверки Ubuntu x86_64 и программный loopback integration path, но не Windows VM/SSH reconnect, C++ HTTP API, целевую Repka Pi 5/ARM64 сборку и не аппаратную интеграцию.

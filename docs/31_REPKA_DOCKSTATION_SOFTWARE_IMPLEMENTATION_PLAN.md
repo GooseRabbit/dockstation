@@ -1,7 +1,7 @@
 # Полный план реализации программного комплекса DockStation на Repka Pi 5
 
 **Статус:** мастер-план реализации; последовательность разработки согласована, открытые платформенные, сетевые, серверные и аппаратные детали требуют отдельной проверки и решения.  
-**Редакция:** 1.18.  
+**Редакция:** 1.19.  
 **Дата:** 2026-11-12.  
 **Вычислительная платформа:** Repka Pi 5.  
 **Предполагаемая ОС:** официальная Repka OS; образ и версия проверяются перед развёртыванием.
@@ -647,6 +647,7 @@ USB/UART, пины и формат кадров остаются открыты�
 | 1.16 | 2026-11-12 | Полный расширенный GitHub Actions прогон SUCCESS: CMake build, 8/8 CTest, 31/31 C++ host тест, Python compileall, 76 pytest и shell проверки. Обновлены host-проверочные статусы; целевые ARM64/Repka и аппаратные проверки остаются открытыми. |
 | 1.17 | 2026-11-12 | Контракты DiagnosticsManager согласованы владельцем (DEC-058/059); подготовительная документация обновлена. Реализация не начата и не перенесена вперёд мастер-плана; аппаратные и режимные вопросы остаются открытыми. |
 | 1.18 | 2026-11-12 | По DEC-061 реализован первый безопасный VM-вертикальный срез Operator → Python Gateway → TestRequestService → TestRequestAdapter → Operator. Test-only POST отключён по умолчанию, принимает только PING и подтверждает отсутствие физического действия. Добавлена сквозная host-проверка; C++ Gateway, production API и аппаратные проверки остаются отдельными задачами. |
+| 1.19 | 2026-11-12 | Полный host CI после реализации test-adapter VM-среза прошёл: 8/8 CTest, 31/31 C++ host tests, 92 Python pytest с новым сквозным сценарием, compileall и shell checks. Зафиксирован прогон 43293944730; Windows VM/SSH reconnect и целевая/аппаратная проверка остаются открытыми. |
 
 **Ограничение:** это план. Функции не считаются реализованными до появления кода, проверок и, где требуется, аппаратных испытаний.
 
@@ -654,6 +655,6 @@ USB/UART, пины и формат кадров остаются открыты�
 
 ## 13. Результат полного host CI
 
-Полный workflow `.github/workflows/linux-cmake.yml` [43221524755](https://github.com/GooseRabbit/dockstation/actions/runs/43221524755) завершился успешно на Ubuntu 24.04 x86_64: Linux CMake build; 8/8 CTest с ASan/UBSan; 31/31 C++ host unit/contract программ; Python compileall; 76 pytest; синтаксические и поведенческие shell-тесты.
+Полный workflow `.github/workflows/linux-cmake.yml` [43293944730](https://github.com/GooseRabbit/dockstation/actions/runs/43293944730) завершился успешно на Ubuntu 24.04 x86_64: Linux CMake build; 8/8 CTest с ASan/UBSan; 31/31 C++ host unit/contract программ; Python compileall; 92 pytest по Operator, временному Gateway и новому сквозному test-adapter сценарию; синтаксические и поведенческие shell-тесты.
 
-Это не является подтверждением ARM64-сборки, работы на Repka Pi 5, ESP32/Arduino, Windows GUI runtime, реального VM reconnect или аппаратных узлов. Их статус остаётся НЕ ПРОВЕРЕНО.
+Новый сквозной тест использует loopback HTTP-сервер и Operator API client на одном Ubuntu host; он не проверяет реальный SSH-туннель/Windows VM. Это не является подтверждением ARM64-сборки, работы на Repka Pi 5, ESP32/Arduino, Windows GUI runtime, реального VM reconnect, C++ HTTP API или аппаратных узлов. Их статус остаётся НЕ ПРОВЕРЕНО.
