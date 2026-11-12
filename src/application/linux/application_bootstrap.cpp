@@ -278,10 +278,10 @@ ApplicationRunResult run_application(int argc,
     }
 
     if (startup_ok &&
-        !write_log(LogLevel::Info, "Запуск Linux-приложения DockStation",
-                   {{"api_bind_address",
+        !write_log(LogLevel::Info, "Запуск Linux-приложения DockStation (bootstrap)",
+                   {{"configured_api_bind_address",
                      platform::linux_runtime::kGatewayBindAddress},
-                    {"api_port", std::to_string(parsed.config.api_port)}})) {
+                    {"configured_api_port", std::to_string(parsed.config.api_port)}})) {
         startup_ok = false;
         exit_code = ApplicationExitCode::StartupFailure;
     }
