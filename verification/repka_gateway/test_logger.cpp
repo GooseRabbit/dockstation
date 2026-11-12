@@ -43,6 +43,16 @@ int main() {
     expect(initialize_logger(invalid).status == LoggerStatus::Unavailable,
            "rejects configuration without a sink");
 
+    LoggerConfig invalid_level{};
+    invalid_level.minimum_level = static_cast<LogLevel>(255U);
+    expect(initialize_logger(invalid_level).status == LoggerStatus::Unavailable,
+           "rejects unknown configured log level");
+
+    LoggerConfig invalid_path{};
+    invalid_path.file_path = std::string("/tmp/log") + '\0' + ".jsonl";
+    expect(initialize_logger(invalid_path).status == LoggerStatus::Unavailable,
+           "rejects embedded null byte in log file path");
+
     LoggerConfig config{};
     config.minimum_level = LogLevel::Debug;
     config.file_path = base;
@@ -52,6 +62,9 @@ int main() {
     expect(initialize_logger(config).status == LoggerStatus::Available,
            "initializes file logger");
 
+    expect(write_log_record(static_cast<LogLevel>(255U), "test", "invalid level").status ==
+               LoggerStatus::Unavailable,
+           "rejects unknown log record level");
     expect(write_log_record(LogLevel::Info, "test", "first record",
                             {{"station_id", "station-test"}}).status ==
                LoggerStatus::Available,
