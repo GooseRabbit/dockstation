@@ -3,6 +3,8 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "platform/logging/logger.hpp"
+
 namespace dockstation::platform::linux_runtime {
 namespace {
 
@@ -52,6 +54,18 @@ RuntimeConfigValidationResult validate_runtime_config(const RuntimeConfig& confi
     }
 
     return {RuntimeConfigValidationStatus::Valid, {}, {}};
+}
+
+RuntimeLoggerInitializationResult initialize_runtime_logger(const RuntimeConfig& config) {
+    const RuntimeConfigValidationResult validation = validate_runtime_config(config);
+    if (validation.status != RuntimeConfigValidationStatus::Valid) {
+        return {RuntimeLoggerInitializationStatus::Rejected, validation.field, validation.reason};
+    }
+    const logging::LoggerResult result = logging::initialize_logger(config.logger);
+    if (result.status != logging::LoggerStatus::Available) {
+        return {RuntimeLoggerInitializationStatus::Unavailable, "logger", result.reason};
+    }
+    return {RuntimeLoggerInitializationStatus::Ready, {}, {}};
 }
 
 }  // namespace dockstation::platform::linux_runtime
