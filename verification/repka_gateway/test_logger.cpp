@@ -113,6 +113,20 @@ int main() {
     expect(shutdown_logger().status == LoggerStatus::Available,
            "shuts down stderr-only logger");
 
+    const std::string removed_path = base + ".removed";
+    std::remove(removed_path.c_str());
+    LoggerConfig removed_file_config{};
+    removed_file_config.file_path = removed_path;
+    expect(initialize_logger(removed_file_config).status == LoggerStatus::Available,
+           "initializes logger for deleted-file handling test");
+    expect(std::remove(removed_path.c_str()) == 0,
+           "removes configured log path while logger remains open");
+    expect(write_log_record(LogLevel::Error, "test", "must not disappear").status ==
+               LoggerStatus::Unavailable,
+           "reports unavailable when configured log path disappears");
+    expect(shutdown_logger().status == LoggerStatus::Available,
+           "shuts down after configured log path disappears");
+
     std::remove(base.c_str());
     std::remove((base + ".1").c_str());
     std::remove((base + ".2").c_str());
