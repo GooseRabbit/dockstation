@@ -85,6 +85,13 @@ int main() {
     const auto addresses = read_interface_addresses();
     expect_status_consistent(addresses, "interface address status and reason are consistent");
     if (addresses.status == NetworkDiagnosticStatus::Available) {
+        std::string loopback_interface_name;
+        for (const auto& item : interfaces.values) {
+            if (item.is_loopback) {
+                loopback_interface_name = item.name;
+                break;
+            }
+        }
         bool has_ipv4_loopback = false;
         for (const auto& item : addresses.values) {
             expect(!item.interface_name.empty(), "address has an interface name");
@@ -92,7 +99,10 @@ int main() {
             expect(item.family == AddressFamily::IPv4 ||
                        item.family == AddressFamily::IPv6,
                    "interface address has a supported family");
-            if (item.interface_name == "lo" && item.address == "127.0.0.1") {
+            if (!loopback_interface_name.empty() &&
+                item.interface_name == loopback_interface_name &&
+                item.family == AddressFamily::IPv4 &&
+                item.address == "127.0.0.1") {
                 has_ipv4_loopback = true;
             }
             if (item.prefix_length_available) {
