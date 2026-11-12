@@ -57,8 +57,9 @@ int main(){
  const ConfigurationObjectEntryView rd[]={{"station",obj(dup,4)}};candidate.document.root=obj(rd,1);
  r=validate_configuration_values(candidate,policy,issues,4);
  expect(has(r,"CONFIGURATION_VALUE_PATH_AMBIGUOUS","station.mode"),"duplicate keys rejected as ambiguous");
- candidate.document.root=obj(root,1);
+ candidate.document.root=obj(empty,1);
  expect(validate_configuration_values(candidate,policy,issues,2).status==ConfigurationValidationStatus::InternalError,"small issue buffer fails closed");
+ candidate.document.root=obj(root,1);
  expect(validate_configuration_values(candidate,policy,nullptr,0).status==ConfigurationValidationStatus::Valid,"null issue buffer allowed when no issues");
  const ConfigurationObjectEntryView nanv[]={{"mode",str("AUTO")},{"limit",si(3)},{"temperature",num(std::numeric_limits<double>::quiet_NaN())}};
  const ConfigurationObjectEntryView rn[]={{"station",obj(nanv,3)}};candidate.document.root=obj(rn,1);
