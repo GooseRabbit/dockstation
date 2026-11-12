@@ -96,8 +96,10 @@ int main() {
 
     struct sigaction previous_sigint {};
     struct sigaction previous_sigterm {};
-    (void)::sigaction(SIGINT, nullptr, &previous_sigint);
-    (void)::sigaction(SIGTERM, nullptr, &previous_sigterm);
+    const bool captured_previous_sigint =
+        ::sigaction(SIGINT, nullptr, &previous_sigint) == 0;
+    const bool captured_previous_sigterm =
+        ::sigaction(SIGTERM, nullptr, &previous_sigterm) == 0;
 
     runner_raise_signal = true;
     runner_saw_shutdown_signal = false;
@@ -107,12 +109,16 @@ int main() {
 
     struct sigaction restored_sigint {};
     struct sigaction restored_sigterm {};
-    (void)::sigaction(SIGINT, nullptr, &restored_sigint);
-    (void)::sigaction(SIGTERM, nullptr, &restored_sigterm);
+    const bool captured_restored_sigint =
+        ::sigaction(SIGINT, nullptr, &restored_sigint) == 0;
+    const bool captured_restored_sigterm =
+        ::sigaction(SIGTERM, nullptr, &restored_sigterm) == 0;
     expect(result.exit_code == ApplicationExitCode::Success &&
                runner_saw_shutdown_signal,
            "SIGTERM requests orderly service shutdown through sig_atomic_t");
-    expect(restored_sigint.sa_handler == previous_sigint.sa_handler &&
+    expect(captured_previous_sigint && captured_previous_sigterm &&
+               captured_restored_sigint && captured_restored_sigterm &&
+               restored_sigint.sa_handler == previous_sigint.sa_handler &&
                restored_sigterm.sa_handler == previous_sigterm.sa_handler,
            "restores the previous SIGINT and SIGTERM handlers");
 
