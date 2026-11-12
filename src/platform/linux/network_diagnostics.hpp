@@ -32,6 +32,7 @@ struct NetworkInterfaceInfo {
     bool is_up{false};
     bool is_running{false};
     bool is_loopback{false};
+    bool flags_available{false};
     bool mtu_available{false};
     std::uint32_t mtu{0};
 };
@@ -41,6 +42,7 @@ struct InterfaceAddressInfo {
     AddressFamily family{AddressFamily::Unspecified};
     std::string address{};
     std::uint8_t prefix_length{0};
+    bool prefix_length_available{false};
 };
 
 struct DefaultRouteInfo {
@@ -91,7 +93,8 @@ struct NetworkDiagnosticsSnapshot {
     AddressFamily family = AddressFamily::Unspecified);
 
 // Checks TCP connectivity to a caller-supplied host and port.
-// timeout bounds the TCP connection attempts after synchronous name resolution.
+// timeout must be between 1 ms and 60 s and bounds TCP connection attempts
+// after synchronous name resolution.
 [[nodiscard]] TcpReachabilityDiagnostic check_tcp_reachability(
     const std::string& host,
     std::uint16_t port,
