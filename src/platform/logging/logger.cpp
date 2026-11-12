@@ -82,6 +82,17 @@ std::string lower_ascii(std::string value) {
     return value;
 }
 
+bool valid_log_level(LogLevel level) {
+    switch (level) {
+        case LogLevel::Debug:
+        case LogLevel::Info:
+        case LogLevel::Warning:
+        case LogLevel::Error:
+            return true;
+    }
+    return false;
+}
+
 bool is_sensitive_key(const std::string& key) {
     const std::string normalized = lower_ascii(key);
     const char* const sensitive_parts[] = {
@@ -197,6 +208,12 @@ LoggerResult initialize_logger(const LoggerConfig& config) {
     LoggerState& logger = state();
     std::lock_guard<std::mutex> lock(logger.mutex);
 
+    if (!valid_log_level(config.minimum_level)) {
+        return {LoggerStatus::Unavailable, "unknown minimum log level"};
+    }
+    if (config.file_path.find('\0') != std::string::npos) {
+        return {LoggerStatus::Unavailable, "log file path contains a null byte"};
+    }
     if (!config.write_to_stderr && config.file_path.empty()) {
         return {LoggerStatus::Unavailable, "at least one log sink must be enabled"};
     }
@@ -242,6 +259,9 @@ LoggerResult write_log_record(LogLevel level,
     if (!logger.initialized) {
         return {LoggerStatus::Unavailable, "logger is not initialized"};
     }
+    if (!valid_log_level(level)) {
+        return {LoggerStatus::Unavailable, "unknown log record level"};
+    }
     if (static_cast<unsigned int>(level) <
         static_cast<unsigned int>(logger.config.minimum_level)) {
         return {LoggerStatus::Available, {}};
@@ -250,9 +270,12 @@ LoggerResult write_log_record(LogLevel level,
     const std::string record = serialize_record(level, component, message, fields);
     if (!logger.config.file_path.empty()) {
         struct stat info {};
-        if (::stat(logger.config.file_path.c_str(), &info) == 0 &&
-            static_cast<std::uint64_t>(info.st_size) + record.size() >
-                logger.config.max_file_size_bytes) {
+        if (::stat(logger.config.file_path.c_str(), &info) != 0) {
+            return {LoggerStatus::Unavailable,
+                    "cannot inspect configured log file before writing"};
+        }
+        if (static_cast<std::uint64_t>(info.st_size) + record.size() >
+            logger.config.max_file_size_bytes) {
             const LoggerResult rotation = rotate_locked(logger, true);
             if (rotation.status != LoggerStatus::Available) {
                 return rotation;
