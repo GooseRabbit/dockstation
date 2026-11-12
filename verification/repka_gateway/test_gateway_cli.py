@@ -20,7 +20,7 @@ def test_gateway_cli_starts_serves_api_and_stops():
     repository_root = Path(__file__).resolve().parents[2]
     port = reserve_port()
     process = subprocess.Popen(
-        [sys.executable, "-m", "apps.repka_gateway.dockstation_gateway.main", "--port", str(port)],
+        [sys.executable, "-m", "repka_gateway.dockstation_gateway.main", "--port", str(port)],
         cwd=repository_root,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
