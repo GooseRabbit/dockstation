@@ -137,6 +137,11 @@ int main() {
     expect(invalid_tcp.status == NetworkDiagnosticStatus::Unavailable,
            "zero TCP timeout is rejected");
 
+    const auto excessive_timeout = check_tcp_reachability(
+        "127.0.0.1", 80, std::chrono::seconds{61});
+    expect(excessive_timeout.status == NetworkDiagnosticStatus::Unavailable,
+           "TCP timeout above 60 seconds is rejected");
+
     std::uint16_t local_port{0};
     const int listener = create_local_listener(local_port);
     expect(listener >= 0 && local_port > 0,
