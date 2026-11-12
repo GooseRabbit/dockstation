@@ -110,6 +110,11 @@ int main() {
            "collects and logs read-only system and network diagnostics");
     std::remove(log_path.c_str());
 
+    result = run({"dockstation-bootstrap", "--log-file",
+                  "/tmp/dockstation_missing_bootstrap_dir/log.jsonl"});
+    expect(result.exit_code == ApplicationExitCode::StartupFailure,
+           "fails startup when the configured log sink cannot be opened");
+
     runner_calls = 0;
     runner_raise_signal = false;
     runner_result = 17;
