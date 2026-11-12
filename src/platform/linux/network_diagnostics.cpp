@@ -341,10 +341,13 @@ NetworkDiagnosticList<DefaultRouteInfo> read_default_route() {
             }
 
             std::uint32_t prefix{0};
+            std::uint32_t source_prefix_value{0};
             std::uint32_t metric{0};
             std::uint32_t flags{0};
-            if (!is_zero_hex(destination) ||
+            if (!is_zero_hex(destination) || !is_zero_hex(source) ||
                 !parse_hex_u32(destination_prefix, prefix) || prefix != 0 ||
+                !parse_hex_u32(source_prefix, source_prefix_value) ||
+                source_prefix_value != 0 ||
                 !parse_hex_u32(metric_text, metric) ||
                 !parse_hex_u32(flags_text, flags) ||
                 (flags & static_cast<std::uint32_t>(RTF_UP)) == 0) {
