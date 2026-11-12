@@ -24,10 +24,11 @@ function(dockstation_apply_compile_policy target_name)
     endif()
 endfunction()
 
-# The first Linux target contains only the implemented platform adapter.
+# The Linux runtime target contains implemented platform adapters.
 # The Gateway executable will be added when its application entry point exists.
 add_library(dockstation_linux_runtime STATIC
     src/platform/linux/runtime_environment.cpp
+    src/platform/linux/system_diagnostics.cpp
 )
 target_include_directories(dockstation_linux_runtime
     PUBLIC "${PROJECT_SOURCE_DIR}/src"
@@ -42,18 +43,32 @@ if(BUILD_TESTING)
         PRIVATE dockstation_linux_runtime
     )
     dockstation_apply_compile_policy(test_runtime_environment)
+    add_test(NAME runtime_environment COMMAND test_runtime_environment)
+
+    add_executable(test_system_diagnostics
+        verification/repka_gateway/test_system_diagnostics.cpp
+    )
+    target_link_libraries(test_system_diagnostics
+        PRIVATE dockstation_linux_runtime
+    )
+    dockstation_apply_compile_policy(test_system_diagnostics)
+    add_test(NAME system_diagnostics COMMAND test_system_diagnostics)
 
     if(DOCKSTATION_ENABLE_SANITIZERS)
         if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-            target_compile_options(dockstation_linux_runtime PRIVATE
-                -fsanitize=address,undefined
-                -fno-omit-frame-pointer
-            )
-            target_compile_options(test_runtime_environment PRIVATE
-                -fsanitize=address,undefined
-                -fno-omit-frame-pointer
-            )
+            foreach(target_name
+                    dockstation_linux_runtime
+                    test_runtime_environment
+                    test_system_diagnostics)
+                target_compile_options(${target_name} PRIVATE
+                    -fsanitize=address,undefined
+                    -fno-omit-frame-pointer
+                )
+            endforeach()
             target_link_options(test_runtime_environment PRIVATE
+                -fsanitize=address,undefined
+            )
+            target_link_options(test_system_diagnostics PRIVATE
                 -fsanitize=address,undefined
             )
         else()
@@ -61,6 +76,4 @@ if(BUILD_TESTING)
                 "DOCKSTATION_ENABLE_SANITIZERS is unsupported by this compiler; sanitizers are disabled.")
         endif()
     endif()
-
-    add_test(NAME runtime_environment COMMAND test_runtime_environment)
 endif()
