@@ -57,6 +57,15 @@ int main() {
     expect(parse({"dockstation-gateway", "--api-port", "65536"}).status ==
                CommandLineParseStatus::InvalidArguments,
            "rejects API port above 65535");
+    expect(parse({"dockstation-gateway", "--api-port", "4294967296"}).status ==
+               CommandLineParseStatus::InvalidArguments,
+           "rejects API port outside the RuntimeConfig integer range");
+    expect(parse({"dockstation-gateway", "--bind", "0.0.0.0"}).status ==
+               CommandLineParseStatus::InvalidArguments,
+           "rejects attempts to change the fixed bind address");
+    expect(parse({"dockstation-gateway", "--config-file", "/tmp/gateway.json"}).status ==
+               CommandLineParseStatus::InvalidArguments,
+           "rejects unsupported external configuration file option");
     expect(parse({"dockstation-gateway", "--api-port"}).status ==
                CommandLineParseStatus::InvalidArguments,
            "rejects option without a value");
