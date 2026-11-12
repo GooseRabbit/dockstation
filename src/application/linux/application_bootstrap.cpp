@@ -1,6 +1,7 @@
 #include "application/linux/application_bootstrap.hpp"
 
 #include <csignal>
+#include <cstddef>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -300,7 +301,7 @@ ApplicationRunResult run_application(int argc,
             const bool degraded =
                 dependencies.status ==
                 platform::linux_runtime::RuntimeDependencyStatus::Degraded;
-            (void)write_log(
+            startup_ok = write_log(
                 degraded ? LogLevel::Warning : LogLevel::Info,
                 degraded ? "Системное окружение доступно частично"
                          : "Базовые системные зависимости доступны",
@@ -313,7 +314,8 @@ ApplicationRunResult run_application(int argc,
                  {"thermal_sensor_available",
                   dependencies.thermal_sensor_available ? "true" : "false"}});
 
-            startup_ok =
+            if (startup_ok) {
+                startup_ok =
                 log_runtime_value("os_version",
                                   platform::linux_runtime::read_os_version()) &&
                 log_runtime_value("kernel_version",
@@ -322,6 +324,7 @@ ApplicationRunResult run_application(int argc,
                                   platform::linux_runtime::read_hardware_architecture()) &&
                 log_runtime_value("software_build",
                                   platform::linux_runtime::read_software_build_info());
+            }
             if (startup_ok) {
                 startup_ok = log_startup_diagnostics();
             }
@@ -361,7 +364,9 @@ ApplicationRunResult run_application(int argc,
                      "HTTP API не запущен.\n";
     }
 
-    (void)write_log(LogLevel::Info, "Завершение Linux-приложения DockStation");
+    if (!write_log(LogLevel::Info, "Завершение Linux-приложения DockStation")) {
+        exit_code = ApplicationExitCode::ShutdownFailure;
+    }
 
     if (!signal_handlers.restore()) {
         (void)write_log(LogLevel::Error,
@@ -383,7 +388,10 @@ ApplicationRunResult run_application(int argc,
     }
 
     result.exit_code = exit_code;
-    if (exit_code == ApplicationExitCode::Success) {
+    if (exit_code == ApplicationExitCode::Success && service_runner == nullptr) {
+        result.message =
+            "Bootstrap завершён; прикладные службы не зарегистрированы; HTTP API не запущен";
+    } else if (exit_code == ApplicationExitCode::Success) {
         result.message = "Bootstrap завершён";
     } else if (exit_code == ApplicationExitCode::ServiceFailure) {
         result.message = "Ошибка прикладной службы";
