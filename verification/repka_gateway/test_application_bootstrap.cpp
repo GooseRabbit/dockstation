@@ -123,8 +123,8 @@ int main() {
            "restores the previous SIGINT and SIGTERM handlers");
 
     std::ifstream input(log_path);
-    const std::string log_content(std::istreambuf_iterator<char>(input),
-                                  std::istreambuf_iterator<char>());
+    const std::string log_content{std::istreambuf_iterator<char>(input),
+                                  std::istreambuf_iterator<char>()};
     expect(log_content.find("Запуск Linux-приложения DockStation") !=
                std::string::npos &&
                log_content.find("Завершение Linux-приложения DockStation") !=
