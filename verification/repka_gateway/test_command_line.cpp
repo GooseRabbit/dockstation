@@ -109,8 +109,8 @@ int main() {
 
     const std::string help = command_line_help("dockstation-gateway");
     expect(help.find("--api-port") != std::string::npos &&
-               help.find("127.0.0.1") != std::string::npos &&
-               help.find("конфигурации") != std::string::npos,
+               help.find("--config-file") != std::string::npos &&
+               help.find("127.0.0.1") != std::string::npos,
            "help describes supported options and fixed loopback binding");
 
     std::cout << "Checks: " << checks << ", failures: " << failures << '\n';

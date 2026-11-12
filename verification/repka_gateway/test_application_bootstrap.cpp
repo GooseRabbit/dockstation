@@ -1,5 +1,6 @@
 #include <cstdio>
 #include <csignal>
+#include <cstdint>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -18,6 +19,7 @@ int failures = 0;
 int checks = 0;
 int runner_calls = 0;
 int runner_result = 0;
+std::uint32_t runner_expected_api_port = 8091U;
 bool runner_received_expected_config = false;
 bool runner_raise_signal = false;
 bool runner_saw_shutdown_signal = false;
@@ -47,7 +49,7 @@ int test_service_runner(
     const volatile std::sig_atomic_t* shutdown_flag) {
     ++runner_calls;
     runner_received_expected_config =
-        config.api_port == 8091U && shutdown_flag != nullptr &&
+        config.api_port == runner_expected_api_port && shutdown_flag != nullptr &&
         !is_shutdown_requested(shutdown_flag);
     if (runner_raise_signal) {
         (void)std::raise(SIGTERM);
@@ -93,6 +95,47 @@ int main() {
            "runs startup, service callback, and orderly shutdown");
     expect(runner_calls == 1 && runner_received_expected_config,
            "passes validated configuration and shutdown flag to service runner");
+
+    const std::string config_path =
+        "/tmp/dockstation_bootstrap_config_" +
+        std::to_string(static_cast<long long>(::getpid())) + ".conf";
+    const std::string config_log_path =
+        "/tmp/dockstation_bootstrap_config_" +
+        std::to_string(static_cast<long long>(::getpid())) + ".jsonl";
+    std::remove(config_path.c_str());
+    std::remove(config_log_path.c_str());
+    {
+        std::ofstream config_file(config_path);
+        config_file << "api_port=8092\n"
+                    << "log_file=" << config_log_path << "\n"
+                    << "log_stderr=false\n";
+    }
+    runner_expected_api_port = 8093U;
+    runner_calls = 0;
+    runner_received_expected_config = false;
+    result = run({"dockstation-bootstrap", "--config-file", config_path,
+                  "--api-port", "8093"}, test_service_runner);
+    expect(result.exit_code == ApplicationExitCode::Success &&
+               runner_calls == 1 && runner_received_expected_config,
+           "loads the config file and gives explicit CLI values higher priority");
+    std::remove(config_path.c_str());
+    std::remove(config_log_path.c_str());
+    runner_expected_api_port = 8091U;
+
+    const std::string invalid_config_path =
+        "/tmp/dockstation_bootstrap_invalid_" +
+        std::to_string(static_cast<long long>(::getpid())) + ".conf";
+    {
+        std::ofstream config_file(invalid_config_path);
+        config_file << "unknown_setting=true\n";
+    }
+    runner_calls = 0;
+    result = run({"dockstation-bootstrap", "--config-file", invalid_config_path},
+                 test_service_runner);
+    expect(result.exit_code == ApplicationExitCode::StartupFailure &&
+               runner_calls == 0,
+           "rejects an invalid config file before Logger and service startup");
+    std::remove(invalid_config_path.c_str());
 
     struct sigaction previous_sigint {};
     struct sigaction previous_sigterm {};

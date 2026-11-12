@@ -523,7 +523,7 @@ PlatformLogger обслуживает технические сообщения 
 |---|---|
 | `RuntimeConfigFileStatus` | Различает LOADED, NOT_FOUND, READ_ERROR и INVALID. |
 | `RuntimeConfigFileResult` | Возвращает RuntimeConfig либо причину отказа и номер строки. |
-| `parse_runtime_config_text(const std::string& contents)` | Разбирает строгий UTF-8-совместимый текстовый формат `key=value`; поддерживает пустые строки, строки-комментарии с `#` и необязательный UTF-8 BOM. |
+| `parse_runtime_config_text(const std::string& contents)` | Разбирает текстовый формат с ASCII-ключами `key=value`; поддерживает пустые строки, строки-комментарии с `#` и необязательный UTF-8 BOM. |
 | `load_runtime_config_file(const std::string& path)` | Читает явно указанный обычный файл размером не более 65536 байт; различает отсутствие, ошибку чтения и некорректное содержимое. |
 
 Поддерживаемые ключи: `api_port`, `log_level`, `log_file`, `log_stderr`, `log_max_file_size_bytes`, `log_max_rotated_files`. Дубликаты и неизвестные ключи запрещены. Inline-комментарии и кавычки не имеют специального значения. Загрузчик не выбирает путь по умолчанию и не запускает Logger. Межполевую проверку выполняют после применения CLI overrides.
@@ -537,11 +537,12 @@ PlatformLogger обслуживает технические сообщения 
 | Функция / тип | Назначение |
 |---|---|
 | `CommandLineParseStatus` | Различает успешный разбор, запрос справки и некорректные аргументы. |
-| `CommandLineParseResult` | Возвращает RuntimeConfig либо причину отказа без побочных действий. |
-| `parse_command_line(int argc, const char* const argv[])` | Разбирает поддерживаемые параметры процесса, отклоняет повторы/неизвестные параметры, отсутствующие значения и следующий option-токен вместо значения; запускает validate_runtime_config() для итоговой конфигурации. |
-| `command_line_help(const std::string& executable_name)` | Формирует справку о поддерживаемых аргументах и безопасном loopback bind. |
+| `CommandLineParseResult` | Возвращает разобранные CLI-значения, маску явно заданных overrides, путь конфигурационного файла либо причину отказа без побочных действий. |
+| `parse_command_line(int argc, const char* const argv[])` | Разбирает поддерживаемые параметры процесса, включая `--config-file`; отклоняет повторы/неизвестные параметры и ошибки значений. Если файл задан, межполевую проверку откладывает до объединения; иначе проверяет CLI-конфигурацию. |
+| `apply_command_line_overrides(const CommandLineParseResult& parsed, RuntimeConfig& config)` | Применяет к базовой конфигурации только те CLI-значения, которые пользователь явно указал. |
+| `command_line_help(const std::string& executable_name)` | Формирует справку о поддерживаемых аргументах, конфигурационном файле и безопасном loopback bind. |
 
-Поддерживаемые параметры: `--api-port`, `--log-level`, `--log-file`, `--log-stderr`, `--no-log-stderr`, `--log-max-file-size-bytes`, `--log-max-rotated-files`, отдельный `--help`. Парсер не читает конфигурационные файлы/переменные окружения, не открывает файлы и не запускает службы. Адрес `127.0.0.1` не настраивается из CLI. Формат внешней конфигурации остаётся открытым.
+Поддерживаемые параметры: `--config-file`, `--api-port`, `--log-level`, `--log-file`, `--log-stderr`, `--no-log-stderr`, `--log-max-file-size-bytes`, `--log-max-rotated-files`, отдельный `--help`. Сам парсер не читает файл и не запускает службы. Адрес `127.0.0.1` не настраивается из CLI. Межполевая проверка выполняется Bootstrap после объединения defaults → file → CLI.
 
 ---
 
