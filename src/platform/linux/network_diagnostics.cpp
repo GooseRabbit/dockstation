@@ -344,7 +344,9 @@ NetworkDiagnosticList<DefaultRouteInfo> read_default_route() {
             std::uint32_t source_prefix_value{0};
             std::uint32_t metric{0};
             std::uint32_t flags{0};
-            if (!is_zero_hex(destination) || !is_zero_hex(source) ||
+            if (destination.size() != 32 || source.size() != 32 ||
+                destination_prefix.size() != 2 || source_prefix.size() != 2 ||
+                !is_zero_hex(destination) || !is_zero_hex(source) ||
                 !parse_hex_u32(destination_prefix, prefix) || prefix != 0 ||
                 !parse_hex_u32(source_prefix, source_prefix_value) ||
                 source_prefix_value != 0 ||
