@@ -1,7 +1,7 @@
 # Полный план реализации программного комплекса DockStation на Repka Pi 5
 
 **Статус:** мастер-план реализации; последовательность разработки согласована, открытые платформенные, сетевые, серверные и аппаратные детали требуют отдельной проверки и решения.  
-**Редакция:** 1.12.  
+**Редакция:** 1.13.  
 **Дата:** 2026-11-12.  
 **Вычислительная платформа:** Repka Pi 5.  
 **Предполагаемая ОС:** официальная Repka OS; образ и версия проверяются перед развёртыванием.
@@ -95,7 +95,7 @@ Windows-клиент не обращается к GPIO, драйверам и с
 
 ## Этап 1. Linux Gateway и системная диагностика
 
-**Файлы:** корневой `CMakeLists.txt`; `repka_gateway/main.cpp`; `src/application/linux/application_bootstrap.hpp/.cpp`; `src/platform/linux/runtime_environment.hpp/.cpp`; `src/platform/linux/system_diagnostics.hpp/.cpp`; `src/platform/linux/network_diagnostics.hpp/.cpp`; `src/platform/logging/logger.hpp/.cpp`; `src/platform/linux/runtime_config.hpp/.cpp`; `src/platform/linux/command_line.hpp/.cpp`; в дальнейшем — `repka/dockstation-gateway.service`.
+**Файлы:** корневой `CMakeLists.txt`; `.github/workflows/linux-cmake.yml`; `repka_gateway/main.cpp`; `src/application/linux/application_bootstrap.hpp/.cpp`; `src/platform/linux/runtime_environment.hpp/.cpp`; `src/platform/linux/system_diagnostics.hpp/.cpp`; `src/platform/linux/network_diagnostics.hpp/.cpp`; `src/platform/logging/logger.hpp/.cpp`; `src/platform/linux/runtime_config.hpp/.cpp`; `src/platform/linux/command_line.hpp/.cpp`; в дальнейшем — `repka/dockstation-gateway.service`.
 
 **Согласованная система сборки:** CMake используется для отдельной Linux-цели. Текущая корневая конфигурация собирает в статическую библиотеку `dockstation_linux_runtime` семь компонентов: `LinuxApplicationBootstrap`, `RuntimeEnvironment`, `SystemDiagnostics`, `NetworkDiagnostics`, `PlatformLogger`, `RuntimeConfig` и `CommandLineParser`. Для потокобезопасного PlatformLogger CMake явно находит и подключает `Threads::Threads`; зависимость транзитивно передаётся потребителям статической библиотеки. Отдельная исполняемая цель `dockstation_linux_bootstrap` использует `repka_gateway/main.cpp`. В CTest зарегистрированы семь host-проверок: `test_application_bootstrap`, `test_runtime_environment`, `test_system_diagnostics`, `test_network_diagnostics`, `test_logger`, `test_runtime_config`, `test_command_line`. Bootstrap пока работает в bootstrap-only режиме без callback прикладной службы: проверяет окружение и завершается, явно сообщая, что HTTP API не запущен. Он не подменяет временный Python Gateway и не создаёт конкурирующий HTTP-сервер. Существующие `tests/` и `tools/` не меняются.
 
@@ -624,7 +624,9 @@ USB/UART, пины и формат кадров остаются открыты�
 | 1.10 | 2026-11-12 | Для статической Linux-библиотеки явно подключена системная потоковая зависимость `Threads::Threads`; Logger сбрасывает файловый буфер до проверки размера, чтобы ротация учитывала все предыдущие записи. Добавлен регрессионный тест и критерий TEST-PLAT-029. Сборка и тесты всё ещё не запускались. |
 | 1.11 | 2026-11-12 | Уточнено описание PlatformLogger в реестре и мастер-плане: проверка порога ротации выполняется после сброса буфера файлового потока. Сборка и тесты всё ещё не запускались. |
 
-| 1.12 | 2026-11-12 | Добавлен LinuxApplicationBootstrap: отдельная точка входа, validate-before-initialize Logger, read-only runtime/system/network диагностика, SIGINT/SIGTERM через sig_atomic_t, ServiceRunner и штатное завершение; добавлены исполняемая CMake-цель, седьмая CTest-программа и критерии TEST-PLAT-030…036. Bootstrap-only режим явно не запускает HTTP API. Сборка и тесты ещё не запускались. |
+| 1.12 | 2026-11-12 | Добавлен LinuxApplicationBootstrap: отдельная точка входа, validate-before-initialize Logger, read-only runtime/system/network диагностика, SIGINT/SIGTERM через sig_atomic_t, ServiceRunner и штатное завершение; добавлены исполняемая CMake-цель, седьмая CTest-программа и критерии TEST-PLAT-030…036. Bootstrap-only режим явно не запускает HTTP API. Локальная сборка не выполнялась; результат GitHub Actions пока не подтверждён. |
+
+| 1.13 | 2026-11-12 | Добавлен GitHub Actions workflow для CMake-сборки Linux-цели и выполнения семи CTest-программ с AddressSanitizer/UndefinedBehaviorSanitizer. Доступный статус выполнения пока не получен. |
 
 **Ограничение:** это план. Функции не считаются реализованными до появления кода, проверок и, где требуется, аппаратных испытаний.
 
