@@ -134,6 +134,9 @@ Windows-клиент не обращается к GPIO, драйверам и с
 **logger.cpp:**
 - initialize_logger(), write_log_record(), redact_sensitive_fields(), rotate_log_files(), flush_log().
 
+**runtime_config.cpp:**
+- validate_runtime_config() — проверка типизированных настроек процесса Gateway без чтения файла и запуска служб.
+
 Недоступная температура или неизвестный статус обозначаются явно, не подменяются нулём.
 
 **Реализованный первый срез этапа 1 — RuntimeEnvironment:** `src/platform/linux/runtime_environment.hpp/.cpp` содержит `read_os_version()`, `read_kernel_version()`, `read_hardware_architecture()`, `read_software_build_info()` и `check_runtime_dependencies()`. Проверка размещена в `verification/repka_gateway/test_runtime_environment.cpp`; ранее на host Linux x86_64 были пройдены 16 проверок.
