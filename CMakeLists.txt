@@ -26,8 +26,7 @@ function(dockstation_apply_compile_policy target_name)
     endif()
 endfunction()
 
-# The Linux runtime target contains implemented platform adapters.
-# The Gateway executable will be added when its application entry point exists.
+# Shared Linux runtime support and application bootstrap components.
 add_library(dockstation_linux_runtime STATIC
     src/application/linux/application_bootstrap.cpp
     src/platform/linux/runtime_environment.cpp
