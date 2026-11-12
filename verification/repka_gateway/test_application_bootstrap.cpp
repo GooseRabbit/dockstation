@@ -110,10 +110,14 @@ int main() {
            "collects and logs read-only system and network diagnostics");
     std::remove(log_path.c_str());
 
+    runner_calls = 0;
+    runner_result = 0;
     result = run({"dockstation-bootstrap", "--log-file",
-                  "/dev/null/dockstation_bootstrap.jsonl"});
-    expect(result.exit_code == ApplicationExitCode::StartupFailure,
-           "fails startup when the configured log sink cannot be opened");
+                  "/dev/null/dockstation_bootstrap.jsonl"},
+                 test_service_runner);
+    expect(result.exit_code == ApplicationExitCode::StartupFailure &&
+               runner_calls == 0,
+           "fails startup and does not start a service when the log sink cannot be opened");
 
     runner_calls = 0;
     runner_raise_signal = false;
