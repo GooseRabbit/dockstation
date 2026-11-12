@@ -1,0 +1,264 @@
+#include "application/linux/application_bootstrap.hpp"
+
+#include <csignal>
+#include <cstdio>
+#include <iostream>
+#include <string>
+#include <vector>
+
+#include "platform/linux/runtime_environment.hpp"
+#include "platform/logging/logger.hpp"
+
+namespace dockstation::application::linux_app {
+namespace {
+
+volatile std::sig_atomic_t g_shutdown_requested = 0;
+
+extern "C" void handle_shutdown_signal(int signal_number) {
+    if (signal_number == SIGINT || signal_number == SIGTERM) {
+        g_shutdown_requested = 1;
+    }
+}
+
+class ShutdownSignalHandlers {
+public:
+    ShutdownSignalHandlers() = default;
+    ShutdownSignalHandlers(const ShutdownSignalHandlers&) = delete;
+    ShutdownSignalHandlers& operator=(const ShutdownSignalHandlers&) = delete;
+
+    ~ShutdownSignalHandlers() {
+        (void)restore();
+    }
+
+    bool install() noexcept {
+        g_shutdown_requested = 0;
+
+        struct sigaction action {};
+        action.sa_handler = handle_shutdown_signal;
+        action.sa_flags = 0;
+        if (::sigemptyset(&action.sa_mask) != 0) {
+            return false;
+        }
+
+        if (::sigaction(SIGINT, &action, &previous_sigint_) != 0) {
+            return false;
+        }
+        sigint_installed_ = true;
+
+        if (::sigaction(SIGTERM, &action, &previous_sigterm_) != 0) {
+            (void)restore();
+            return false;
+        }
+        sigterm_installed_ = true;
+        return true;
+    }
+
+    bool restore() noexcept {
+        bool restored = true;
+        if (sigterm_installed_) {
+            if (::sigaction(SIGTERM, &previous_sigterm_, nullptr) != 0) {
+                restored = false;
+            } else {
+                sigterm_installed_ = false;
+            }
+        }
+        if (sigint_installed_) {
+            if (::sigaction(SIGINT, &previous_sigint_, nullptr) != 0) {
+                restored = false;
+            } else {
+                sigint_installed_ = false;
+            }
+        }
+        return restored;
+    }
+
+    [[nodiscard]] const volatile std::sig_atomic_t* flag() const noexcept {
+        return &g_shutdown_requested;
+    }
+
+private:
+    struct sigaction previous_sigint_ {};
+    struct sigaction previous_sigterm_ {};
+    bool sigint_installed_{false};
+    bool sigterm_installed_{false};
+};
+
+bool write_log(platform::logging::LogLevel level,
+               const std::string& message,
+               const std::vector<platform::logging::LogField>& fields = {}) {
+    const platform::logging::LoggerResult result =
+        platform::logging::write_log_record(level, "application_bootstrap",
+                                            message, fields);
+    return result.status == platform::logging::LoggerStatus::Available;
+}
+
+void log_runtime_value(const char* name,
+                       const platform::linux_runtime::RuntimeValue& value) {
+    using platform::logging::LogLevel;
+    using platform::logging::LogField;
+    if (value.status == platform::linux_runtime::RuntimeValueStatus::Available) {
+        (void)write_log(LogLevel::Info, "Runtime information available",
+                        {{name, value.value}});
+    } else {
+        (void)write_log(LogLevel::Warning, "Runtime information unavailable",
+                        {{name, value.reason}});
+    }
+}
+
+}  // namespace
+
+bool is_shutdown_requested(
+    const volatile std::sig_atomic_t* shutdown_requested) noexcept {
+    return shutdown_requested != nullptr && *shutdown_requested != 0;
+}
+
+ApplicationRunResult run_application(int argc,
+                                     const char* const argv[],
+                                     ServiceRunner service_runner) {
+    using platform::logging::LogLevel;
+    using platform::linux_runtime::CommandLineParseStatus;
+    using platform::linux_runtime::parse_command_line;
+
+    ApplicationRunResult result{};
+    const auto parsed = parse_command_line(argc, argv);
+
+    if (parsed.status == CommandLineParseStatus::HelpRequested) {
+        const std::string executable =
+            argc > 0 && argv != nullptr && argv[0] != nullptr ? argv[0] : "";
+        std::cout << platform::linux_runtime::command_line_help(executable);
+        result.exit_code = ApplicationExitCode::Success;
+        result.help_requested = true;
+        result.message = "Справка выведена";
+        return result;
+    }
+    if (parsed.status != CommandLineParseStatus::Success) {
+        std::cerr << "Ошибка параметров запуска: " << parsed.error << '\n'
+                  << "Используйте --help для просмотра справки.\n";
+        result.exit_code = ApplicationExitCode::InvalidArguments;
+        result.message = parsed.error;
+        return result;
+    }
+
+    const auto logger_result =
+        platform::linux_runtime::initialize_runtime_logger(parsed.config);
+    if (logger_result.status !=
+        platform::linux_runtime::RuntimeLoggerInitializationStatus::Ready) {
+        std::cerr << "Не удалось инициализировать журналирование: "
+                  << logger_result.field << ": " << logger_result.reason << '\n';
+        result.exit_code = ApplicationExitCode::StartupFailure;
+        result.message = logger_result.reason;
+        return result;
+    }
+
+    bool startup_ok = true;
+    ApplicationExitCode exit_code = ApplicationExitCode::Success;
+    ShutdownSignalHandlers signal_handlers;
+
+    if (!signal_handlers.install()) {
+        (void)write_log(LogLevel::Error, "Не удалось установить обработчики SIGINT/SIGTERM");
+        startup_ok = false;
+        exit_code = ApplicationExitCode::StartupFailure;
+    }
+
+    if (startup_ok &&
+        !write_log(LogLevel::Info, "Запуск Linux-приложения DockStation",
+                   {{"api_bind_address",
+                     platform::linux_runtime::kGatewayBindAddress},
+                    {"api_port", std::to_string(parsed.config.api_port)}})) {
+        startup_ok = false;
+        exit_code = ApplicationExitCode::StartupFailure;
+    }
+
+    if (startup_ok) {
+        const auto dependencies =
+            platform::linux_runtime::check_runtime_dependencies();
+        if (dependencies.status ==
+            platform::linux_runtime::RuntimeDependencyStatus::Unavailable) {
+            (void)write_log(LogLevel::Error,
+                            "Критическая проверка системного окружения не пройдена",
+                            {{"uname_available",
+                              dependencies.uname_available ? "true" : "false"}});
+            startup_ok = false;
+            exit_code = ApplicationExitCode::StartupFailure;
+        } else {
+            const bool degraded =
+                dependencies.status ==
+                platform::linux_runtime::RuntimeDependencyStatus::Degraded;
+            (void)write_log(
+                degraded ? LogLevel::Warning : LogLevel::Info,
+                degraded ? "Системное окружение доступно частично"
+                         : "Базовые системные зависимости доступны",
+                {{"proc_uptime_available",
+                  dependencies.proc_uptime_available ? "true" : "false"},
+                 {"proc_memory_available",
+                  dependencies.proc_memory_available ? "true" : "false"},
+                 {"os_release_available",
+                  dependencies.os_release_available ? "true" : "false"},
+                 {"thermal_sensor_available",
+                  dependencies.thermal_sensor_available ? "true" : "false"}});
+
+            log_runtime_value("os_version",
+                              platform::linux_runtime::read_os_version());
+            log_runtime_value("kernel_version",
+                              platform::linux_runtime::read_kernel_version());
+            log_runtime_value("architecture",
+                              platform::linux_runtime::read_hardware_architecture());
+            log_runtime_value("software_build",
+                              platform::linux_runtime::read_software_build_info());
+        }
+    }
+
+    if (startup_ok && service_runner != nullptr) {
+        if (!write_log(LogLevel::Info, "Запуск зарегистрированной прикладной службы")) {
+            startup_ok = false;
+            exit_code = ApplicationExitCode::StartupFailure;
+        } else {
+            const int service_result =
+                service_runner(parsed.config, signal_handlers.flag());
+            if (service_result != 0) {
+                (void)write_log(LogLevel::Error,
+                                "Прикладная служба завершилась с ошибкой",
+                                {{"service_exit_code",
+                                  std::to_string(service_result)}});
+                exit_code = ApplicationExitCode::ServiceFailure;
+            } else {
+                (void)write_log(LogLevel::Info,
+                                "Прикладная служба завершилась штатно");
+            }
+        }
+    } else if (startup_ok) {
+        (void)write_log(
+            LogLevel::Warning,
+            "Bootstrap завершён; прикладные службы не зарегистрированы");
+        std::cout << "Bootstrap DockStation инициализирован. "
+                     "Прикладные службы пока не зарегистрированы; "
+                     "HTTP API не запущен.\n";
+    }
+
+    (void)write_log(LogLevel::Info, "Завершение Linux-приложения DockStation");
+
+    if (!signal_handlers.restore()) {
+        (void)write_log(LogLevel::Error,
+                        "Не удалось восстановить исходные обработчики сигналов");
+        exit_code = ApplicationExitCode::ShutdownFailure;
+    }
+
+    const auto flush_result = platform::logging::flush_log();
+    if (flush_result.status != platform::logging::LoggerStatus::Available) {
+        std::cerr << "Ошибка сброса журнала: " << flush_result.reason << '\n';
+        exit_code = ApplicationExitCode::ShutdownFailure;
+    }
+
+    const auto shutdown_result = platform::logging::shutdown_logger();
+    if (shutdown_result.status != platform::logging::LoggerStatus::Available) {
+        std::cerr << "Ошибка завершения журналирования: "
+                  << shutdown_result.reason << '\n';
+        exit_code = ApplicationExitCode::ShutdownFailure;
+    }
+
+    result.exit_code = exit_code;
+    result.message = startup_ok ? "Bootstrap завершён" : "Ошибка запуска";
+    return result;
+}
+
+}  // namespace dockstation::application::linux_app
