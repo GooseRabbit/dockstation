@@ -31,4 +31,20 @@ struct RuntimeConfigValidationResult {
 [[nodiscard]] RuntimeConfigValidationResult validate_runtime_config(
     const RuntimeConfig& config);
 
+enum class RuntimeLoggerInitializationStatus : std::uint8_t {
+    Ready,
+    Rejected,
+    Unavailable
+};
+
+struct RuntimeLoggerInitializationResult {
+    RuntimeLoggerInitializationStatus status{RuntimeLoggerInitializationStatus::Unavailable};
+    std::string field{};
+    std::string reason{};
+};
+
+// Validates the complete runtime configuration before initializing PlatformLogger.
+[[nodiscard]] RuntimeLoggerInitializationResult initialize_runtime_logger(
+    const RuntimeConfig& config);
+
 }  // namespace dockstation::platform::linux_runtime
