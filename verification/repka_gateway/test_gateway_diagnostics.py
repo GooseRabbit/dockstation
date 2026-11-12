@@ -4,8 +4,8 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
-from apps.repka_gateway.dockstation_gateway import diagnostics
-from apps.repka_gateway.dockstation_gateway.diagnostics import CommandResult
+from repka_gateway.dockstation_gateway import diagnostics
+from repka_gateway.dockstation_gateway.diagnostics import CommandResult
 
 
 def runner_for(*results: CommandResult):
