@@ -1,7 +1,7 @@
 # Полный план реализации программного комплекса DockStation на Repka Pi 5
 
 **Статус:** мастер-план реализации; последовательность разработки согласована, открытые платформенные, сетевые, серверные и аппаратные детали требуют отдельной проверки и решения.  
-**Редакция:** 1.9.  
+**Редакция:** 1.10.  
 **Дата:** 2026-11-12.  
 **Вычислительная платформа:** Repka Pi 5.  
 **Предполагаемая ОС:** официальная Repka OS; образ и версия проверяются перед развёртыванием.
@@ -97,7 +97,7 @@ Windows-клиент не обращается к GPIO, драйверам и с
 
 **Файлы:** корневой `CMakeLists.txt`; в дальнейшем — `apps/repka_gateway/CMakeLists.txt` и `apps/repka_gateway/main.cpp`; `src/platform/linux/runtime_environment.hpp/.cpp`; `src/platform/linux/system_diagnostics.hpp/.cpp`; `src/platform/linux/network_diagnostics.hpp/.cpp`; `src/platform/logging/logger.hpp/.cpp`; `src/platform/linux/runtime_config.hpp/.cpp`; `src/platform/linux/command_line.hpp/.cpp`; `deployment/repka/dockstation-gateway.service`.
 
-**Согласованная система сборки:** CMake используется для отдельной Linux-цели. Текущая корневая конфигурация собирает в статическую библиотеку `dockstation_linux_runtime` шесть компонентов: `RuntimeEnvironment`, `SystemDiagnostics`, `NetworkDiagnostics`, `PlatformLogger`, `RuntimeConfig` и `CommandLineParser`. Для них зарегистрированы шесть отдельных host-проверок в `verification/repka_gateway/` и CTest: `test_runtime_environment`, `test_system_diagnostics`, `test_network_diagnostics`, `test_logger`, `test_runtime_config`, `test_command_line`. Полноценная исполняемая цель Gateway появится после реализации `main.cpp` и каркаса приложения; текущая конфигурация не создаёт фиктивную точку входа и не меняет существующие `tests/` и `tools/`.
+**Согласованная система сборки:** CMake используется для отдельной Linux-цели. Текущая корневая конфигурация собирает в статическую библиотеку `dockstation_linux_runtime` шесть компонентов: `RuntimeEnvironment`, `SystemDiagnostics`, `NetworkDiagnostics`, `PlatformLogger`, `RuntimeConfig` и `CommandLineParser`. Для потокобезопасного PlatformLogger CMake явно находит и подключает `Threads::Threads`; зависимость транзитивно передаётся потребителям статической библиотеки. Для компонентов зарегистрированы шесть отдельных host-проверок в `verification/repka_gateway/` и CTest: `test_runtime_environment`, `test_system_diagnostics`, `test_network_diagnostics`, `test_logger`, `test_runtime_config`, `test_command_line`. Полноценная исполняемая цель Gateway появится после реализации `main.cpp` и каркаса приложения; текущая конфигурация не создаёт фиктивную точку входа и не меняет существующие `tests/` и `tools/`.
 
 Команды из корня репозитория:
 
@@ -618,5 +618,6 @@ USB/UART, пины и формат кадров остаются открыты�
 | 1.7 | 2026-11-12 | Дополнительно обработано исчезновение открытого log-файла при ротации/записи, добавлена защита расчёта размера от переполнения и тест недопустимого семейства DNS. Сборка и тесты всё ещё не запускались. |
 | 1.8 | 2026-11-12 | Исправлено маскирование чувствительных имён полей с пробелами (`private key`, `API key`); добавлены проверки обоих вариантов. Сборка и тесты всё ещё не запускались. |
 | 1.9 | 2026-11-12 | Уточнён состав текущей CMake-цели и шести CTest-программ; ожидаемый результат этапа отделён от фактически реализованного среза. CLI дополнительно отклоняет следующий option-токен вместо значения; добавлен регрессионный критерий TEST-PLAT-028. Сборка и тесты всё ещё не запускались. |
+| 1.10 | 2026-11-12 | Для статической Linux-библиотеки явно подключена системная потоковая зависимость `Threads::Threads`; Logger сбрасывает файловый буфер до проверки размера, чтобы ротация учитывала все предыдущие записи. Добавлен регрессионный тест и критерий TEST-PLAT-029. Сборка и тесты всё ещё не запускались. |
 
 **Ограничение:** это план. Функции не считаются реализованными до появления кода, проверок и, где требуется, аппаратных испытаний.
