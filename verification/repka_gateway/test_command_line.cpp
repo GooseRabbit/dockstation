@@ -44,7 +44,7 @@ int main() {
                     "--log-max-rotated-files", "4"});
     expect(result.status == CommandLineParseStatus::Success &&
                result.config.api_port == 8081U &&
-               result.config.logger.minimum_level == logging::LogLevel::Debug &&
+               result.config.logger.minimum_level == dockstation::platform::logging::LogLevel::Debug &&
                result.config.logger.file_path == "/tmp/gateway.jsonl" &&
                !result.config.logger.write_to_stderr &&
                result.config.logger.max_file_size_bytes == 2048U &&
