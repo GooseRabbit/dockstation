@@ -275,6 +275,12 @@ LoggerResult write_log_record(LogLevel level,
 
     const std::string record = serialize_record(level, component, message, fields);
     if (!logger.config.file_path.empty()) {
+        // stat() must see bytes still buffered by ofstream, otherwise rotation
+        // can be delayed and the configured threshold becomes unreliable.
+        logger.file.flush();
+        if (!logger.file.good()) {
+            return {LoggerStatus::Unavailable, "cannot flush log file before size check"};
+        }
         struct stat info {};
         if (::stat(logger.config.file_path.c_str(), &info) != 0) {
             return {LoggerStatus::Unavailable,
