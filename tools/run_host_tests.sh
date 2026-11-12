@@ -6,7 +6,7 @@ cd "$ROOT"
 BUILD_DIR="build/host-tests"
 mkdir -p "$BUILD_DIR"
 CXX="${CXX:-g++}"
-COMMON=(-std=c++17 -Wall -Wextra -Wpedantic -Werror -Isrc)
+COMMON=(-std=c++17 -Wall -Wextra -Wpedantic -Werror -Isrc -Isrc/core -Isrc/configuration)
 
 run_default() {
     local name="$1"

@@ -637,7 +637,6 @@ USB/UART, пины и формат кадров остаются открыты�
 
 | 1.13 | 2026-11-12 | Добавлен GitHub Actions workflow для CMake-сборки Linux-цели и выполнения семи CTest-программ с AddressSanitizer/UndefinedBehaviorSanitizer. Доступный статус выполнения пока не получен. |
 | 1.14 | 2026-11-12 | Добавлен RuntimeConfigFileLoader и его интеграция с Bootstrap; расширены тесты ошибок и приоритета CLI. GitHub Actions: Linux-сборка успешна, 8/8 CTest пройдены с ASan/UBSan. |
-| 1.15 | 2026-11-12 | Расширен Linux CI: добавлены 31 host C++ unit/contract тест, Python compileall/pytest и shell syntax/behavior tests; исправлены старые пути после переноса каталогов. |
 
 **Ограничение:** это план. Функции не считаются реализованными до появления кода, проверок и, где требуется, аппаратных испытаний.
 

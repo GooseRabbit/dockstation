@@ -532,14 +532,3 @@
 
 
 **Примечание к TEST-PLAT-030…036:** проверочная программа `verification/repka_gateway/test_application_bootstrap.cpp` добавлена в CTest. До фактического запуска сборки и тестов все сценарии имеют статус НЕ ПРОВЕРЕНО.
-
-## Полный host-набор Linux CI
-
-Workflow `.github/workflows/linux-cmake.yml` на Ubuntu 24.04 выполняет следующие независимые группы:
-
-1. CMake configure/build Linux runtime и Bootstrap с AddressSanitizer/UndefinedBehaviorSanitizer, затем CTest для восьми программ.
-2. 31 host unit/contract программ ядра и ConfigurationManager через `tools/run_host_tests.sh`; строгие contract/configuration цели дополнительно собираются с `-fno-exceptions -fno-rtti`.
-3. Python compileall для `apps`, `repka_gateway`, `verification`, затем pytest для Windows Operator и Python Gateway.
-4. Синтаксическая проверка shell-скриптов и выполнение всех сценариев `verification/repka_gateway/test_*.sh`.
-
-Этот CI остаётся host-проверкой Ubuntu x86_64. Он не заменяет ARM64 cross-build/target build, проверку на Repka Pi 5, ESP32/Arduino build, Windows GUI runtime test, VM SSH reconnect scenario или аппаратные испытания. Успех каждой группы фиксируется по конкретному workflow run, а не по наличию workflow-файла.
