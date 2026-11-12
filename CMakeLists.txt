@@ -30,6 +30,7 @@ add_library(dockstation_linux_runtime STATIC
     src/platform/linux/runtime_environment.cpp
     src/platform/linux/system_diagnostics.cpp
     src/platform/linux/network_diagnostics.cpp
+    src/platform/logging/logger.cpp
 )
 target_include_directories(dockstation_linux_runtime
     PUBLIC "${PROJECT_SOURCE_DIR}/src"
@@ -64,13 +65,23 @@ if(BUILD_TESTING)
     dockstation_apply_compile_policy(test_network_diagnostics)
     add_test(NAME network_diagnostics COMMAND test_network_diagnostics)
 
+    add_executable(test_logger
+        verification/repka_gateway/test_logger.cpp
+    )
+    target_link_libraries(test_logger
+        PRIVATE dockstation_linux_runtime
+    )
+    dockstation_apply_compile_policy(test_logger)
+    add_test(NAME logger COMMAND test_logger)
+
     if(DOCKSTATION_ENABLE_SANITIZERS)
         if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
             foreach(target_name
                     dockstation_linux_runtime
                     test_runtime_environment
                     test_system_diagnostics
-                    test_network_diagnostics)
+                    test_network_diagnostics
+                    test_logger)
                 target_compile_options(${target_name} PRIVATE
                     -fsanitize=address,undefined
                     -fno-omit-frame-pointer
@@ -83,6 +94,9 @@ if(BUILD_TESTING)
                 -fsanitize=address,undefined
             )
             target_link_options(test_network_diagnostics PRIVATE
+                -fsanitize=address,undefined
+            )
+            target_link_options(test_logger PRIVATE
                 -fsanitize=address,undefined
             )
         else()
