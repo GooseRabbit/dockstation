@@ -7,7 +7,7 @@ import urllib.request
 
 import pytest
 
-from apps.repka_gateway.dockstation_gateway.server import _GatewayHTTPServer, _GatewayRequestHandler, create_server
+from repka_gateway.dockstation_gateway.server import _GatewayHTTPServer, _GatewayRequestHandler, create_server
 
 
 @pytest.fixture
