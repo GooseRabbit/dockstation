@@ -1,7 +1,7 @@
 # Полный план реализации программного комплекса DockStation на Repka Pi 5
 
 **Статус:** мастер-план реализации; последовательность разработки согласована, открытые платформенные, сетевые, серверные и аппаратные детали требуют отдельной проверки и решения.  
-**Редакция:** 0.9.  
+**Редакция:** 1.0.  
 **Дата:** 2026-11-12.  
 **Вычислительная платформа:** Repka Pi 5.  
 **Предполагаемая ОС:** официальная Repka OS; образ и версия проверяются перед развёртыванием.
@@ -138,9 +138,13 @@ Windows-клиент не обращается к GPIO, драйверам и с
 
 **Реализованный первый срез этапа 1 — RuntimeEnvironment:** `src/platform/linux/runtime_environment.hpp/.cpp` содержит `read_os_version()`, `read_kernel_version()`, `read_hardware_architecture()`, `read_software_build_info()` и `check_runtime_dependencies()`. Проверка размещена в `verification/repka_gateway/test_runtime_environment.cpp`; ранее на host Linux x86_64 были пройдены 16 проверок.
 
-**Реализованный второй срез — SystemDiagnostics:** `src/platform/linux/system_diagnostics.hpp/.cpp` содержит шесть функций из перечня выше. Проверка размещена в `verification/repka_gateway/test_system_diagnostics.cpp`; host-сборка GCC 14.2.0 с `-std=c++17 -Wall -Wextra -Wpedantic -Werror -fno-exceptions -fno-rtti -fsanitize=address,undefined` прошла, все 24 проверки пройдены. На тестовом Linux-хосте температура CPU осталась UNAVAILABLE: подходящий явно обозначенный датчик не обнаружен, и это ожидаемый корректный результат, а не ошибка теста.
+**Реализованный второй срез — SystemDiagnostics:** `src/platform/linux/system_diagnostics.hpp/.cpp` содержит шесть функций из перечня выше. Проверка размещена в `verification/repka_gateway/test_system_diagnostics.cpp`; ранее host-сборка GCC 14.2.0 с AddressSanitizer и UndefinedBehaviorSanitizer прошла, все 24 проверки пройдены. Целевая сборка ARM64 и испытание на Repka Pi 5 не выполнялись.
 
-Корневой CMake собирает оба адаптера и регистрирует две проверочные программы в CTest. Эти результаты не являются целевой сборкой ARM64 или испытанием на Repka Pi 5. Application main/bootstrap, исполняемая цель Gateway, network diagnostics и logger ещё не реализованы.
+**Реализованный третий срез — NetworkDiagnostics:** `src/platform/linux/network_diagnostics.hpp/.cpp` содержит шесть функций из перечня выше. Добавлена проверочная программа `verification/repka_gateway/test_network_diagnostics.cpp`; её сценарии используют localhost/loopback и не обращаются к внешним узлам. Код и CMake/CTest-регистрация добавлены в репозиторий, но фактический запуск новой сборки и тестов в текущем рабочем окружении не состоялся: оно не смогло разрешить github.com для получения актуального checkout. Поэтому результат сетевых host-проверок пока НЕ ПРОВЕРЕН.
+
+Особенности контракта: DNS/NSS вызывается синхронно и не имеет собственного тайм-аута; TCP timeout 1 мс…60 с ограничивает этап подключения после DNS-разрешения. `collect_network_diagnostics()` не делает внешних сетевых запросов. Неудачная TCP-проверка с доступным результатом диагностики имеет AVAILABLE и `reachable=false`, с причиной отказа/тайм-аута.
+
+Корневой CMake теперь включает три Linux-адаптера и регистрирует три проверочные программы в CTest. Целевая сборка ARM64 и испытание на Repka Pi 5 не выполнялись. Application main/bootstrap, исполняемая цель Gateway и logger ещё не реализованы.
 
 **Результат:** отдельное Linux-приложение собирается, запускается, выдаёт диагностику и корректно завершается. Старый host-testbench не меняется.
 
@@ -590,5 +594,6 @@ USB/UART, пины и формат кадров остаются открыты�
 | 0.7 | 2026-11-12 | Реализован первый Linux platform slice RuntimeEnvironment: сведения об ОС, ядре, архитектуре, сборке и доступности системных источников; 16 host-проверок пройдены, целевая проверка на Repka ещё не выполнялась. |
 | 0.8 | 2026-11-12 | Владелец согласовал CMake для отдельной Linux-цели; добавлена корневая конфигурация сборки RuntimeEnvironment и его verification-теста. Исполняемая цель Gateway отложена до появления main/bootstrap. |
 | 0.9 | 2026-11-12 | Реализован Linux SystemDiagnostics: uptime, RAM, корневая файловая система, явно идентифицированная CPU/SoC-температура и load average; добавлены отдельные host-проверки и CMake/CTest-цель. |
+| 1.0 | 2026-11-12 | Добавлен третий Linux platform slice NetworkDiagnostics: интерфейсы, IPv4/IPv6-адреса, default routes, DNS и TCP; CMake/CTest и host-проверка добавлены. Фактический запуск нового теста ожидает доступного checkout. |
 
 **Ограничение:** это план. Функции не считаются реализованными до появления кода, проверок и, где требуется, аппаратных испытаний.
