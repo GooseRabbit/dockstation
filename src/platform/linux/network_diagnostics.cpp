@@ -301,9 +301,16 @@ NetworkDiagnosticList<DefaultRouteInfo> read_default_route() {
 
             std::uint32_t flags{0};
             std::uint32_t metric{0};
-            if (!parse_hex_u32(flags_text, flags) ||
+            std::uint32_t destination_value{0};
+            std::uint32_t mask_value{0};
+            std::uint32_t gateway_value{0};
+            if (destination.size() != 8 || mask.size() != 8 || gateway.size() != 8 ||
+                !parse_hex_u32(destination, destination_value) ||
+                !parse_hex_u32(mask, mask_value) ||
+                !parse_hex_u32(gateway, gateway_value) ||
+                !parse_hex_u32(flags_text, flags) ||
                 !parse_hex_u32(metric_text, metric) ||
-                !is_zero_hex(destination) || !is_zero_hex(mask) ||
+                destination_value != 0U || mask_value != 0U ||
                 (flags & static_cast<std::uint32_t>(RTF_UP)) == 0) {
                 continue;
             }
@@ -344,7 +351,10 @@ NetworkDiagnosticList<DefaultRouteInfo> read_default_route() {
             std::uint32_t source_prefix_value{0};
             std::uint32_t metric{0};
             std::uint32_t flags{0};
+            std::array<std::uint8_t, 16> next_hop_bytes{};
             if (destination.size() != 32 || source.size() != 32 ||
+                next_hop.size() != 32 ||
+                !parse_hex_bytes(next_hop, next_hop_bytes.data(), next_hop_bytes.size()) ||
                 destination_prefix.size() != 2 || source_prefix.size() != 2 ||
                 !is_zero_hex(destination) || !is_zero_hex(source) ||
                 !parse_hex_u32(destination_prefix, prefix) || prefix != 0 ||
@@ -383,6 +393,11 @@ DnsResolutionDiagnostic resolve_dns_name(const std::string& hostname,
     result.requested_family = family;
     if (hostname.empty()) {
         mark_unavailable(result, "Имя узла не задано");
+        return result;
+    }
+    if (family != AddressFamily::Unspecified &&
+        family != AddressFamily::IPv4 && family != AddressFamily::IPv6) {
+        mark_unavailable(result, "Неизвестное семейство IP-адресов");
         return result;
     }
 
@@ -481,6 +496,7 @@ TcpReachabilityDiagnostic check_tcp_reachability(const std::string& host,
             ::connect(descriptor, item->ai_addr, item->ai_addrlen);
         if (connect_status == 0) {
             ::close(descriptor);
+            ::freeaddrinfo(addresses);
             result.reachable = true;
             result.elapsed_milliseconds = elapsed_milliseconds(start);
             mark_available(result);
