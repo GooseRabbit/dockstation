@@ -9,6 +9,7 @@
 #include <unistd.h>
 
 #include "application/linux/application_bootstrap.hpp"
+#include "platform/logging/logger.hpp"
 
 using namespace dockstation::application::linux_app;
 
@@ -61,6 +62,11 @@ int main() {
     expect(result.exit_code == ApplicationExitCode::Success &&
                result.help_requested,
            "help exits successfully without initializing runtime services");
+    expect(dockstation::platform::logging::write_log_record(
+               dockstation::platform::logging::LogLevel::Info,
+               "bootstrap_test", "must not be initialized").status ==
+               dockstation::platform::logging::LoggerStatus::Unavailable,
+           "help does not initialize PlatformLogger");
 
     result = run({"dockstation-bootstrap", "--unknown"});
     expect(result.exit_code == ApplicationExitCode::InvalidArguments,
@@ -99,6 +105,9 @@ int main() {
                log_content.find("Завершение Linux-приложения DockStation") !=
                std::string::npos,
            "records startup and shutdown in the configured log");
+    expect(log_content.find("System diagnostic") != std::string::npos &&
+               log_content.find("Network diagnostic list") != std::string::npos,
+           "collects and logs read-only system and network diagnostics");
     std::remove(log_path.c_str());
 
     runner_calls = 0;
@@ -112,8 +121,9 @@ int main() {
     runner_calls = 0;
     result = run({"dockstation-bootstrap"});
     expect(result.exit_code == ApplicationExitCode::Success &&
-               runner_calls == 0,
-           "bootstrap-only mode does not claim to start an application service");
+               runner_calls == 0 &&
+               result.message.find("HTTP API не запущен") != std::string::npos,
+           "bootstrap-only mode explicitly reports that no HTTP API is running");
 
     volatile std::sig_atomic_t requested = 1;
     expect(is_shutdown_requested(&requested),
