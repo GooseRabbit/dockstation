@@ -71,6 +71,12 @@ int main() {
     result = run({"dockstation-bootstrap", "--unknown"});
     expect(result.exit_code == ApplicationExitCode::InvalidArguments,
            "invalid command-line arguments fail before logger initialization");
+    runner_calls = 0;
+    result = run({"dockstation-bootstrap", "--api-port", "0"},
+                 test_service_runner);
+    expect(result.exit_code == ApplicationExitCode::InvalidArguments &&
+               runner_calls == 0,
+           "invalid runtime settings prevent service startup");
 
     const std::string log_path =
         "/tmp/dockstation_bootstrap_" +
@@ -88,14 +94,27 @@ int main() {
     expect(runner_calls == 1 && runner_received_expected_config,
            "passes validated configuration and shutdown flag to service runner");
 
+    struct sigaction previous_sigint {};
+    struct sigaction previous_sigterm {};
+    (void)::sigaction(SIGINT, nullptr, &previous_sigint);
+    (void)::sigaction(SIGTERM, nullptr, &previous_sigterm);
+
     runner_raise_signal = true;
     runner_saw_shutdown_signal = false;
     result = run({"dockstation-bootstrap", "--api-port", "8091"},
                  test_service_runner);
     runner_raise_signal = false;
+
+    struct sigaction restored_sigint {};
+    struct sigaction restored_sigterm {};
+    (void)::sigaction(SIGINT, nullptr, &restored_sigint);
+    (void)::sigaction(SIGTERM, nullptr, &restored_sigterm);
     expect(result.exit_code == ApplicationExitCode::Success &&
                runner_saw_shutdown_signal,
            "SIGTERM requests orderly service shutdown through sig_atomic_t");
+    expect(restored_sigint.sa_handler == previous_sigint.sa_handler &&
+               restored_sigterm.sa_handler == previous_sigterm.sa_handler,
+           "restores the previous SIGINT and SIGTERM handlers");
 
     std::ifstream input(log_path);
     const std::string log_content(std::istreambuf_iterator<char>(input),
