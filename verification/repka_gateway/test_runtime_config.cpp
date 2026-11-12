@@ -1,12 +1,12 @@
-#include <cstdlib>
-#include <iostream>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
+#include <iostream>
 #include <iterator>
+#include <string>
 #include <unistd.h>
 
 #include "platform/logging/logger.hpp"
-#include <string>
 
 #include "platform/linux/runtime_config.hpp"
 
