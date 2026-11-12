@@ -8,7 +8,7 @@ int failures=0, checks=0;
 void expect(bool ok,std::string_view name){++checks;std::cout<<(ok?"PASS":"FAIL")<<" - "<<name<<'\n';if(!ok)++failures;}
 Event make_event(std::string_view type,std::string_view quality="VALID"){
  Event e{};e.event_id="event-1";e.event_type=type;e.source="startup-controller";
- e.source_instance="boot-1";e.source_sequence=10;e.received_at="receiver-time";
+ e.source_instance="boot-1";e.source_sequence=10;e.received_at="receiver-time";e.payload="";
  e.quality_status=quality;e.schema_version="1";return e;
 }
 SourceCursor cursor(){return {"startup-controller","boot-1",9};}
