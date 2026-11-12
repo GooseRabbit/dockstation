@@ -1,7 +1,7 @@
 # Полный план реализации программного комплекса DockStation на Repka Pi 5
 
 **Статус:** мастер-план реализации; последовательность разработки согласована, открытые платформенные, сетевые, серверные и аппаратные детали требуют отдельной проверки и решения.  
-**Редакция:** 0.8.  
+**Редакция:** 0.9.  
 **Дата:** 2026-11-12.  
 **Вычислительная платформа:** Repka Pi 5.  
 **Предполагаемая ОС:** официальная Repka OS; образ и версия проверяются перед развёртыванием.
@@ -97,7 +97,7 @@ Windows-клиент не обращается к GPIO, драйверам и с
 
 **Файлы:** корневой `CMakeLists.txt`; в дальнейшем — `apps/repka_gateway/CMakeLists.txt` и `apps/repka_gateway/main.cpp`; `src/platform/linux/runtime_environment.hpp/.cpp`; `src/platform/linux/system_diagnostics.hpp/.cpp`; `src/platform/linux/network_diagnostics.hpp/.cpp`; `src/platform/logging/logger.hpp/.cpp`; `deployment/repka/dockstation-gateway.service`.
 
-**Согласованная система сборки:** CMake используется для отдельной Linux-цели. Первая конфигурация собирает существующий `RuntimeEnvironment` в статическую библиотеку `dockstation_linux_runtime` и отдельную проверочную программу `test_runtime_environment` из `verification/repka_gateway/`. Полноценная исполняемая цель Gateway появится после реализации `main.cpp` и каркаса приложения; текущая конфигурация не создаёт фиктивную точку входа и не меняет существующие `tests/` и `tools/`.
+**Согласованная система сборки:** CMake используется для отдельной Linux-цели. Первая конфигурация собирает существующие Linux-адаптеры `RuntimeEnvironment` и `SystemDiagnostics` в статическую библиотеку `dockstation_linux_runtime`; для них предусмотрены отдельные программы `test_runtime_environment` и `test_system_diagnostics` из `verification/repka_gateway/`. Полноценная исполняемая цель Gateway появится после реализации `main.cpp` и каркаса приложения; текущая конфигурация не создаёт фиктивную точку входа и не меняет существующие `tests/` и `tools/`.
 
 Команды из корня репозитория:
 
@@ -122,6 +122,12 @@ Windows-клиент не обращается к GPIO, драйверам и с
 **system_diagnostics.cpp:**
 - read_uptime(), read_memory_status(), read_storage_status(), read_cpu_temperature(), read_cpu_load(), collect_system_diagnostics().
 
+Ограничения источников данных:
+- `read_storage_status()` описывает только файловую систему, содержащую корневой путь `/`; отдельный SSD и его mount point не предполагаются и не проверяются этой функцией.
+- `read_cpu_temperature()` принимает только Linux thermal-zone датчик, тип которого явно содержит CPU, SoC или package. Если такой датчик не найден или не читается, результат UNAVAILABLE; температура неизвестной зоны не подставляется.
+- `read_cpu_load()` возвращает load average за 1, 5 и 15 минут и количество задач из `/proc/loadavg`. Это не процент использования процессорного времени; в интерфейсе показатель нужно так и называть.
+- Каждый показатель имеет независимый статус и причину недоступности. Ошибка одного источника не должна превращать весь диагностический снимок в фиктивный нулевой результат.
+
 **network_diagnostics.cpp:**
 - read_network_interfaces(), read_interface_addresses(), read_default_route(), resolve_dns_name(), check_tcp_reachability(), collect_network_diagnostics().
 
@@ -130,7 +136,11 @@ Windows-клиент не обращается к GPIO, драйверам и с
 
 Недоступная температура или неизвестный статус обозначаются явно, не подменяются нулём.
 
-**Реализованный первый срез этапа 1:** `src/platform/linux/runtime_environment.hpp/.cpp` содержит `read_os_version()`, `read_kernel_version()`, `read_hardware_architecture()`, `read_software_build_info()` и `check_runtime_dependencies()`. Проверка размещена в `verification/repka_gateway/test_runtime_environment.cpp`. На host Linux x86_64 (Debian GNU/Linux 13, GCC 14.2.0) выполнена сборка с `-std=c++17 -Wall -Wextra -Wpedantic -Werror -fno-exceptions -fno-rtti -fsanitize=address,undefined`; все 16 проверок прошли. Это не является целевой сборкой ARM64 или испытанием на Repka Pi 5. Корневой CMake уже добавлен: он собирает этот адаптер и его проверочную программу. Application main/bootstrap, исполняемая цель Gateway, system/network diagnostics и logger ещё не реализованы.
+**Реализованный первый срез этапа 1 — RuntimeEnvironment:** `src/platform/linux/runtime_environment.hpp/.cpp` содержит `read_os_version()`, `read_kernel_version()`, `read_hardware_architecture()`, `read_software_build_info()` и `check_runtime_dependencies()`. Проверка размещена в `verification/repka_gateway/test_runtime_environment.cpp`; ранее на host Linux x86_64 были пройдены 16 проверок.
+
+**Реализованный второй срез — SystemDiagnostics:** `src/platform/linux/system_diagnostics.hpp/.cpp` содержит шесть функций из перечня выше. Проверка размещена в `verification/repka_gateway/test_system_diagnostics.cpp`; host-сборка GCC 14.2.0 с `-std=c++17 -Wall -Wextra -Wpedantic -Werror -fno-exceptions -fno-rtti -fsanitize=address,undefined` прошла, все 24 проверки пройдены. На тестовом Linux-хосте температура CPU осталась UNAVAILABLE: подходящий явно обозначенный датчик не обнаружен, и это ожидаемый корректный результат, а не ошибка теста.
+
+Корневой CMake собирает оба адаптера и регистрирует две проверочные программы в CTest. Эти результаты не являются целевой сборкой ARM64 или испытанием на Repka Pi 5. Application main/bootstrap, исполняемая цель Gateway, network diagnostics и logger ещё не реализованы.
 
 **Результат:** отдельное Linux-приложение собирается, запускается, выдаёт диагностику и корректно завершается. Старый host-testbench не меняется.
 
@@ -579,5 +589,6 @@ USB/UART, пины и формат кадров остаются открыты�
 | 0.6 | 2026-11-12 | Зафиксированы USB-веб-камера прототипа, независимый просмотр и ручная запись; добавлен необязательный SSD-backend, выбираемый конфигурацией, и сценарии проверки отсутствующего накопителя. |
 | 0.7 | 2026-11-12 | Реализован первый Linux platform slice RuntimeEnvironment: сведения об ОС, ядре, архитектуре, сборке и доступности системных источников; 16 host-проверок пройдены, целевая проверка на Repka ещё не выполнялась. |
 | 0.8 | 2026-11-12 | Владелец согласовал CMake для отдельной Linux-цели; добавлена корневая конфигурация сборки RuntimeEnvironment и его verification-теста. Исполняемая цель Gateway отложена до появления main/bootstrap. |
+| 0.9 | 2026-11-12 | Реализован Linux SystemDiagnostics: uptime, RAM, корневая файловая система, явно идентифицированная CPU/SoC-температура и load average; добавлены отдельные host-проверки и CMake/CTest-цель. |
 
 **Ограничение:** это план. Функции не считаются реализованными до появления кода, проверок и, где требуется, аппаратных испытаний.
