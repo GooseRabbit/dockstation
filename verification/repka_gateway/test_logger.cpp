@@ -103,8 +103,17 @@ int main() {
            "writes record after automatic rotation");
     expect(access((base + ".1").c_str(), F_OK) == 0,
            "automatic rotation creates first archive");
+    for (int index = 0; index < 8; ++index) {
+        expect(write_log_record(LogLevel::Info, "test", "rotation threshold record").status ==
+                   LoggerStatus::Available,
+               "writes repeated records while checking rotation threshold");
+    }
     expect(flush_log().status == LoggerStatus::Available,
            "flushes log sinks");
+    expect(read_file(base).size() <= config.max_file_size_bytes + 256U,
+           "rotation threshold includes data buffered by the file stream");
+    expect(access((base + ".3").c_str(), F_OK) != 0,
+           "rotation never creates more archives than configured");
     expect(shutdown_logger().status == LoggerStatus::Available,
            "shuts down logger");
 
