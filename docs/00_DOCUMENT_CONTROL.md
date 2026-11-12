@@ -29,6 +29,7 @@
 - последовательность штатных и нештатных операций — `04_OPERATIONAL_ALGORITHMS.md`;
 - программные компоненты и их ответственность — `05_SOFTWARE_ARCHITECTURE.md`, с текущими статусами в `18_MODULE_REGISTER.md`;
 - загрузка, проверка и предоставление конфигурации станции — `27_CONFIGURATION_MANAGER.md` и `28_CONFIGURATION_MANAGER_IMPLEMENTATION_PLAN.md`;
+- стартовая самодиагностика, статусы отдельных проверок, отчёт и пофункциональный план DiagnosticsManager — `21_STATION_SELF_DIAGNOSTICS.md` и `22_STATION_SELF_DIAGNOSTICS_IMPLEMENTATION_PLAN.md`;
 - форматы сообщений и границы интерфейсов — `06_INTERFACES_AND_DATA_CONTRACTS.md`;
 - передача материалов и общий контур защиты — `07_DATA_TRANSFER_AND_SECURITY.md`;
 - пользовательские сценарии операторского приложения, отображение доступных станций и управление правами — `23_OPERATOR_APPLICATION.md`;
