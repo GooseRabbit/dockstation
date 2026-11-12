@@ -29,6 +29,7 @@ endfunction()
 # The Linux runtime target contains implemented platform adapters.
 # The Gateway executable will be added when its application entry point exists.
 add_library(dockstation_linux_runtime STATIC
+    src/application/linux/application_bootstrap.cpp
     src/platform/linux/runtime_environment.cpp
     src/platform/linux/system_diagnostics.cpp
     src/platform/linux/network_diagnostics.cpp
@@ -44,7 +45,24 @@ target_link_libraries(dockstation_linux_runtime
 )
 dockstation_apply_compile_policy(dockstation_linux_runtime)
 
+add_executable(dockstation_linux_bootstrap
+    repka_gateway/main.cpp
+)
+target_link_libraries(dockstation_linux_bootstrap
+    PRIVATE dockstation_linux_runtime
+)
+dockstation_apply_compile_policy(dockstation_linux_bootstrap)
+
 if(BUILD_TESTING)
+    add_executable(test_application_bootstrap
+        verification/repka_gateway/test_application_bootstrap.cpp
+    )
+    target_link_libraries(test_application_bootstrap
+        PRIVATE dockstation_linux_runtime
+    )
+    dockstation_apply_compile_policy(test_application_bootstrap)
+    add_test(NAME application_bootstrap COMMAND test_application_bootstrap)
+
     add_executable(test_runtime_environment
         verification/repka_gateway/test_runtime_environment.cpp
     )
@@ -103,6 +121,8 @@ if(BUILD_TESTING)
         if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
             foreach(target_name
                     dockstation_linux_runtime
+                    dockstation_linux_bootstrap
+                    test_application_bootstrap
                     test_runtime_environment
                     test_system_diagnostics
                     test_network_diagnostics
@@ -114,6 +134,12 @@ if(BUILD_TESTING)
                     -fno-omit-frame-pointer
                 )
             endforeach()
+            target_link_options(dockstation_linux_bootstrap PRIVATE
+                -fsanitize=address,undefined
+            )
+            target_link_options(test_application_bootstrap PRIVATE
+                -fsanitize=address,undefined
+            )
             target_link_options(test_runtime_environment PRIVATE
                 -fsanitize=address,undefined
             )
