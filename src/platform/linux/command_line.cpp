@@ -35,6 +35,12 @@ bool read_value(int argc,
         error = std::string{"Для параметра "} + option + " не задано значение";
         return false;
     }
+    const std::string_view candidate{argv[index + 1]};
+    if (candidate.rfind("--", 0) == 0) {
+        error = std::string{"Для параметра "} + option +
+                " не задано значение перед следующим параметром";
+        return false;
+    }
     ++index;
     value = argv[index];
     return true;
