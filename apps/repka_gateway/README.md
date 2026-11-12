@@ -9,14 +9,14 @@ runtime dependencies.
 From the repository root on the Linux VM:
 
 ```sh
-python3 -m apps.repka_gateway.dockstation_gateway.main --port 8080
+python3 -m repka_gateway.dockstation_gateway.main --port 8080
 ```
 
 Optionally enable a system-name-resolution check:
 
 ```sh
 DOCKSTATION_DNS_CHECK_NAME=example.com \
-  python3 -m apps.repka_gateway.dockstation_gateway.main --port 8080
+  python3 -m repka_gateway.dockstation_gateway.main --port 8080
 ```
 
 The service binds **only** to `127.0.0.1`. It does not listen on the VM's
