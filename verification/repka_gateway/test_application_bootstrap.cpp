@@ -18,6 +18,8 @@ int checks = 0;
 int runner_calls = 0;
 int runner_result = 0;
 bool runner_received_expected_config = false;
+bool runner_raise_signal = false;
+bool runner_saw_shutdown_signal = false;
 
 void expect(bool condition, const char* name) {
     ++checks;
@@ -46,6 +48,10 @@ int test_service_runner(
     runner_received_expected_config =
         config.api_port == 8091U && shutdown_flag != nullptr &&
         !is_shutdown_requested(shutdown_flag);
+    if (runner_raise_signal) {
+        (void)std::raise(SIGTERM);
+        runner_saw_shutdown_signal = is_shutdown_requested(shutdown_flag);
+    }
     return runner_result;
 }
 }  // namespace
@@ -76,6 +82,15 @@ int main() {
     expect(runner_calls == 1 && runner_received_expected_config,
            "passes validated configuration and shutdown flag to service runner");
 
+    runner_raise_signal = true;
+    runner_saw_shutdown_signal = false;
+    result = run({"dockstation-bootstrap", "--api-port", "8091"},
+                 test_service_runner);
+    runner_raise_signal = false;
+    expect(result.exit_code == ApplicationExitCode::Success &&
+               runner_saw_shutdown_signal,
+           "SIGTERM requests orderly service shutdown through sig_atomic_t");
+
     std::ifstream input(log_path);
     const std::string log_content(std::istreambuf_iterator<char>(input),
                                   std::istreambuf_iterator<char>());
@@ -87,6 +102,7 @@ int main() {
     std::remove(log_path.c_str());
 
     runner_calls = 0;
+    runner_raise_signal = false;
     runner_result = 17;
     result = run({"dockstation-bootstrap"}, test_service_runner);
     expect(result.exit_code == ApplicationExitCode::ServiceFailure &&
