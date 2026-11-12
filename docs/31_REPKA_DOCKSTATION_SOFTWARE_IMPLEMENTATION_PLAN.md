@@ -76,7 +76,7 @@ Windows-клиент не обращается к GPIO, драйверам и с
 
 ## Этап 0. Подготовка платформы и сети
 
-**Файлы:** deployment/repka/README.md, deployment/repka/check_network.sh, deployment/dev/README.md, deployment/dev/linux_vm/README.md, deployment/dev/windows_vm/README.md, deployment/dev/network/README.md.
+**Файлы:** repka/README.md, repka/check_network.sh, deployment/dev/README.md, deployment/dev/linux_vm/README.md, deployment/dev/windows_vm/README.md, deployment/dev/network/README.md.
 
 **Функции check_network.sh:**
 - require_command() — наличие системной команды.
@@ -95,7 +95,7 @@ Windows-клиент не обращается к GPIO, драйверам и с
 
 ## Этап 1. Linux Gateway и системная диагностика
 
-**Файлы:** корневой `CMakeLists.txt`; в дальнейшем — `apps/repka_gateway/CMakeLists.txt` и `apps/repka_gateway/main.cpp`; `src/platform/linux/runtime_environment.hpp/.cpp`; `src/platform/linux/system_diagnostics.hpp/.cpp`; `src/platform/linux/network_diagnostics.hpp/.cpp`; `src/platform/logging/logger.hpp/.cpp`; `src/platform/linux/runtime_config.hpp/.cpp`; `src/platform/linux/command_line.hpp/.cpp`; `deployment/repka/dockstation-gateway.service`.
+**Файлы:** корневой `CMakeLists.txt`; в дальнейшем — `repka_gateway/CMakeLists.txt` и `repka_gateway/main.cpp`; `src/platform/linux/runtime_environment.hpp/.cpp`; `src/platform/linux/system_diagnostics.hpp/.cpp`; `src/platform/linux/network_diagnostics.hpp/.cpp`; `src/platform/logging/logger.hpp/.cpp`; `src/platform/linux/runtime_config.hpp/.cpp`; `src/platform/linux/command_line.hpp/.cpp`; `repka/dockstation-gateway.service`.
 
 **Согласованная система сборки:** CMake используется для отдельной Linux-цели. Текущая корневая конфигурация собирает в статическую библиотеку `dockstation_linux_runtime` шесть компонентов: `RuntimeEnvironment`, `SystemDiagnostics`, `NetworkDiagnostics`, `PlatformLogger`, `RuntimeConfig` и `CommandLineParser`. Для потокобезопасного PlatformLogger CMake явно находит и подключает `Threads::Threads`; зависимость транзитивно передаётся потребителям статической библиотеки. Для компонентов зарегистрированы шесть отдельных host-проверок в `verification/repka_gateway/` и CTest: `test_runtime_environment`, `test_system_diagnostics`, `test_network_diagnostics`, `test_logger`, `test_runtime_config`, `test_command_line`. Полноценная исполняемая цель Gateway появится после реализации `main.cpp` и каркаса приложения; текущая конфигурация не создаёт фиктивную точку входа и не меняет существующие `tests/` и `tools/`.
 
@@ -495,7 +495,7 @@ USB/UART, пины и формат кадров остаются открыты�
 
 ## Этап 13. Надёжность и развёртывание
 
-**Файлы:** deployment/repka/dockstation-gateway.service; deployment/repka/config/README.md; install_gateway.sh; backup/README.md; release/README.md; src/platform/linux/watchdog_service.hpp/.cpp; process_manager.hpp/.cpp.
+**Файлы:** repka/dockstation-gateway.service; repka/config/README.md; install_gateway.sh; backup/README.md; release/README.md; src/platform/linux/watchdog_service.hpp/.cpp; process_manager.hpp/.cpp.
 
 **Функции:**
 - check_service_dependencies(), report_service_health(), register_watchdog_heartbeat(), detect_service_stall().
