@@ -21,7 +21,6 @@ bool has(const ConfigurationValidationResult& r,std::string_view code,std::strin
  return false;
 }
 }
-}
 int main(){
  constexpr std::string_view mode[]={"station","mode"}, limit[]={"station","limit"}, temp[]={"station","temperature"};
  const ConfigurationValueView modes[]={str("AUTO"),str("SERVICE")};
