@@ -1,7 +1,6 @@
 #include "application/linux/application_bootstrap.hpp"
 
 #include <csignal>
-#include <cstdio>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -92,17 +91,15 @@ bool write_log(platform::logging::LogLevel level,
     return result.status == platform::logging::LoggerStatus::Available;
 }
 
-void log_runtime_value(const char* name,
+bool log_runtime_value(const char* name,
                        const platform::linux_runtime::RuntimeValue& value) {
     using platform::logging::LogLevel;
-    using platform::logging::LogField;
     if (value.status == platform::linux_runtime::RuntimeValueStatus::Available) {
-        (void)write_log(LogLevel::Info, "Runtime information available",
-                        {{name, value.value}});
-    } else {
-        (void)write_log(LogLevel::Warning, "Runtime information unavailable",
-                        {{name, value.reason}});
+        return write_log(LogLevel::Info, "Runtime information available",
+                         {{name, value.value}});
     }
+    return write_log(LogLevel::Warning, "Runtime information unavailable",
+                     {{name, value.reason}});
 }
 
 }  // namespace
@@ -197,18 +194,25 @@ ApplicationRunResult run_application(int argc,
                  {"thermal_sensor_available",
                   dependencies.thermal_sensor_available ? "true" : "false"}});
 
-            log_runtime_value("os_version",
-                              platform::linux_runtime::read_os_version());
-            log_runtime_value("kernel_version",
-                              platform::linux_runtime::read_kernel_version());
-            log_runtime_value("architecture",
-                              platform::linux_runtime::read_hardware_architecture());
-            log_runtime_value("software_build",
-                              platform::linux_runtime::read_software_build_info());
+            startup_ok =
+                log_runtime_value("os_version",
+                                  platform::linux_runtime::read_os_version()) &&
+                log_runtime_value("kernel_version",
+                                  platform::linux_runtime::read_kernel_version()) &&
+                log_runtime_value("architecture",
+                                  platform::linux_runtime::read_hardware_architecture()) &&
+                log_runtime_value("software_build",
+                                  platform::linux_runtime::read_software_build_info());
+            if (!startup_ok) {
+                exit_code = ApplicationExitCode::StartupFailure;
+            }
         }
     }
 
-    if (startup_ok && service_runner != nullptr) {
+    if (startup_ok && is_shutdown_requested(signal_handlers.flag())) {
+        (void)write_log(LogLevel::Warning,
+                        "Получен сигнал завершения до запуска прикладной службы");
+    } else if (startup_ok && service_runner != nullptr) {
         if (!write_log(LogLevel::Info, "Запуск зарегистрированной прикладной службы")) {
             startup_ok = false;
             exit_code = ApplicationExitCode::StartupFailure;
@@ -257,7 +261,15 @@ ApplicationRunResult run_application(int argc,
     }
 
     result.exit_code = exit_code;
-    result.message = startup_ok ? "Bootstrap завершён" : "Ошибка запуска";
+    if (exit_code == ApplicationExitCode::Success) {
+        result.message = "Bootstrap завершён";
+    } else if (exit_code == ApplicationExitCode::ServiceFailure) {
+        result.message = "Ошибка прикладной службы";
+    } else if (exit_code == ApplicationExitCode::ShutdownFailure) {
+        result.message = "Ошибка штатного завершения";
+    } else {
+        result.message = "Ошибка запуска";
+    }
     return result;
 }
 
