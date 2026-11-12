@@ -61,6 +61,8 @@ int main() {
                              {"access_token", "also-secret"}}).status ==
                LoggerStatus::Available,
            "writes record with sensitive fields");
+    expect(flush_log().status == LoggerStatus::Available,
+           "flushes records before inspection");
     const std::string current = read_file(base);
     const std::string archived = read_file(base + ".1");
     expect(current.find("\"level\":\"INFO\"") != std::string::npos ||
