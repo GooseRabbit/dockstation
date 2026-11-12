@@ -116,3 +116,120 @@ def test_server_rejects_invalid_ports():
     for port in (0 - 1, 65536, True, "8080"):
         with pytest.raises(ValueError):
             create_server(port)  # type: ignore[arg-type]
+
+
+
+def test_test_adapter_route_is_disabled_by_default(running_server):
+    host, port = running_server
+    request = urllib.request.Request(
+        f"http://{host}:{port}/api/v1/test/adapter/request",
+        data=b'{"schema_version":"1.0","request_id":"test-1","operation":"PING"}',
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with pytest.raises(urllib.error.HTTPError) as error:
+        urllib.request.urlopen(request, timeout=2)
+    assert error.value.code == 404
+
+
+@pytest.fixture
+def running_test_adapter_server():
+    from repka_gateway.dockstation_gateway.adapters.test_request_adapter import TestRequestAdapter
+    from repka_gateway.dockstation_gateway.application.test_request_service import TestRequestService
+
+    server = create_server(
+        0,
+        lambda: {"schema_version": "1.0", "summary": {"status": "PASS"}},
+        TestRequestService(TestRequestAdapter()),
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield server.server_address
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def _post_json(address, body: bytes, content_type: str = "application/json"):
+    host, port = address
+    request = urllib.request.Request(
+        f"http://{host}:{port}/api/v1/test/adapter/request",
+        data=body,
+        headers={"Content-Type": content_type},
+        method="POST",
+    )
+    return urllib.request.urlopen(request, timeout=2)
+
+
+def test_test_adapter_route_accepts_only_non_physical_ping(running_test_adapter_server):
+    body = json.dumps({
+        "schema_version": "1.0",
+        "request_id": "operator-test-001",
+        "operation": "PING",
+    }).encode("utf-8")
+    with _post_json(running_test_adapter_server, body) as response:
+        assert response.status == 200
+        assert response.headers.get_content_type() == "application/json"
+        assert json.loads(response.read().decode("utf-8")) == {
+            "schema_version": "1.0",
+            "request_id": "operator-test-001",
+            "status": "TEST_ADAPTER_ACCEPTED",
+            "source": "TEST_ADAPTER",
+            "physical_action_performed": False,
+        }
+
+
+def test_test_adapter_route_rejects_get(running_test_adapter_server):
+    host, port = running_test_adapter_server
+    with pytest.raises(urllib.error.HTTPError) as error:
+        urllib.request.urlopen(
+            f"http://{host}:{port}/api/v1/test/adapter/request", timeout=2
+        )
+    assert error.value.code == 405
+    assert error.value.headers.get("Allow") == "POST"
+
+
+def test_test_adapter_route_rejects_duplicate_json_keys(running_test_adapter_server):
+    body = b'{"schema_version":"1.0","request_id":"test-1","request_id":"test-2","operation":"PING"}'
+    with pytest.raises(urllib.error.HTTPError) as error:
+        _post_json(running_test_adapter_server, body)
+    assert error.value.code == 400
+    assert json.loads(error.value.read())["error"]["code"] == "INVALID_REQUEST_BODY"
+
+
+def test_test_adapter_route_rejects_unsupported_operation(running_test_adapter_server):
+    body = json.dumps({
+        "schema_version": "1.0",
+        "request_id": "operator-test-002",
+        "operation": "OPEN_LID",
+    }).encode("utf-8")
+    with pytest.raises(urllib.error.HTTPError) as error:
+        _post_json(running_test_adapter_server, body)
+    assert error.value.code == 400
+    assert json.loads(error.value.read())["error"]["code"] == "TEST_REQUEST_INVALID"
+
+
+def test_test_adapter_route_rejects_unexpected_fields(running_test_adapter_server):
+    body = json.dumps({
+        "schema_version": "1.0",
+        "request_id": "operator-test-003",
+        "operation": "PING",
+        "target": "lid",
+    }).encode("utf-8")
+    with pytest.raises(urllib.error.HTTPError) as error:
+        _post_json(running_test_adapter_server, body)
+    assert error.value.code == 400
+
+
+def test_test_adapter_route_rejects_non_json_content_type(running_test_adapter_server):
+    with pytest.raises(urllib.error.HTTPError) as error:
+        _post_json(running_test_adapter_server, b"{}", "text/plain")
+    assert error.value.code == 415
+
+
+def test_test_adapter_route_rejects_oversized_body(running_test_adapter_server):
+    with pytest.raises(urllib.error.HTTPError) as error:
+        _post_json(running_test_adapter_server, b"x" * 4097)
+    assert error.value.code == 413

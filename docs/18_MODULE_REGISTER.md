@@ -1,7 +1,7 @@
 # Реестр программных модулей DockStation
 
 **Статус:** рабочий реестр предварительной программной архитектуры.  
-**Редакция:** 0.30  
+**Редакция:** 0.31  
 **Дата актуализации:** 2026-11-12.
 **Основание:** `docs/05_SOFTWARE_ARCHITECTURE.md`.
 
@@ -118,6 +118,7 @@
 - `RuntimeConfigFileLoader` — читает необязательный явно указанный `.conf` в строгом формате `key=value`, ограничивает размер 64 КиБ, проверяет ключи, дубликаты, типы и значения; различает NOT_FOUND, READ_ERROR и INVALID. Не выбирает системный путь по умолчанию и не читает секреты. Итоговый порядок: defaults → file → CLI; итоговая конфигурация проверяется до Logger.
 - `RuntimeConfig` — типизированные настройки процесса Linux Gateway и валидатор диапазонов/совместимости. Безопасный loopback bind фиксирован как `127.0.0.1`, порт по умолчанию 8080. Добавлена `initialize_runtime_logger()`: сначала валидирует RuntimeConfig, затем инициализирует PlatformLogger. Файл `.conf` загружается только по явному `--config-file`; итоговые значения валидируются до Logger. CommandLineParser и RuntimeConfigFileLoader зарегистрированы в CTest; Linux-сборка и все 8/8 проверок CTest прошли в GitHub Actions с AddressSanitizer и UndefinedBehaviorSanitizer.
 - `LinuxApplicationBootstrap` — точка входа `repka_gateway/main.cpp` и lifecycle-координатор `src/application/linux/application_bootstrap.hpp/.cpp`. Разбирает CLI, при наличии явно указанного `--config-file` загружает `.conf`, применяет только явно заданные CLI overrides, валидирует итоговый RuntimeConfig до инициализации Logger, устанавливает SIGINT/SIGTERM handlers с безопасным `sig_atomic_t`-флагом, проверяет базовые runtime-зависимости, собирает read-only SystemDiagnostics и NetworkDiagnostics, передаёт итоговую конфигурацию и флаг завершения зарегистрированной службе, затем восстанавливает обработчики и завершает Logger. Без зарегистрированной службы выполняет только bootstrap-проверку и явно сообщает, что HTTP API не запущен; не управляет оборудованием и не запускает второй сервер. Код и CTest-проверка прошли в GitHub Actions; все 8/8 CTest зелёные на Linux x86_64. Bootstrap-only режим не запускает HTTP API.
+- Временный VM-вертикальный срез Operator → Python Gateway → TestRequestService → TestRequestAdapter → Operator — изолированная проверка программного взаимодействия. Маршрут доступен только при явном `--enable-test-adapter`, принимает исключительно `PING` и сообщает `physical_action_performed=false`. Это не считается production-реализацией `CommunicationService`, не меняет статус ESP32/аппаратной интеграции и не означает готовность C++ API.
 - аппаратные драйверы;
 - аппаратные интерфейсы;
 - адаптеры конкретных платформ;

@@ -47,10 +47,10 @@ jobs:
       - name: Compile all Python modules and tests
         run: python -m compileall -q operator/src repka_gateway verification
 
-      - name: Run Operator and Python Gateway tests
+      - name: Run Operator, Python Gateway and end-to-end integration tests
         env:
           PYTHONPATH: operator/src:.
-        run: python -m pytest -q verification/operator_app verification/repka_gateway
+        run: python -m pytest -q verification/operator_app verification/repka_gateway verification/integration
 
       - name: Check shell script syntax
         run: |

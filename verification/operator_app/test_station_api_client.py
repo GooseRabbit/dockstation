@@ -199,3 +199,53 @@ def test_validate_diagnostics_response_requires_route_family_statuses():
     payload["network"]["default_routes"]["family_status"]["IPv6"] = "READY"
     with pytest.raises(ApiClientError, match="статус"):
         StationApiClient.validate_diagnostics_response(payload)
+
+
+
+def test_submit_test_adapter_request_posts_narrow_ping_and_validates_receipt():
+    client = StationApiClient("http://127.0.0.1:18080")
+    receipt = {
+        "schema_version": "1.0",
+        "request_id": "generated-request-id",
+        "status": "TEST_ADAPTER_ACCEPTED",
+        "source": "TEST_ADAPTER",
+        "physical_action_performed": False,
+    }
+    response = FakeResponse(json.dumps(receipt).encode("utf-8"))
+    with patch("dockstation_operator.api.station_api_client.uuid.uuid4") as uuid_factory:
+        uuid_factory.return_value.hex = "generated-request-id"
+        with patch.object(client._opener, "open", return_value=response) as open_url:
+            result = client.submit_test_adapter_request()
+
+    assert result == receipt
+    request = open_url.call_args.args[0]
+    assert request.method == "POST"
+    assert request.full_url == "http://127.0.0.1:18080/api/v1/test/adapter/request"
+    assert json.loads(request.data.decode("utf-8")) == {
+        "schema_version": "1.0",
+        "request_id": "generated-request-id",
+        "operation": "PING",
+    }
+
+
+@pytest.mark.parametrize(
+    "invalid_field,invalid_value",
+    [
+        ("source", "LINUX_HOST"),
+        ("status", "COMPLETED"),
+        ("physical_action_performed", True),
+        ("request_id", "different-request"),
+        ("extra", "not-allowed"),
+    ],
+)
+def test_test_adapter_response_rejects_untrusted_or_physical_claims(invalid_field, invalid_value):
+    payload = {
+        "schema_version": "1.0",
+        "request_id": "request-1",
+        "status": "TEST_ADAPTER_ACCEPTED",
+        "source": "TEST_ADAPTER",
+        "physical_action_performed": False,
+    }
+    payload[invalid_field] = invalid_value
+    with pytest.raises(ApiClientError):
+        StationApiClient.validate_test_adapter_response(payload, "request-1")

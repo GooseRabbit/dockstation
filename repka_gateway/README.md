@@ -29,10 +29,18 @@ from the Windows host to `127.0.0.1:8080` inside the VM.
 - `GET http://127.0.0.1:8080/api/v1/health`
 - `GET http://127.0.0.1:8080/api/v1/system/diagnostics`
 
-All other routes return 404 and non-GET methods return 405. Responses are JSON
+By default, all other routes return 404 and non-GET methods return 405. Responses are JSON
 with `Cache-Control: no-store`. The diagnostics object includes a UTC collection
 time, schema version, system platform details, network interfaces and addresses,
 default routes, optional DNS resolution, SSH unit state, and an aggregate status.
+
+A separate test-only route can be enabled for VM integration checks:
+
+```sh
+python3 -m repka_gateway.dockstation_gateway.main --port 8080 --enable-test-adapter
+```
+
+When explicitly enabled, `POST /api/v1/test/adapter/request` accepts only a schema-1.0 `PING` request and passes it through TestRequestService to TestRequestAdapter. The receipt is marked `TEST_ADAPTER_ACCEPTED`, `source=TEST_ADAPTER`, and `physical_action_performed=false`. The body is limited to 4096 bytes. Unknown fields, duplicate JSON keys and any operation other than PING are rejected. The route is disabled by default; it is not a production command API and performs no physical action.
 
 The health route means only that the gateway process is responding. It is not a
 claim that the Ethernet route, DNS, SSH, or physical station is healthy.

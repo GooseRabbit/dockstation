@@ -1,4 +1,4 @@
-"""Strict, read-only JSON client for the DockStation Gateway API."""
+"""Strict JSON client for diagnostics and the explicitly test-only Gateway route."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import json
 import math
 import urllib.error
 import urllib.request
+import uuid
 from datetime import datetime, timedelta
 from urllib.parse import urlsplit
 from typing import Any
@@ -106,6 +107,80 @@ class StationApiClient:
         if not isinstance(payload, dict):
             raise ApiClientError("Корневой элемент JSON должен быть объектом.")
         return payload
+
+    def _post_json(self, route: str, payload: dict[str, object]) -> dict[str, Any]:
+        try:
+            encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        except (TypeError, ValueError) as exc:
+            raise ApiClientError("Тестовый запрос не удалось сериализовать в JSON.") from exc
+        if not encoded or len(encoded) > 4096:
+            raise ApiClientError("Размер тестового запроса должен быть от 1 до 4096 байт.")
+
+        request = urllib.request.Request(
+            self.base_url + route,
+            data=encoded,
+            headers={
+                "Accept": "application/json",
+                "Content-Type": "application/json; charset=utf-8",
+                "Cache-Control": "no-store",
+            },
+            method="POST",
+        )
+        try:
+            with self._opener.open(request, timeout=self.timeout_seconds) as response:
+                content_type = response.headers.get_content_type()
+                if content_type != "application/json":
+                    raise ApiClientError(f"API вернул неожиданный Content-Type: {content_type}.")
+                raw = response.read(MAX_RESPONSE_BYTES + 1)
+                if len(raw) > MAX_RESPONSE_BYTES:
+                    raise ApiClientError("Ответ API превышает допустимый размер 2 МиБ.")
+        except urllib.error.HTTPError as exc:
+            raise ApiClientError(f"HTTP {exc.code}: сервер отклонил запрос.", exc.code) from exc
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            raise ApiClientError(f"Нет ответа от Linux API: {exc}") from exc
+        try:
+            payload_object = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ApiClientError("API вернул некорректный JSON.") from exc
+        if not isinstance(payload_object, dict):
+            raise ApiClientError("Корневой элемент JSON должен быть объектом.")
+        return payload_object
+
+    def submit_test_adapter_request(self) -> dict[str, Any]:
+        """Send one harmless PING to the explicitly enabled VM test adapter."""
+        request_id = uuid.uuid4().hex
+        response = self._post_json(
+            "/api/v1/test/adapter/request",
+            {
+                "schema_version": "1.0",
+                "request_id": request_id,
+                "operation": "PING",
+            },
+        )
+        self.validate_test_adapter_response(response, request_id)
+        return response
+
+    @staticmethod
+    def validate_test_adapter_response(payload: dict[str, Any], request_id: str) -> None:
+        expected_fields = {
+            "schema_version",
+            "request_id",
+            "status",
+            "source",
+            "physical_action_performed",
+        }
+        if set(payload) != expected_fields:
+            raise ApiClientError("Ответ тестового адаптера содержит неизвестный набор полей.")
+        if payload.get("schema_version") != "1.0":
+            raise ApiClientError("Неизвестная версия ответа тестового адаптера.")
+        if payload.get("request_id") != request_id:
+            raise ApiClientError("Ответ тестового адаптера не соответствует отправленному request_id.")
+        if payload.get("status") != "TEST_ADAPTER_ACCEPTED":
+            raise ApiClientError("Тестовый адаптер не подтвердил приём запроса.")
+        if payload.get("source") != "TEST_ADAPTER":
+            raise ApiClientError("Ответ получен не от тестового адаптера.")
+        if payload.get("physical_action_performed") is not False:
+            raise ApiClientError("Тестовый ответ некорректно описывает выполнение физического действия.")
 
     def get_health(self) -> dict[str, Any]:
         payload = self._get_json("/api/v1/health")

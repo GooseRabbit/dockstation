@@ -823,3 +823,28 @@ PlatformLogger обслуживает технические сообщения 
 Текущий entry point запускается в bootstrap-only режиме: callback прикладной службы не зарегистрирован, поэтому процесс выполняет проверки и завершает работу, явно указывая, что HTTP API не запущен. Python Gateway остаётся отдельным временным VM-прототипом. C++ Bootstrap не открывает сокет, не меняет фиксированный loopback bind, не выполняет DNS/TCP-пробы автоматически и не управляет физическим оборудованием.
 
 Проверка: `verification/repka_gateway/test_application_bootstrap.cpp`; регистрация в CTest — `application_bootstrap`. Добавлены сценарии справки, раннего отказа CLI, запуска/завершения, передачи конфигурации службе, SIGTERM и ненулевого кода службы. Сборка и выполнение теста ещё не подтверждены.
+
+
+## 23. Временный VM-вертикальный срез тестового адаптера
+
+Следующие функции существуют только в Python Gateway-прототипе для проверки маршрута Operator → Gateway → прикладная служба → тестовый адаптер → Operator. Они не являются командами физического управления и не фиксируют производственный HTTP-контракт.
+
+### repka_gateway/dockstation_gateway/application/test_request_service.py
+
+| Функция / тип | Назначение |
+|---|---|
+| `TestRequestService.handle_test_request(payload)` | Проверяет точный набор полей, версию схемы, ограниченный request_id и единственную разрешённую операцию PING; передаёт запрос тестовому адаптеру и возвращает его квитанцию. |
+
+### repka_gateway/dockstation_gateway/adapters/test_request_adapter.py
+
+| Функция / тип | Назначение |
+|---|---|
+| `TestRequestAdapter.accept_test_request(request_id, operation)` | Принимает только PING и возвращает TEST_ADAPTER_ACCEPTED с источником TEST_ADAPTER и `physical_action_performed=false`. Не обращается к GPIO, ESP32 или исполнительным устройствам. |
+
+### operator/src/dockstation_operator/api/station_api_client.py
+
+| Функция | Назначение |
+|---|---|
+| `StationApiClient.submit_test_adapter_request()` | Отправляет единственный тестовый PING по POST через существующее loopback-соединение и проверяет квитанцию, request_id, источник и отсутствие физического действия. |
+
+Маршрут Gateway: `POST /api/v1/test/adapter/request`. По умолчанию отключён; временный Python Gateway включает его только с явным `--enable-test-adapter`. Максимальный размер тела — 4096 байт; неизвестные поля, дубликаты JSON-ключей и любые операции кроме PING отклоняются.

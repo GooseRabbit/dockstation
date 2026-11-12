@@ -68,3 +68,11 @@ def test_gateway_cli_starts_serves_api_and_stops():
             process.stdout.close()
         if process.stderr:
             process.stderr.close()
+
+
+
+def test_gateway_cli_test_adapter_is_disabled_unless_explicitly_enabled():
+    from repka_gateway.dockstation_gateway.main import parse_arguments
+
+    assert parse_arguments(["--port", "8080"]).enable_test_adapter is False
+    assert parse_arguments(["--port", "8080", "--enable-test-adapter"]).enable_test_adapter is True
