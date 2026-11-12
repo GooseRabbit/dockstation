@@ -6,7 +6,9 @@
 #include <string>
 #include <vector>
 
+#include "platform/linux/command_line.hpp"
 #include "platform/linux/network_diagnostics.hpp"
+#include "platform/linux/runtime_config_file.hpp"
 #include "platform/linux/runtime_environment.hpp"
 #include "platform/linux/system_diagnostics.hpp"
 #include "platform/logging/logger.hpp"
@@ -256,8 +258,39 @@ ApplicationRunResult run_application(int argc,
         return result;
     }
 
+    platform::linux_runtime::RuntimeConfig runtime_config{};
+    if (!parsed.config_file_path.empty()) {
+        const auto file_result =
+            platform::linux_runtime::load_runtime_config_file(parsed.config_file_path);
+        if (file_result.status !=
+            platform::linux_runtime::RuntimeConfigFileStatus::Loaded) {
+            std::cerr << "Не удалось загрузить конфигурацию: "
+                      << file_result.field << ": " << file_result.reason;
+            if (file_result.error_line != 0U) {
+                std::cerr << " (строка " << file_result.error_line << ")";
+            }
+            std::cerr << '\n';
+            result.exit_code = ApplicationExitCode::StartupFailure;
+            result.message = file_result.reason;
+            return result;
+        }
+        runtime_config = file_result.config;
+    }
+    platform::linux_runtime::apply_command_line_overrides(parsed, runtime_config);
+
+    const auto config_validation =
+        platform::linux_runtime::validate_runtime_config(runtime_config);
+    if (config_validation.status !=
+        platform::linux_runtime::RuntimeConfigValidationStatus::Valid) {
+        std::cerr << "Некорректная итоговая конфигурация: "
+                  << config_validation.field << ": " << config_validation.reason << '\n';
+        result.exit_code = ApplicationExitCode::StartupFailure;
+        result.message = config_validation.reason;
+        return result;
+    }
+
     const auto logger_result =
-        platform::linux_runtime::initialize_runtime_logger(parsed.config);
+        platform::linux_runtime::initialize_runtime_logger(runtime_config);
     if (logger_result.status !=
         platform::linux_runtime::RuntimeLoggerInitializationStatus::Ready) {
         std::cerr << "Не удалось инициализировать журналирование: "
@@ -281,7 +314,7 @@ ApplicationRunResult run_application(int argc,
         !write_log(LogLevel::Info, "Запуск Linux-приложения DockStation (bootstrap)",
                    {{"configured_api_bind_address",
                      platform::linux_runtime::kGatewayBindAddress},
-                    {"configured_api_port", std::to_string(parsed.config.api_port)}})) {
+                    {"configured_api_port", std::to_string(runtime_config.api_port)}})) {
         startup_ok = false;
         exit_code = ApplicationExitCode::StartupFailure;
     }
@@ -343,7 +376,7 @@ ApplicationRunResult run_application(int argc,
             exit_code = ApplicationExitCode::StartupFailure;
         } else {
             const int service_result =
-                service_runner(parsed.config, signal_handlers.flag());
+                service_runner(runtime_config, signal_handlers.flag());
             if (service_result != 0) {
                 (void)write_log(LogLevel::Error,
                                 "Прикладная служба завершилась с ошибкой",

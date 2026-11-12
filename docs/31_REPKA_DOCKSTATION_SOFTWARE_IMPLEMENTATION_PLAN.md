@@ -95,9 +95,9 @@ Windows-клиент не обращается к GPIO, драйверам и с
 
 ## Этап 1. Linux Gateway и системная диагностика
 
-**Файлы:** корневой `CMakeLists.txt`; `.github/workflows/linux-cmake.yml`; `repka_gateway/main.cpp`; `src/application/linux/application_bootstrap.hpp/.cpp`; `src/platform/linux/runtime_environment.hpp/.cpp`; `src/platform/linux/system_diagnostics.hpp/.cpp`; `src/platform/linux/network_diagnostics.hpp/.cpp`; `src/platform/logging/logger.hpp/.cpp`; `src/platform/linux/runtime_config.hpp/.cpp`; `src/platform/linux/command_line.hpp/.cpp`; в дальнейшем — `repka/dockstation-gateway.service`.
+**Файлы:** корневой `CMakeLists.txt`; `.github/workflows/linux-cmake.yml`; `repka_gateway/main.cpp`; `src/application/linux/application_bootstrap.hpp/.cpp`; `src/platform/linux/runtime_environment.hpp/.cpp`; `src/platform/linux/system_diagnostics.hpp/.cpp`; `src/platform/linux/network_diagnostics.hpp/.cpp`; `src/platform/logging/logger.hpp/.cpp`; `src/platform/linux/runtime_config.hpp/.cpp`; `src/platform/linux/command_line.hpp/.cpp`; `src/platform/linux/runtime_config_file.hpp/.cpp`; в дальнейшем — `repka/dockstation-gateway.service`.
 
-**Согласованная система сборки:** CMake используется для отдельной Linux-цели. Текущая корневая конфигурация собирает в статическую библиотеку `dockstation_linux_runtime` семь компонентов: `LinuxApplicationBootstrap`, `RuntimeEnvironment`, `SystemDiagnostics`, `NetworkDiagnostics`, `PlatformLogger`, `RuntimeConfig` и `CommandLineParser`. Для потокобезопасного PlatformLogger CMake явно находит и подключает `Threads::Threads`; зависимость транзитивно передаётся потребителям статической библиотеки. Отдельная исполняемая цель `dockstation_linux_bootstrap` использует `repka_gateway/main.cpp`. В CTest зарегистрированы семь host-проверок: `test_application_bootstrap`, `test_runtime_environment`, `test_system_diagnostics`, `test_network_diagnostics`, `test_logger`, `test_runtime_config`, `test_command_line`. Bootstrap пока работает в bootstrap-only режиме без callback прикладной службы: проверяет окружение и завершается, явно сообщая, что HTTP API не запущен. Он не подменяет временный Python Gateway и не создаёт конкурирующий HTTP-сервер. Существующие `tests/` и `tools/` не меняются.
+**Согласованная система сборки:** CMake используется для отдельной Linux-цели. Текущая корневая конфигурация собирает в статическую библиотеку `dockstation_linux_runtime` восемь компонентов: `LinuxApplicationBootstrap`, `RuntimeEnvironment`, `SystemDiagnostics`, `NetworkDiagnostics`, `PlatformLogger`, `RuntimeConfig`, `CommandLineParser` и `RuntimeConfigFileLoader`. Для потокобезопасного PlatformLogger CMake явно находит и подключает `Threads::Threads`; зависимость транзитивно передаётся потребителям статической библиотеки. Отдельная исполняемая цель `dockstation_linux_bootstrap` использует `repka_gateway/main.cpp`. В CTest зарегистрированы восемь host-проверок: `test_application_bootstrap`, `test_runtime_environment`, `test_system_diagnostics`, `test_network_diagnostics`, `test_logger`, `test_runtime_config`, `test_command_line`, `test_runtime_config_file`. Bootstrap пока работает в bootstrap-only режиме без callback прикладной службы: проверяет окружение и завершается, явно сообщая, что HTTP API не запущен. Он не подменяет временный Python Gateway и не создаёт конкурирующий HTTP-сервер. Существующие `tests/` и `tools/` не меняются.
 
 Команды из корня репозитория:
 
@@ -107,8 +107,15 @@ Windows-клиент не обращается к GPIO, драйверам и с
 - для дополнительной host-проверки с санитайзерами: добавить при конфигурации `-DDOCKSTATION_ENABLE_SANITIZERS=ON`. Санитайзеры по умолчанию выключены, чтобы не навязывать их целевой сборке Repka.
 
 **command_line.cpp:**
-- parse_command_line() — разбор строго ограниченного набора параметров процесса; не читает файлы, не запускает службы и не меняет адрес привязки.
+- parse_command_line() — разбор параметров процесса, включая явный `--config-file PATH`; фиксирует маску явно заданных CLI overrides и не читает файлы/не запускает службы.
+- apply_command_line_overrides() — накладывает только явно заданные CLI-значения на загруженную базовую конфигурацию.
 - command_line_help() — справка по поддерживаемым параметрам.
+
+**runtime_config_file.cpp:**
+- parse_runtime_config_text() — строгий разбор строк `key=value`, пустых строк и комментариев; проверяет известные ключи, дубликаты, типы и диапазоны.
+- load_runtime_config_file() — безопасно читает явно заданный обычный файл не более 64 КиБ; различает NOT_FOUND, READ_ERROR и INVALID.
+- Поддерживаемые ключи: `api_port`, `log_level`, `log_file`, `log_stderr`, `log_max_file_size_bytes`, `log_max_rotated_files`. Кавычки и inline-комментарии не имеют специальной семантики.
+- Приоритет: значения по умолчанию → файл → явно заданные CLI-параметры. После объединения Bootstrap выполняет `validate_runtime_config()` и только затем инициализирует Logger. Файл необязателен и не ищется автоматически.
 
 **LinuxApplicationBootstrap (реализованный текущий lifecycle-каркас):**
 - `main()` передаёт аргументы в `run_application()` и возвращает код завершения ОС.
@@ -121,7 +128,7 @@ Windows-клиент не обращается к GPIO, драйверам и с
 - при отсутствии ServiceRunner выполняется только bootstrap-проверка с явным сообщением, что HTTP API не запущен.
 - обработчики сигналов восстанавливаются, Logger flush/shutdown проверяются отдельно.
 
-Загрузчик внешней конфигурации, создание физических адаптеров, связывание core services, HTTP/API-сервер и полноценный run_gateway() остаются следующими отдельными задачами; они не имитируются текущим Bootstrap.
+Загрузчик внешней конфигурации RuntimeConfig реализован как отдельный read-only компонент; создание физических адаптеров, связывание core services, HTTP/API-сервер и полноценный run_gateway() остаются следующими отдельными задачами; они не имитируются текущим Bootstrap.
 
 **runtime_environment.cpp:**
 - read_os_version(), read_kernel_version(), read_hardware_architecture(), read_software_build_info(), check_runtime_dependencies().
@@ -163,7 +170,7 @@ Windows-клиент не обращается к GPIO, драйверам и с
 
 **Реализованный шестой срез — CommandLineParser:** добавлены `src/platform/linux/command_line.hpp/.cpp` и `verification/repka_gateway/test_command_line.cpp`. Парсер поддерживает только параметры, уже представленные в RuntimeConfig: `--api-port`, `--log-level`, `--log-file`, `--log-stderr`/`--no-log-stderr`, `--log-max-file-size-bytes`, `--log-max-rotated-files` и отдельный `--help`. Повторные/неизвестные параметры, неверные значения и конфигурация без sink отклоняются; результат проходит через `validate_runtime_config()`. Парсер не читает конфигурационные файлы, не использует переменные окружения, не открывает файлы и не запускает службы. Адрес привязки остаётся фиксированным `127.0.0.1`. Проверочная программа добавлена в CTest; сборка и её запуск ещё не выполнялись.
 
-**Ожидаемый результат всего этапа 1:** отдельное Linux-приложение собирается, запускается, выдаёт диагностику и корректно завершается. Это целевой результат этапа, а не текущий статус: на данном срезе есть статическая библиотека, bootstrap-only исполняемая цель и семь зарегистрированных проверочных программ. HTTP/API-служба ещё не подключена; Python Gateway остаётся отдельным VM-прототипом. Старый host-testbench не меняется.
+**Ожидаемый результат всего этапа 1:** отдельное Linux-приложение собирается, запускается, выдаёт диагностику и корректно завершается. Это целевой результат этапа, а не текущий статус: на данном срезе есть статическая библиотека, bootstrap-only исполняемая цель и восемь зарегистрированных проверочных программ. HTTP/API-служба ещё не подключена; Python Gateway остаётся отдельным VM-прототипом. Старый host-testbench не меняется.
 
 ## Этап 3A. Географическая карта и подготовка маршрутов в Operator
 

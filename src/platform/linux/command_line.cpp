@@ -71,13 +71,7 @@ CommandLineParseResult parse_command_line(int argc, const char* const argv[]) {
     CommandLineParseResult result{};
     result.status = CommandLineParseStatus::Success;
 
-    bool api_port_seen{false};
-    bool log_level_seen{false};
-    bool log_file_seen{false};
-    bool log_stderr_seen{false};
-    bool max_file_size_seen{false};
-    bool max_rotated_files_seen{false};
-
+    bool config_file_seen{false};
     for (int index = 1; index < argc; ++index) {
         if (argv[index] == nullptr) {
             return invalid("Обнаружен пустой указатель аргумента запуска");
@@ -93,63 +87,70 @@ CommandLineParseResult parse_command_line(int argc, const char* const argv[]) {
 
         std::string_view value;
         std::string error;
-        std::uint64_t number{0};
+        std::uint64_t number{0U};
 
-        if (option == "--api-port") {
-            if (api_port_seen) return invalid("Параметр --api-port указан повторно");
-            api_port_seen = true;
+        if (option == "--config-file") {
+            if (config_file_seen) return invalid("Параметр --config-file указан повторно");
+            config_file_seen = true;
+            if (!read_value(argc, argv, index, "--config-file", value, error)) {
+                return invalid(error);
+            }
+            if (value.empty() || value.find('\0') != std::string_view::npos) {
+                return invalid("Путь --config-file пуст или содержит нулевой байт");
+            }
+            result.config_file_path.assign(value.data(), value.size());
+        } else if (option == "--api-port") {
+            if (result.overrides.api_port) return invalid("Параметр --api-port указан повторно");
+            result.overrides.api_port = true;
             if (!read_value(argc, argv, index, "--api-port", value, error) ||
-                !parse_unsigned(value, number) ||
-                number > std::numeric_limits<std::uint32_t>::max()) {
-                return invalid(error.empty() ? "Некорректное значение --api-port" : error);
+                !parse_unsigned(value, number) || number == 0U || number > 65535U) {
+                return invalid(error.empty()
+                    ? "Некорректное значение --api-port (допустимо 1..65535)" : error);
             }
             result.config.api_port = static_cast<std::uint32_t>(number);
         } else if (option == "--log-level") {
-            if (log_level_seen) return invalid("Параметр --log-level указан повторно");
-            log_level_seen = true;
+            if (result.overrides.log_level) return invalid("Параметр --log-level указан повторно");
+            result.overrides.log_level = true;
             if (!read_value(argc, argv, index, "--log-level", value, error) ||
                 !parse_log_level(value, result.config.logger.minimum_level)) {
                 return invalid(error.empty()
-                    ? "Допустимые уровни --log-level: debug, info, warning, error"
-                    : error);
+                    ? "Допустимые уровни --log-level: debug, info, warning, error" : error);
             }
         } else if (option == "--log-file") {
-            if (log_file_seen) return invalid("Параметр --log-file указан повторно");
-            log_file_seen = true;
+            if (result.overrides.log_file) return invalid("Параметр --log-file указан повторно");
+            result.overrides.log_file = true;
             if (!read_value(argc, argv, index, "--log-file", value, error)) {
                 return invalid(error);
             }
             if (value.empty()) return invalid("Путь --log-file не может быть пустым");
-            result.config.logger.file_path = std::string{value};
+            result.config.logger.file_path.assign(value.data(), value.size());
         } else if (option == "--log-stderr" || option == "--no-log-stderr") {
-            if (log_stderr_seen) {
+            if (result.overrides.log_stderr) {
                 return invalid("Параметр --log-stderr/--no-log-stderr указан повторно");
             }
-            log_stderr_seen = true;
+            result.overrides.log_stderr = true;
             result.config.logger.write_to_stderr = option == "--log-stderr";
         } else if (option == "--log-max-file-size-bytes") {
-            if (max_file_size_seen) {
+            if (result.overrides.max_file_size_bytes) {
                 return invalid("Параметр --log-max-file-size-bytes указан повторно");
             }
-            max_file_size_seen = true;
+            result.overrides.max_file_size_bytes = true;
             if (!read_value(argc, argv, index, "--log-max-file-size-bytes", value, error) ||
                 !parse_unsigned(value, number)) {
                 return invalid(error.empty()
-                    ? "Некорректное значение --log-max-file-size-bytes"
-                    : error);
+                    ? "Некорректное значение --log-max-file-size-bytes" : error);
             }
             result.config.logger.max_file_size_bytes = number;
         } else if (option == "--log-max-rotated-files") {
-            if (max_rotated_files_seen) {
+            if (result.overrides.max_rotated_files) {
                 return invalid("Параметр --log-max-rotated-files указан повторно");
             }
-            max_rotated_files_seen = true;
+            result.overrides.max_rotated_files = true;
             if (!read_value(argc, argv, index, "--log-max-rotated-files", value, error) ||
                 !parse_unsigned(value, number) ||
-                number > std::numeric_limits<std::size_t>::max()) {
+                number > std::numeric_limits<std::size_t>::max() || number > 20U) {
                 return invalid(error.empty()
-                    ? "Некорректное значение --log-max-rotated-files"
-                    : error);
+                    ? "Некорректное значение --log-max-rotated-files (допустимо 0..20)" : error);
             }
             result.config.logger.max_rotated_files = static_cast<std::size_t>(number);
         } else {
@@ -157,18 +158,40 @@ CommandLineParseResult parse_command_line(int argc, const char* const argv[]) {
         }
     }
 
-    const RuntimeConfigValidationResult validation = validate_runtime_config(result.config);
-    if (validation.status != RuntimeConfigValidationStatus::Valid) {
-        return invalid("Некорректная настройка " + validation.field + ": " +
-                       validation.reason);
+    if (result.config_file_path.empty()) {
+        const RuntimeConfigValidationResult validation =
+            validate_runtime_config(result.config);
+        if (validation.status != RuntimeConfigValidationStatus::Valid) {
+            return invalid("Некорректная настройка " + validation.field + ": " +
+                           validation.reason);
+        }
     }
     return result;
+}
+
+void apply_command_line_overrides(const CommandLineParseResult& parsed,
+                                  RuntimeConfig& config) {
+    if (parsed.overrides.api_port) config.api_port = parsed.config.api_port;
+    if (parsed.overrides.log_level) {
+        config.logger.minimum_level = parsed.config.logger.minimum_level;
+    }
+    if (parsed.overrides.log_file) config.logger.file_path = parsed.config.logger.file_path;
+    if (parsed.overrides.log_stderr) {
+        config.logger.write_to_stderr = parsed.config.logger.write_to_stderr;
+    }
+    if (parsed.overrides.max_file_size_bytes) {
+        config.logger.max_file_size_bytes = parsed.config.logger.max_file_size_bytes;
+    }
+    if (parsed.overrides.max_rotated_files) {
+        config.logger.max_rotated_files = parsed.config.logger.max_rotated_files;
+    }
 }
 
 std::string command_line_help(const std::string& executable_name) {
     const std::string name = executable_name.empty() ? "dockstation-gateway" : executable_name;
     return "Использование: " + name + " [параметры]\n"
         "  --help                         Показать эту справку\n"
+        "  --config-file PATH             Загрузить настройки из файла .conf\n"
         "  --api-port PORT                Порт локального API (по умолчанию 8080)\n"
         "  --log-level LEVEL              debug | info | warning | error\n"
         "  --log-file PATH                Дополнительный файл JSONL-журнала\n"
@@ -178,7 +201,7 @@ std::string command_line_help(const std::string& executable_name) {
         "  --log-max-rotated-files N      Число архивов журнала (по умолчанию 3, не более 20)\n"
         "\n"
         "Адрес привязки API фиксирован: 127.0.0.1. Изменить его параметрами запуска нельзя.\n"
-        "Файл конфигурации и переменные окружения на этом этапе не поддерживаются.\n";
+        "Приоритет настроек: значения по умолчанию, затем файл .conf, затем параметры запуска.\n";
 }
 
 }  // namespace dockstation::platform::linux_runtime

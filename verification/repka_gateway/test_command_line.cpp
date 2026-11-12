@@ -63,9 +63,10 @@ int main() {
     expect(parse({"dockstation-gateway", "--bind", "0.0.0.0"}).status ==
                CommandLineParseStatus::InvalidArguments,
            "rejects attempts to change the fixed bind address");
-    expect(parse({"dockstation-gateway", "--config-file", "/tmp/gateway.json"}).status ==
-               CommandLineParseStatus::InvalidArguments,
-           "rejects unsupported external configuration file option");
+    result = parse({"dockstation-gateway", "--config-file", "/tmp/gateway.conf"});
+    expect(result.status == CommandLineParseStatus::Success &&
+               result.config_file_path == "/tmp/gateway.conf",
+           "accepts an explicitly selected external configuration file");
     expect(parse({"dockstation-gateway", "--api-port"}).status ==
                CommandLineParseStatus::InvalidArguments,
            "rejects option without a value");
