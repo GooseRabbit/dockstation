@@ -21,13 +21,13 @@ NSS, поэтому имя может разрешиться через `/etc/ho
 
 ## Gateway API
 
-Временный read-only Gateway находится в `apps/repka_gateway/`. Он использует только
+Временный read-only Gateway находится в `repka_gateway/`. Он использует только
 стандартную библиотеку Python 3.11+ и привязывается исключительно к `127.0.0.1`.
 
 Запуск из корня репозитория:
 
 ```sh
-python3 -m apps.repka_gateway.dockstation_gateway.main --port 8080
+python3 -m repka_gateway.dockstation_gateway.main --port 8080
 ```
 
 Маршруты:
