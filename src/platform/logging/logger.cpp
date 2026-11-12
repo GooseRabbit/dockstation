@@ -226,7 +226,13 @@ LoggerResult initialize_logger(const LoggerConfig& config) {
 
     if (logger.file.is_open()) {
         logger.file.flush();
+        if (!logger.file.good()) {
+            return {LoggerStatus::Unavailable, "cannot flush previous log file"};
+        }
         logger.file.close();
+        if (logger.file.fail()) {
+            return {LoggerStatus::Unavailable, "cannot close previous log file"};
+        }
     }
     logger.config = config;
     logger.initialized = true;
@@ -325,6 +331,9 @@ LoggerResult shutdown_logger() {
             return {LoggerStatus::Unavailable, "cannot flush log file during shutdown"};
         }
         logger.file.close();
+        if (logger.file.fail()) {
+            return {LoggerStatus::Unavailable, "cannot close log file during shutdown"};
+        }
     }
     logger.initialized = false;
     return {LoggerStatus::Available, {}};
