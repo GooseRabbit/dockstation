@@ -1,7 +1,7 @@
 # Полный план реализации программного комплекса DockStation на Repka Pi 5
 
 **Статус:** мастер-план реализации; последовательность разработки согласована, открытые платформенные, сетевые, серверные и аппаратные детали требуют отдельной проверки и решения.  
-**Редакция:** 0.7.  
+**Редакция:** 0.8.  
 **Дата:** 2026-11-12.  
 **Вычислительная платформа:** Repka Pi 5.  
 **Предполагаемая ОС:** официальная Repka OS; образ и версия проверяются перед развёртыванием.
@@ -46,7 +46,7 @@ Windows-клиент не обращается к GPIO, драйверам и с
 | Плата | Repka Pi 5 | Выбрана для текущего этапа |
 | ОС | Repka OS | Основной кандидат; версию проверить на плате |
 | Служба Repka | C++17 с переиспользованием текущего ядра | Предварительная позиция |
-| Сборка | CMake для отдельной Linux-цели | Предложение |
+| Сборка | CMake для отдельной Linux-цели | СОГЛАСОВАНО владельцем 2026-11-12 |
 | Windows-клиент | Python + PySide6 + Qt Quick/QML | Рекомендация docs/23; подтвердить прототипом |
 | API первого прототипа | REST/HTTP + JSON через SSH-туннель | Предложение |
 | Рабочий API | Защищённый API с проверкой идентичности и полномочий | Обязательно; реализация требует решений docs/24 |
@@ -95,7 +95,16 @@ Windows-клиент не обращается к GPIO, драйверам и с
 
 ## Этап 1. Linux Gateway и системная диагностика
 
-**Файлы:** CMakeLists.txt; apps/repka_gateway/CMakeLists.txt; apps/repka_gateway/main.cpp; src/platform/linux/runtime_environment.hpp/.cpp; src/platform/linux/system_diagnostics.hpp/.cpp; src/platform/linux/network_diagnostics.hpp/.cpp; src/platform/logging/logger.hpp/.cpp; deployment/repka/dockstation-gateway.service.
+**Файлы:** корневой `CMakeLists.txt`; в дальнейшем — `apps/repka_gateway/CMakeLists.txt` и `apps/repka_gateway/main.cpp`; `src/platform/linux/runtime_environment.hpp/.cpp`; `src/platform/linux/system_diagnostics.hpp/.cpp`; `src/platform/linux/network_diagnostics.hpp/.cpp`; `src/platform/logging/logger.hpp/.cpp`; `deployment/repka/dockstation-gateway.service`.
+
+**Согласованная система сборки:** CMake используется для отдельной Linux-цели. Первая конфигурация собирает существующий `RuntimeEnvironment` в статическую библиотеку `dockstation_linux_runtime` и отдельную проверочную программу `test_runtime_environment` из `verification/repka_gateway/`. Полноценная исполняемая цель Gateway появится после реализации `main.cpp` и каркаса приложения; текущая конфигурация не создаёт фиктивную точку входа и не меняет существующие `tests/` и `tools/`.
+
+Команды из корня репозитория:
+
+- `cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug` — конфигурация проекта;
+- `cmake --build build --parallel` — сборка;
+- `ctest --test-dir build --output-on-failure` — запуск зарегистрированных проверок;
+- для дополнительной host-проверки с санитайзерами: добавить при конфигурации `-DDOCKSTATION_ENABLE_SANITIZERS=ON`. Санитайзеры по умолчанию выключены, чтобы не навязывать их целевой сборке Repka.
 
 **main.cpp:**
 - parse_command_line() — аргументы запуска.
@@ -121,7 +130,7 @@ Windows-клиент не обращается к GPIO, драйверам и с
 
 Недоступная температура или неизвестный статус обозначаются явно, не подменяются нулём.
 
-**Реализованный первый срез этапа 1:** `src/platform/linux/runtime_environment.hpp/.cpp` содержит `read_os_version()`, `read_kernel_version()`, `read_hardware_architecture()`, `read_software_build_info()` и `check_runtime_dependencies()`. Проверка размещена в `verification/repka_gateway/test_runtime_environment.cpp`. На host Linux x86_64 (Debian GNU/Linux 13, GCC 14.2.0) выполнена сборка с `-std=c++17 -Wall -Wextra -Wpedantic -Werror -fno-exceptions -fno-rtti -fsanitize=address,undefined`; все 16 проверок прошли. Это не является целевой сборкой ARM64 или испытанием на Repka Pi 5. CMake, application main/bootstrap, system/network diagnostics и logger ещё не реализованы.
+**Реализованный первый срез этапа 1:** `src/platform/linux/runtime_environment.hpp/.cpp` содержит `read_os_version()`, `read_kernel_version()`, `read_hardware_architecture()`, `read_software_build_info()` и `check_runtime_dependencies()`. Проверка размещена в `verification/repka_gateway/test_runtime_environment.cpp`. На host Linux x86_64 (Debian GNU/Linux 13, GCC 14.2.0) выполнена сборка с `-std=c++17 -Wall -Wextra -Wpedantic -Werror -fno-exceptions -fno-rtti -fsanitize=address,undefined`; все 16 проверок прошли. Это не является целевой сборкой ARM64 или испытанием на Repka Pi 5. Корневой CMake уже добавлен: он собирает этот адаптер и его проверочную программу. Application main/bootstrap, исполняемая цель Gateway, system/network diagnostics и logger ещё не реализованы.
 
 **Результат:** отдельное Linux-приложение собирается, запускается, выдаёт диагностику и корректно завершается. Старый host-testbench не меняется.
 
@@ -569,5 +578,6 @@ USB/UART, пины и формат кадров остаются открыты�
 | 0.5 | 2026-11-12 | Добавлены создание маршрутов на карте, ввод координат, файловый импорт, предварительная проверка и функции подготовки маршрута; конкретные форматы оставлены открытыми. |
 | 0.6 | 2026-11-12 | Зафиксированы USB-веб-камера прототипа, независимый просмотр и ручная запись; добавлен необязательный SSD-backend, выбираемый конфигурацией, и сценарии проверки отсутствующего накопителя. |
 | 0.7 | 2026-11-12 | Реализован первый Linux platform slice RuntimeEnvironment: сведения об ОС, ядре, архитектуре, сборке и доступности системных источников; 16 host-проверок пройдены, целевая проверка на Repka ещё не выполнялась. |
+| 0.8 | 2026-11-12 | Владелец согласовал CMake для отдельной Linux-цели; добавлена корневая конфигурация сборки RuntimeEnvironment и его verification-теста. Исполняемая цель Gateway отложена до появления main/bootstrap. |
 
 **Ограничение:** это план. Функции не считаются реализованными до появления кода, проверок и, где требуется, аппаратных испытаний.
