@@ -13,9 +13,13 @@ ConfigurationValueView num(double n){ConfigurationValueView v{};v.type=Configura
 ConfigurationValueView str(std::string_view s){ConfigurationValueView v{};v.type=ConfigurationValueType::String;v.value.string_value=s;return v;}
 ConfigurationValueView obj(const ConfigurationObjectEntryView* e,std::size_t n){ConfigurationValueView v{};v.type=ConfigurationValueType::Object;v.value.object_value={e,n};return v;}
 bool has(const ConfigurationValidationResult& r,std::string_view code,std::string_view path){
- if(!r.issues.items)return false;for(std::size_t i=0;i<r.issues.size;++i)
- if(r.issues.items[i].reason_code==code&&r.issues.items[i].field_path&&*r.issues.items[i].field_path==path)return true;
+ if (!r.issues.items) return false;
+ for (std::size_t i = 0; i < r.issues.size; ++i) {
+  if (r.issues.items[i].reason_code == code && r.issues.items[i].field_path &&
+      *r.issues.items[i].field_path == path) return true;
+ }
  return false;
+}
 }
 }
 int main(){
