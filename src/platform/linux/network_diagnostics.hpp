@@ -60,6 +60,8 @@ struct DnsResolutionDiagnostic {
     std::string reason{};
 };
 
+// AVAILABLE means the probe ran; reachable=false is a completed negative result.
+// UNAVAILABLE means the probe could not be performed (invalid input/name resolution).
 struct TcpReachabilityDiagnostic {
     NetworkDiagnosticStatus status{NetworkDiagnosticStatus::Unavailable};
     std::string host{};
