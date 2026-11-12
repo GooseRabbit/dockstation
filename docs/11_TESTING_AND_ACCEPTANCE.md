@@ -1,7 +1,7 @@
 # Испытания и приёмка
 
 **Статус:** предварительный план.  
-**Редакция:** 1.9.
+**Редакция:** 2.0.
 **Дата актуализации:** 2026-11-12.
 
 ## 1. Назначение
@@ -531,4 +531,22 @@
 - «передача завершена» на «сервер подтвердил целостность».
 
 
-**Примечание к TEST-PLAT-030…036:** проверочная программа `verification/repka_gateway/test_application_bootstrap.cpp` добавлена в CTest. До фактического запуска сборки и тестов все сценарии имеют статус НЕ ПРОВЕРЕНО.
+**Результат TEST-PLAT-030…036:** проверочная программа `verification/repka_gateway/test_application_bootstrap.cpp` собрана и успешно выполнена в GitHub Actions. Все 8/8 CTest прошли на Ubuntu 24.04 x86_64 с AddressSanitizer и UndefinedBehaviorSanitizer. Это host-проверка, не целевой запуск на Repka Pi 5.
+
+## 14. Результат полного host CI (2026-11-12)
+
+Workflow `.github/workflows/linux-cmake.yml`, прогон [43221524755](https://github.com/GooseRabbit/dockstation/actions/runs/43221524755), завершился со статусом SUCCESS на Ubuntu 24.04 x86_64.
+
+| Проверка | Результат |
+|---|---:|
+| CMake configure/build Linux runtime и Bootstrap | PASS |
+| CTest с ASan/UBSan | 8/8 PASS |
+| Host unit/contract программы StationStateManager и ConfigurationManager | 31/31 PASS |
+| Python compileall | PASS |
+| Python pytest: Operator и временный Gateway | 76 PASS |
+| Синтаксис shell-скриптов | PASS |
+| Shell-сценарии сетевой диагностики | PASS |
+
+Host runner использует GCC C++17, `-Wall -Wextra -Wpedantic -Werror`; отдельные контрактные и ConfigurationManager цели дополнительно собираются с `-fno-exceptions -fno-rtti`.
+
+**Границы результата:** не выполнялись ARM64 cross-build, сборка/запуск на Repka Pi 5, ESP32/Arduino build, Windows GUI runtime, реальный VM SSH reconnect, физические датчики/приводы, накопитель, сеть и сервер. Эти проверки остаются НЕ ПРОВЕРЕНО.
