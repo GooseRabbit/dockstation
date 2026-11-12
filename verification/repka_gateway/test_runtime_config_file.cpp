@@ -153,6 +153,20 @@ int main() {
     expect(result.status == RuntimeConfigFileStatus::NotFound,
            "distinguishes a missing configuration file");
 
+    result = load_runtime_config_file("/tmp");
+    expect(result.status == RuntimeConfigFileStatus::ReadError,
+           "rejects a directory instead of treating it as a configuration file");
+
+    const std::string oversized_path =
+        create_file(std::string(kMaximumRuntimeConfigFileBytes + 1U, 'x'));
+    expect(!oversized_path.empty(), "creates an oversized temporary configuration file");
+    if (!oversized_path.empty()) {
+        result = load_runtime_config_file(oversized_path);
+        expect(result.status == RuntimeConfigFileStatus::Invalid,
+               "rejects an on-disk configuration file above the size limit");
+        (void)::unlink(oversized_path.c_str());
+    }
+
     result = load_runtime_config_file("");
     expect(result.status == RuntimeConfigFileStatus::Invalid,
            "rejects an empty configuration file path");

@@ -137,6 +137,21 @@ int main() {
            "rejects an invalid config file before Logger and service startup");
     std::remove(invalid_config_path.c_str());
 
+    const std::string invalid_combination_path =
+        "/tmp/dockstation_bootstrap_invalid_combination_" +
+        std::to_string(static_cast<long long>(::getpid())) + ".conf";
+    {
+        std::ofstream config_file(invalid_combination_path);
+        config_file << "log_stderr=false\n";
+    }
+    runner_calls = 0;
+    result = run({"dockstation-bootstrap", "--config-file",
+                  invalid_combination_path}, test_service_runner);
+    expect(result.exit_code == ApplicationExitCode::StartupFailure &&
+               runner_calls == 0,
+           "rejects an invalid merged configuration before Logger initialization");
+    std::remove(invalid_combination_path.c_str());
+
     struct sigaction previous_sigint {};
     struct sigaction previous_sigterm {};
     const bool captured_previous_sigint =
