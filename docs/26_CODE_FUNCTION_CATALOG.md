@@ -468,12 +468,12 @@
 
 | Функция | Назначение |
 |---|---|
-| `LoggerResult initialize_logger(const LoggerConfig& config)` | Проверяет конфигурацию sink и открывает stderr и/или заданный файл журнала. |
+| `LoggerResult initialize_logger(const LoggerConfig& config)` | Проверяет sink, уровень и путь (включая NUL); перед переинициализацией проверяет flush/close прежнего файлового sink, затем открывает заданный sink. |
 | `std::vector<LogField> redact_sensitive_fields(const std::vector<LogField>& fields)` | Маскирует значения полей, ключи которых указывают на пароль, токен, секрет, авторизацию, приватный ключ, credential или API key. |
-| `LoggerResult write_log_record(LogLevel level, const std::string& component, const std::string& message, const std::vector<LogField>& fields)` | Записывает одну структурированную JSONL-запись с UTC-временем и заданными полями. |
+| `LoggerResult write_log_record(LogLevel level, const std::string& component, const std::string& message, const std::vector<LogField>& fields)` | Отклоняет неизвестный уровень, фильтрует записи ниже порога, проверяет доступность настроенного файла, затем записывает структурированную JSONL-запись с UTC-временем и полями. |
 | `LoggerResult rotate_log_files()` | Выполняет ротацию файлового журнала в пределах настроенного числа архивов. |
 | `LoggerResult flush_log()` | Сбрасывает буферы файлового и stderr sink. |
-| `LoggerResult shutdown_logger()` | Сбрасывает буферы и закрывает файловый sink. |
+| `LoggerResult shutdown_logger()` | Сбрасывает буферы, закрывает файловый sink и возвращает явную ошибку при сбое flush/close. |
 
 PlatformLogger обслуживает технические сообщения процесса. Доменный EventLogger и аудит действий пользователей остаются отдельными компонентами; свободный текст сообщения не должен содержать секреты.
 
