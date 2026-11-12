@@ -1,3 +1,4 @@
+#include <cstddef>
 #include <vector>
 
 #include "application/linux/application_bootstrap.hpp"
