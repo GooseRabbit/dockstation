@@ -76,9 +76,9 @@ REST/JSON и HTTP-библиотека пока являются предлож�
 
 | Файл | Назначение |
 |---|---|
-| `deployment/repka/README.md` | Инструкция первой настройки ОС, Ethernet и SSH |
-| `deployment/repka/check_network.sh` | Только диагностическая проверка Linux-среды; без изменения конфигурации |
-| `deployment/repka/network_helpers.sh` | Проверки обязательных команд, ОС, архитектуры и итогового статуса диагностики |
+| `repka/README.md` | Инструкция первой настройки ОС, Ethernet и SSH |
+| `repka/check_network.sh` | Только диагностическая проверка Linux-среды; без изменения конфигурации |
+| `repka/network_helpers.sh` | Проверки обязательных команд, ОС, архитектуры и итогового статуса диагностики |
 
 ### Функции `check_network.sh`
 
@@ -98,9 +98,9 @@ REST/JSON и HTTP-библиотека пока являются предлож�
 
 Проверка SSH также остаётся read-only: она не запускает, не останавливает и не включает службу, не меняет конфигурацию и не открывает порт. Активный `ssh.socket`/`sshd.socket` считается доступным вариантом socket activation. Проверка состояния unit не подтверждает успешный вход по ключу, доступность TCP-порта через firewall или возможность подключения с Windows; это отдельные проверки следующего этапа.
 
-Проверки `require_command()`, `read_os_release()`, `check_architecture()` и `print_diagnostics_report()` вынесены в `deployment/repka/network_helpers.sh`; `check_network.sh` подключает этот файл относительно собственного расположения. В основном запуске сначала выполняются preflight-проверки, затем сетевые проверки; итоговая сводка сохраняет наиболее высокий код результата.
+Проверки `require_command()`, `read_os_release()`, `check_architecture()` и `print_diagnostics_report()` вынесены в `repka/network_helpers.sh`; `check_network.sh` подключает этот файл относительно собственного расположения. В основном запуске сначала выполняются preflight-проверки, затем сетевые проверки; итоговая сводка сохраняет наиболее высокий код результата.
 
-**Текущий минимальный VM-прототип:** в `apps/repka_gateway/` подготовлен временный read-only HTTP/JSON Gateway на стандартной библиотеке Python 3.11+. Он предоставляет `GET /api/v1/health` и `GET /api/v1/system/diagnostics` и слушает исключительно `127.0.0.1`. Windows-клиент подключается через SSH local-forward. Снимок содержит сведения об ОС, архитектуре, uptime, сетевых интерфейсах/IP, маршрутах, DNS и SSH. ESP32 и физические датчики в этот срез не входят. Python является временным способом проверить VM-обмен без выбора дополнительной HTTP-библиотеки; это не отменяет предварительную позицию C++17 для производственного Gateway из мастер-плана.
+**Текущий минимальный VM-прототип:** в `repka_gateway/` подготовлен временный read-only HTTP/JSON Gateway на стандартной библиотеке Python 3.11+. Он предоставляет `GET /api/v1/health` и `GET /api/v1/system/diagnostics` и слушает исключительно `127.0.0.1`. Windows-клиент подключается через SSH local-forward. Снимок содержит сведения об ОС, архитектуре, uptime, сетевых интерфейсах/IP, маршрутах, DNS и SSH. ESP32 и физические датчики в этот срез не входят. Python является временным способом проверить VM-обмен без выбора дополнительной HTTP-библиотеки; это не отменяет предварительную позицию C++17 для производственного Gateway из мастер-плана.
 
 **Результат:** проверки этапа 0 реализованы; собран временный loopback-only HTTP/JSON Gateway для VM-сценария. Окончательный производственный стек не выбран.
 
@@ -113,14 +113,14 @@ REST/JSON и HTTP-библиотека пока являются предлож�
 | Файл | Назначение |
 |---|---|
 | `CMakeLists.txt` | Отдельная сборка приложения |
-| `apps/repka_gateway/CMakeLists.txt` | Цель `dockstation_gateway` и зависимости |
-| `apps/repka_gateway/main.cpp` | Запуск и завершение службы |
+| `repka_gateway/CMakeLists.txt` | Цель `dockstation_gateway` и зависимости |
+| `repka_gateway/main.cpp` | Запуск и завершение службы |
 | `src/platform/linux/system_diagnostics.hpp/.cpp` | Системные показатели Linux |
 | `src/platform/linux/network_diagnostics.hpp/.cpp` | Сетевые показатели Linux |
 
 ### Функции
 
-**`apps/repka_gateway/main.cpp`**
+**`repka_gateway/main.cpp`**
 1. `parse_command_line()` — разбор параметров запуска.
 2. `load_runtime_config()` — чтение внешней конфигурации.
 3. `initialize_logging()` — журналирование без секретов.
@@ -163,7 +163,7 @@ REST/JSON и HTTP-библиотека пока являются предлож�
 | `src/communications/local_api_server.hpp/.cpp` | Жизненный цикл HTTP-сервера |
 | `src/communications/local_api_routes.hpp/.cpp` | Обработчики маршрутов |
 | `src/communications/api_serialization.hpp/.cpp` | JSON-сериализация |
-| `deployment/repka/dockstation-gateway.service` | Unit systemd |
+| `repka/dockstation-gateway.service` | Unit systemd |
 
 ### Функции
 
@@ -237,7 +237,7 @@ Python + PySide6/QML — рекомендация из спецификации 
 
 - `src/security/tls_server_context.hpp/.cpp` — настройка TLS.
 - `src/security/request_authenticator.hpp/.cpp` — аутентификация запросов.
-- `deployment/repka/security/README.md` — установка и защита сертификатов и секретов.
+- `repka/security/README.md` — установка и защита сертификатов и секретов.
 - `operator/connection_manager.py` — единый контроль выбранного защищённого канала.
 - Предварительная документация и результаты сравнения вариантов VPN фиксируются в этом плане; отдельный программный модуль до выбора решения не создаётся.
 
@@ -349,7 +349,7 @@ WireGuard пока остаётся базовым кандидатом для �
 
 ## 7. Первые задачи реализации
 
-1. **Этап 0 / `deployment/repka/check_network.sh` / `check_ethernet_link()`.** Реализовано; наличие Ethernet-интерфейса и линка, отсутствие carrier и ошибки чтения различаются.
+1. **Этап 0 / `repka/check_network.sh` / `check_ethernet_link()`.** Реализовано; наличие Ethernet-интерфейса и линка, отсутствие carrier и ошибки чтения различаются.
 2. **`read_ip_configuration()`.** Реализовано; читаются IPv4/IPv6-адреса всех интерфейсов без изменения сетевой конфигурации.
 3. **`check_default_route()` реализована.** Отдельно проверяются IPv4 и IPv6; отсутствие маршрута и неполное чтение дают `WARN`. Добавлена host-проверка `verification/repka_gateway/test_check_default_route.sh`.
 4. `check_ssh_service()` — проверить SSH.
