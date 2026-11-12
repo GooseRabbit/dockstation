@@ -120,8 +120,8 @@ int main() {
            "runtime logger integration shuts down cleanly");
 
     std::ifstream log_input(log_path);
-    const std::string log_content(std::istreambuf_iterator<char>(log_input),
-                                  std::istreambuf_iterator<char>());
+    const std::string log_content{std::istreambuf_iterator<char>(log_input),
+                                  std::istreambuf_iterator<char>()};
     expect(log_content.find("runtime logger integration test") != std::string::npos,
            "runtime logger integration writes to configured file");
     std::remove(log_path.c_str());
