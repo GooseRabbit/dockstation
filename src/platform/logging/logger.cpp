@@ -97,8 +97,8 @@ bool is_sensitive_key(const std::string& key) {
     const std::string normalized = lower_ascii(key);
     const char* const sensitive_parts[] = {
         "password", "passwd", "token", "authorization", "secret",
-        "private_key", "private-key", "privatekey", "credential",
-        "api_key", "api-key", "apikey"
+        "private_key", "private-key", "privatekey", "private key", "credential",
+        "api_key", "api-key", "apikey", "api key"
     };
     for (const char* part : sensitive_parts) {
         if (normalized.find(part) != std::string::npos) {
