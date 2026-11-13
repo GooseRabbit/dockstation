@@ -1,0 +1,39 @@
+[Unit]
+Description=DockStation read-only Linux Gateway
+After=network.target
+StartLimitIntervalSec=60s
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=dockstation
+Group=dockstation
+WorkingDirectory=/
+ExecStart=@CMAKE_INSTALL_FULL_BINDIR@/dockstation_linux_bootstrap --config-file /etc/dockstation/gateway.conf
+Restart=on-failure
+RestartSec=3s
+TimeoutStopSec=15s
+KillSignal=SIGTERM
+UMask=0077
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=dockstation-gateway
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictRealtime=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+
+[Install]
+WantedBy=multi-user.target
