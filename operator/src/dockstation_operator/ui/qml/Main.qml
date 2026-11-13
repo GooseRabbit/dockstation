@@ -304,42 +304,53 @@ ApplicationWindow {
                         color: root.muted
                         font.pixelSize: 10
                         font.bold: true
-                        leftPadding: 8
+                        horizontalAlignment: Text.AlignHCenter
                     }
-                    Repeater {
+                    ScrollView {
                         objectName: "stations.local-profile-list"
-                        model: bridge.stationProfiles
-                        delegate: Button {
-                            required property var modelData
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 44
-                            onClicked: bridge.selectStationProfile(modelData.profile_id)
-                            background: Rectangle {
-                                radius: 7
-                                color: modelData.selected ? "#23423F" : "transparent"
-                                border.color: modelData.selected ? root.accent : "transparent"
-                            }
-                            contentItem: RowLayout {
-                                spacing: 7
-                                Text {
-                                    text: modelData.alias
-                                    color: modelData.selected ? root.primaryText : root.secondaryText
-                                    font.pixelSize: 11
-                                    elide: Text.ElideRight
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: Math.min(180, stationProfileItems.implicitHeight)
+                        clip: true
+                        ScrollBar.vertical.policy: ScrollBar.AsNeeded
+                        ColumnLayout {
+                            id: stationProfileItems
+                            width: parent.width
+                            spacing: 3
+                            Repeater {
+                                model: bridge.stationProfiles
+                                delegate: Button {
+                                    required property var modelData
                                     Layout.fillWidth: true
-                                }
-                                Rectangle {
-                                    width: 8
-                                    height: 8
-                                    radius: 4
-                                    color: modelData.status_color === "success" ? root.success
-                                         : modelData.status_color === "danger" ? root.danger : root.warning
-                                }
-                                Text {
-                                    text: modelData.status_label
-                                    color: modelData.status_color === "success" ? root.success
-                                         : modelData.status_color === "danger" ? root.danger : root.warning
-                                    font.pixelSize: 9
+                                    Layout.preferredHeight: 44
+                                    onClicked: bridge.selectStationProfile(modelData.profile_id)
+                                    background: Rectangle {
+                                        radius: 7
+                                        color: modelData.selected ? "#23423F" : "transparent"
+                                        border.color: modelData.selected ? root.accent : "transparent"
+                                    }
+                                    contentItem: RowLayout {
+                                        spacing: 7
+                                        Text {
+                                            text: modelData.alias
+                                            color: modelData.selected ? root.primaryText : root.secondaryText
+                                            font.pixelSize: 11
+                                            elide: Text.ElideRight
+                                            Layout.fillWidth: true
+                                        }
+                                        Rectangle {
+                                            width: 8
+                                            height: 8
+                                            radius: 4
+                                            color: modelData.status_color === "success" ? root.success
+                                                 : modelData.status_color === "danger" ? root.danger : root.warning
+                                        }
+                                        Text {
+                                            text: modelData.status_label
+                                            color: modelData.status_color === "success" ? root.success
+                                                 : modelData.status_color === "danger" ? root.danger : root.warning
+                                            font.pixelSize: 9
+                                        }
+                                    }
                                 }
                             }
                         }
