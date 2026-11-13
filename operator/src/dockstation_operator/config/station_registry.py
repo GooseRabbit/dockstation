@@ -199,7 +199,7 @@ def add_profile(
         raise ValueError("Профиль с таким локальным идентификатором уже существует.")
     result = StationRegistry(
         profiles=registry.profiles + (StationProfile(new_id, alias.strip(), connection),),
-        selected_profile_id=registry.selected_profile_id or new_id,
+        selected_profile_id=new_id,
     )
     errors = validate_registry(result)
     if errors:
