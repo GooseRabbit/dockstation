@@ -197,11 +197,17 @@ def test_saving_profile_while_disconnected_updates_automatic_reconnect_target(
     bridge = qml_bridge.QmlOperatorBridge(connection_manager=manager)
     try:
         bridge._reconnect_pending = True
+        bridge._reconnect_attempt = 2
+        bridge._next_reconnect_at = 123.0
         bridge.setHost("192.0.2.20")
         bridge.setUsername("operator")
         assert bridge.saveProfile() is True
 
         assert bridge.reconnecting is True
+        profile_key = bridge._session_key(bridge.selectedProfileId)
+        assert bridge._reconnect_pending_by_profile[profile_key] is True
+        assert bridge._reconnect_attempt_by_profile[profile_key] == 2
+        assert bridge._next_reconnect_by_profile[profile_key] == 123.0
         assert manager.profile == bridge._profile
         assert manager.profile.host == "192.0.2.20"
     finally:

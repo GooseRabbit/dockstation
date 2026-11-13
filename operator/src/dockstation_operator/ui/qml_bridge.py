@@ -641,9 +641,27 @@ class QmlOperatorBridge(QObject):
         try:
             self._profile = profile
             if self._selected_profile_id is None:
+                # A profile may be created from the legacy single-profile editor.
+                # Carry its retry state to the newly assigned profile key so the
+                # first reconnect remains attached to the same SSH/API session.
+                previous_key = self._session_key(None)
+                pending = self._reconnect_pending_by_profile.pop(
+                    previous_key, self._reconnect_pending
+                )
+                attempts = self._reconnect_attempt_by_profile.pop(
+                    previous_key, self._reconnect_attempt
+                )
+                next_attempt = self._next_reconnect_by_profile.pop(
+                    previous_key, self._next_reconnect_at
+                )
                 alias = self._station_alias_draft.strip() or profile.host.strip() or "Новая станция"
                 self._registry = add_profile(self._registry, alias, profile)
                 self._selected_profile_id = self._registry.selected_profile_id
+                new_key = self._session_key(self._selected_profile_id)
+                if pending:
+                    self._reconnect_pending_by_profile[new_key] = True
+                    self._reconnect_attempt_by_profile[new_key] = attempts
+                    self._next_reconnect_by_profile[new_key] = next_attempt
                 self._models[self._selected_profile_id] = DiagnosticsModel()
                 self._station_status[self._selected_profile_id] = "UNKNOWN"
                 self.connection_manager = self._manager_for(self._selected_profile_id)

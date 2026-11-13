@@ -308,13 +308,41 @@ ApplicationWindow {
                     anchors.leftMargin: 12
                     anchors.rightMargin: 12
                     spacing: 6
-                    Text {
+                    RowLayout {
                         Layout.fillWidth: true
-                        text: "ЛОКАЛЬНЫЕ ПРОФИЛИ"
-                        color: root.muted
-                        font.pixelSize: 10
-                        font.bold: true
-                        horizontalAlignment: Text.AlignHCenter
+                        spacing: 4
+                        Text {
+                            Layout.fillWidth: true
+                            text: "ЛОКАЛЬНЫЕ ПРОФИЛИ"
+                            color: root.muted
+                            font.pixelSize: 10
+                            font.bold: true
+                            horizontalAlignment: Text.AlignHCenter
+                        }
+                        Button {
+                            objectName: "stations.expand-list-button"
+                            visible: bridge.hasMoreStationProfiles
+                            Layout.preferredWidth: 24
+                            Layout.preferredHeight: 22
+                            text: bridge.stationProfilesExpanded ? "⌃" : "⌄"
+                            ToolTip.visible: hovered
+                            ToolTip.text: bridge.stationProfilesExpanded
+                                          ? "Свернуть список станций"
+                                          : "Показать все станции"
+                            onClicked: bridge.toggleStationProfilesExpanded()
+                            background: Rectangle {
+                                radius: 5
+                                color: parent.hovered ? root.elevated : "transparent"
+                                border.color: parent.hovered ? root.borderColor : "transparent"
+                            }
+                            contentItem: Text {
+                                text: parent.text
+                                color: root.secondaryText
+                                font.pixelSize: 16
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                        }
                     }
                     ScrollView {
                         objectName: "stations.local-profile-list"
@@ -417,13 +445,6 @@ ApplicationWindow {
                                 }
                             }
                         }
-                    }
-                    ActionButton {
-                        objectName: "stations.expand-list-button"
-                        visible: bridge.hasMoreStationProfiles
-                        Layout.fillWidth: true
-                        text: bridge.stationProfilesExpanded ? "Свернуть список  ↑" : "Все станции  ↓"
-                        onClicked: bridge.toggleStationProfilesExpanded()
                     }
                     ActionButton {
                         Layout.fillWidth: true
