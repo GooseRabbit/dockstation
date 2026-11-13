@@ -50,10 +50,9 @@ jobs:
       - name: Run Operator, Python Gateway and end-to-end integration tests
         env:
           PYTHONPATH: operator/src:.
-        run: python -m pytest -q verification/operator_app verification/repka_gateway verification/integration
-        env:
           QT_QPA_PLATFORM: offscreen
           QT_QUICK_CONTROLS_STYLE: Basic
+        run: python -m pytest -q verification/operator_app verification/repka_gateway verification/integration
 
       - name: Check shell script syntax
         run: |
