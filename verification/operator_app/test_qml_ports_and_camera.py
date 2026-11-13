@@ -8,7 +8,7 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Basic")
 
-from PySide6.QtCore import QObject, QUrl
+from PySide6.QtCore import QObject, QUrl, Qt
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
 
@@ -55,6 +55,8 @@ def test_qml_uses_port_placeholders_and_a_16_by_9_fullscreen_camera_view():
         local_field = root.findChild(QObject, "connection.local-port-field")
         assert ssh_field is not None and ssh_field.property("placeholderText") == "22"
         assert local_field is not None and local_field.property("placeholderText") == "18080"
+        assert ssh_field.property("verticalAlignment") == Qt.AlignVCenter
+        assert local_field.property("verticalAlignment") == Qt.AlignVCenter
 
         root.setProperty("currentTab", 5)
         app.processEvents()
