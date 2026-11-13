@@ -6,7 +6,9 @@ import threading
 
 from dockstation_operator.api.station_api_client import StationApiClient
 from repka_gateway.dockstation_gateway.adapters.test_request_adapter import TestRequestAdapter
-from repka_gateway.dockstation_gateway.application.test_request_service import TestRequestService
+from repka_gateway.dockstation_gateway.application.test_request_service import (
+    TestRequestService as GatewayTestRequestService,
+)
 from repka_gateway.dockstation_gateway.server import create_server
 
 
@@ -14,7 +16,7 @@ def test_operator_gateway_application_service_and_test_adapter_flow():
     server = create_server(
         0,
         lambda: {"schema_version": "1.0", "summary": {"status": "PASS"}},
-        TestRequestService(TestRequestAdapter()),
+        GatewayTestRequestService(TestRequestAdapter()),
     )
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
