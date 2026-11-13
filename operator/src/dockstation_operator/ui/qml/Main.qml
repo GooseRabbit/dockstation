@@ -71,7 +71,6 @@ ApplicationWindow {
         id: cameraFullscreenWindow
         objectName: "camera.fullscreen-window"
         visible: false
-        visibility: Window.FullScreen
         color: "#0B1117"
         title: "DockStation Operator — камера"
         CameraPreviewSurface {
@@ -874,7 +873,7 @@ ApplicationWindow {
                     }
                 }
 
-                // 6. Camera preview placeholder. The viewport uses a 16:9 reference frame.
+                // 6. Camera preview placeholder. The viewport is fixed at 960x540.
                 PageScrollView {
                     objectName: "page.camera"
                     ColumnLayout {
@@ -882,7 +881,9 @@ ApplicationWindow {
                         spacing: 20
                         Text { text: "Камера"; color: root.primaryText; font.pixelSize: 24; font.bold: true }
                         Panel {
-                            Layout.fillWidth: true
+                            Layout.alignment: Qt.AlignHCenter
+                            Layout.preferredWidth: 996
+                            Layout.maximumWidth: 996
                             implicitHeight: cameraPanelContent.implicitHeight + 36
                             ColumnLayout {
                                 id: cameraPanelContent
@@ -891,9 +892,13 @@ ApplicationWindow {
                                 spacing: 12
                                 CameraPreviewSurface {
                                     objectName: "camera.preview"
-                                    Layout.fillWidth: true
-                                    Layout.preferredHeight: width * 9 / 16
-                                    Layout.minimumHeight: 180
+                                    Layout.alignment: Qt.AlignHCenter
+                                    Layout.preferredWidth: 960
+                                    Layout.minimumWidth: 960
+                                    Layout.maximumWidth: 960
+                                    Layout.preferredHeight: 540
+                                    Layout.minimumHeight: 540
+                                    Layout.maximumHeight: 540
                                 }
                                 RowLayout {
                                     Layout.fillWidth: true
@@ -907,7 +912,7 @@ ApplicationWindow {
                         }
                         Text {
                             Layout.fillWidth: true
-                            text: "Область предпросмотра сохраняет формат 16:9. При подключении камеры изображение будет центрироваться на чёрном фоне без растяжения; исходное соотношение сторон и разрешение кадра сохраняются."
+                            text: "Область предпросмотра — 960×540 (16:9). При подключении камеры изображение будет центрироваться на чёрном фоне без растяжения и обрезки; исходное соотношение сторон сохраняется."
                             color: root.muted
                             wrapMode: Text.WordWrap
                             font.pixelSize: 11
