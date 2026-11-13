@@ -109,7 +109,7 @@ ApplicationWindow {
             return
 
         stationProfileDragPointerY = pointerY
-        var viewportPoint = stationProfileList.mapFromItem(root, 0, pointerY)
+        var viewportPoint = stationProfileList.mapFromItem(root.contentItem, 0, pointerY)
         var contentY = stationProfileList.contentY + viewportPoint.y
         var stride = stationProfileRowHeight + stationProfileRowSpacing
 
@@ -373,7 +373,7 @@ ApplicationWindow {
     Rectangle {
         objectName: "stations.profile-drag-ghost"
         visible: root.stationProfileDragActive
-        x: stationProfileList.mapToItem(root, 0, 0).x
+        x: stationProfileList.mapToItem(root.contentItem, 0, 0).x
         y: root.stationProfileDragPointerY - height / 2
         width: Math.max(40, stationProfileList.width - stationProfileList.rightMargin)
         height: root.stationProfileRowHeight
@@ -626,12 +626,12 @@ ApplicationWindow {
                                 cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
 
                                 onPressed: function(mouse) {
-                                    var point = mapToItem(root, mouse.x, mouse.y)
+                                    var point = mapToItem(root.contentItem, mouse.x, mouse.y)
                                     root.beginStationProfileDrag(stationProfileDelegate.profile_id, point.y)
                                 }
                                 onPositionChanged: function(mouse) {
                                     if (pressed) {
-                                        var point = mapToItem(root, mouse.x, mouse.y)
+                                        var point = mapToItem(root.contentItem, mouse.x, mouse.y)
                                         root.updateStationProfileDrag(point.y)
                                     }
                                 }
