@@ -1,7 +1,7 @@
 # Полный план реализации программного комплекса DockStation на Repka Pi 5
 
 **Статус:** мастер-план реализации; последовательность разработки согласована, открытые платформенные, сетевые, серверные и аппаратные детали требуют отдельной проверки и решения.  
-**Редакция:** 1.33.  
+**Редакция:** 1.34.  
 **Дата:** 2026-11-14.  
 **Вычислительная платформа:** Repka Pi 5.  
 **Предполагаемая ОС:** официальная Repka OS; образ и версия проверяются перед развёртыванием.
@@ -97,7 +97,7 @@ Windows-клиент не обращается к GPIO, драйверам и с
 
 ## Этап 1. Linux Gateway и системная диагностика
 
-**Файлы:** корневой `CMakeLists.txt`; `.github/workflows/linux-cmake.yml`; `repka_gateway/main.cpp`; `src/application/linux/application_bootstrap.hpp/.cpp`; `src/platform/linux/runtime_environment.hpp/.cpp`; `src/platform/linux/system_diagnostics.hpp/.cpp`; `src/platform/linux/network_diagnostics.hpp/.cpp`; `src/platform/logging/logger.hpp/.cpp`; `src/platform/linux/runtime_config.hpp/.cpp`; `src/platform/linux/command_line.hpp/.cpp`; `src/platform/linux/runtime_config_file.hpp/.cpp`; в дальнейшем — `repka/dockstation-gateway.service`.
+**Файлы:** корневой `CMakeLists.txt`; `.github/workflows/linux-cmake.yml`; `repka_gateway/main.cpp`; `src/application/linux/application_bootstrap.hpp/.cpp`; `src/platform/linux/runtime_environment.hpp/.cpp`; `src/platform/linux/system_diagnostics.hpp/.cpp`; `src/platform/linux/network_diagnostics.hpp/.cpp`; `src/platform/logging/logger.hpp/.cpp`; `src/platform/linux/runtime_config.hpp/.cpp`; `src/platform/linux/command_line.hpp/.cpp`; `src/platform/linux/runtime_config_file.hpp/.cpp`; в дальнейшем — `repka/dockstation-gateway.service.in` и `repka/gateway.conf.example`.
 
 **Согласованная система сборки:** CMake используется для отдельной Linux-цели. Текущая корневая конфигурация собирает в статическую библиотеку `dockstation_linux_runtime` восемь компонентов: `LinuxApplicationBootstrap`, `RuntimeEnvironment`, `SystemDiagnostics`, `NetworkDiagnostics`, `PlatformLogger`, `RuntimeConfig`, `CommandLineParser` и `RuntimeConfigFileLoader`. Для потокобезопасного PlatformLogger CMake явно находит и подключает `Threads::Threads`; зависимость транзитивно передаётся потребителям статической библиотеки. Отдельная исполняемая цель `dockstation_linux_bootstrap` использует `repka_gateway/main.cpp`. В CTest зарегистрировано 10 проверок, в том числе `test_application_bootstrap`, `test_runtime_environment`, `test_system_diagnostics`, `test_network_diagnostics`, `test_logger`, `test_runtime_config`, `test_command_line` и `test_runtime_config_file`. В штатной точке входа `main()` передаёт ServiceRunner в ApplicationBootstrap; ServiceRunner запускает C++ read-only HTTP API на `127.0.0.1`. Bootstrap-only режим без ServiceRunner сохранён для самостоятельной проверки окружения и жизненного цикла. Он не запускает HTTP API. Существующие `tests/` и `tools/` не меняются.
 
@@ -130,7 +130,7 @@ Windows-клиент не обращается к GPIO, драйверам и с
 - при отсутствии ServiceRunner выполняется только bootstrap-проверка с явным сообщением, что HTTP API не запущен.
 - обработчики сигналов восстанавливаются, Logger flush/shutdown проверяются отдельно.
 
-Загрузчик внешней конфигурации RuntimeConfig реализован как отдельный read-only компонент. C++ HTTP/API-сервер уже подключён к штатной точке входа через ServiceRunner и вручную проверен в Ubuntu VM. Production-адаптеры физических устройств, постоянное хранилище, источники событий, реальный Timer, композиция доменных служб и systemd deployment unit остаются отдельными задачами; они не имитируются текущим Bootstrap.
+Загрузчик внешней конфигурации RuntimeConfig реализован как отдельный read-only компонент. C++ HTTP/API-сервер уже подключён к штатной точке входа через ServiceRunner и вручную проверен в Ubuntu VM. Добавлены systemd unit template, пример конфигурации и CMake install-правила; CI проверяет unit через `systemd-analyze verify` и запускает установленный Gateway от имени отдельного непривилегированного пользователя. Фактический lifecycle через systemd manager в пользовательской VM остаётся ручной проверкой. Production-адаптеры физических устройств, постоянное хранилище, источники событий, реальный Timer и композиция доменных служб остаются отдельными задачами; они не имитируются текущим Bootstrap.
 
 **runtime_environment.cpp:**
 - read_os_version(), read_kernel_version(), read_hardware_architecture(), read_software_build_info(), check_runtime_dependencies().
@@ -535,13 +535,15 @@ USB/UART, пины и формат кадров остаются открыты�
 
 ## Этап 13. Надёжность и развёртывание
 
-**Файлы:** repka/dockstation-gateway.service; repka/config/README.md; install_gateway.sh; backup/README.md; release/README.md; src/platform/linux/watchdog_service.hpp/.cpp; process_manager.hpp/.cpp.
+**Файлы текущего deployment-среза:** `repka/dockstation-gateway.service.in`, `repka/gateway.conf.example`, `CMakeLists.txt` (install rules), `repka/README.md`, `verification/repka_gateway/test_systemd_deployment.sh` и `.github/workflows/linux-cmake.yml`. Будущие компоненты резервного копирования/релизов и watchdog остаются отдельными задачами.
 
 **Функции:**
 - check_service_dependencies(), report_service_health(), register_watchdog_heartbeat(), detect_service_stall().
 - restart_allowed_module(), validate_restart_conditions(), request_orderly_shutdown().
 - create_backup(), verify_backup(), restore_backup().
 - validate_release_manifest(), verify_release_signature(), install_release(), verify_installed_version().
+
+**Реализованный первый deployment-срез:** CMake устанавливает бинарный файл Gateway, unit template и пример конфигурации; systemd запускает процесс от отдельного пользователя `dockstation`, с пустым набором capabilities, read-only ограничениями файловой системы и журналированием в journald. CI проверяет синтаксис unit, install layout, права на конфигурацию и бинарный файл, запускает Gateway от имени `dockstation`, проверяет оба GET endpoint, loopback bind и завершение по SIGTERM. CI не запускает systemd manager. Ручные `systemctl enable/start/stop/restart` и проверка после перезагрузки Ubuntu VM остаются открытыми.
 
 Автоматическое удалённое обновление ПО/прошивки не входит без отдельного согласования. Первоначально — контролируемая установка и процедура восстановления.
 
@@ -626,7 +628,7 @@ USB/UART, пины и формат кадров остаются открыты�
 ## 11. Ближайшие задачи
 
 1. **Ручная проверка Windows Operator ↔ Linux Gateway в VM выполнена.** 2026-11-13 проверен временный Python Gateway, включая остановку/перезапуск и отдельное восстановление SSH-процесса. 2026-11-14 проверен C++ Gateway: health/diagnostics, системные показатели, автоматическое восстановление API-обмена после перезапуска Gateway и loopback-only bind. Подробности и границы приведены в `docs/30_REPKA_NETWORK_IMPLEMENTATION_PLAN.md`. Repka Pi 5/ARM64 и аппаратные каналы не проверялись.
-2. Следующий инфраструктурный шаг для Linux VM — подготовить systemd deployment unit и проверить запуск, остановку, перезапуск и восстановление службы после загрузки ОС. Production-хранилища, реальные источники событий, Timer, composition root и адаптеры устройств остаются последующими отдельными задачами.
+2. Systemd deployment unit, конфигурация и CMake install реализованы; CI run 43520279910 SUCCESS подтвердил синтаксис unit и запуск C++ Gateway от имени `dockstation` с обоими GET endpoint, loopback-only bind и SIGTERM shutdown. Следующий шаг — ручная проверка `systemctl enable/start/stop/restart` и запуска после загрузки в пользовательской Ubuntu VM. Production-хранилища, реальные источники событий, Timer, composition root и адаптеры устройств остаются отдельными задачами.
 3. Первый безопасный сквозной VM-запрос через Operator → временный Python Gateway → TestRequestService → TestRequestAdapter → Operator реализован и покрыт host integration test (DEC-061); test-adapter подтверждает только приём PING, не физическое выполнение. C++ loopback-only read-only API прошёл актуальный CI run 43516203836 (10/10 CTest, 31/31 C++ host programs, 130 pytest) и отдельную ручную VM-проверку с Windows Operator. C++ API не содержит test-only PING и физических/управляющих маршрутов.
 4. Визуальное направление и структура Windows Operator согласованы владельцем 2026-11-13: семь вкладок — Подключение, Климат, Датчики, Сеть, Логи, Камера и Система (docs/23 rev 0.21). Реализован PySide6/QML shell с мостом к SSH/API; вкладка «Система» отображает только опубликованные системные показатели из Gateway API: CPU/SoC temperature при наличии явно маркированного датчика, RAM, корневую файловую систему и load average. Владелец вручную проверил экран с C++ Gateway: значения RAM и корневой файловой системы совпали с API после округления. Недоступная температура остаётся `UNAVAILABLE`; физические датчики и камера показывают отсутствие данных до появления соответствующего API и оборудования. Проверка выполнена в VM и не является проверкой Repka Pi 5 или аппаратной интеграцией.
 5. Составить карту интеграции StationStateManager F01–F17 и ConfigurationManager CFG-F00…CFG-F08 с production-хранилищами, Timer, источниками событий и composition root.
@@ -635,7 +637,7 @@ USB/UART, пины и формат кадров остаются открыты�
 
 Контракты DiagnosticsManager согласованы владельцем проекта (DEC-058/059; docs/21 и docs/22). Это подготовительный результат и не меняет очередность мастер-плана: реализацию DiagnosticsManager, включая первый вертикальный срез SDA-F00 и последующие функции, начинать только на предусмотренном этапе после выполнения предшествующих зависимостей. Открытые аппаратные/режимные параметры не закрываются этим согласованием.
 
-Следующий технический результат — подготовить и проверить systemd deployment unit для C++ Gateway в VM, включая корректный запуск от непривилегированной учётной записи и lifecycle службы. После появления целевой Repka Pi 5 отдельно выполнить ARM64-сборку и повторить сетевые испытания на плате. Первый пользовательский результат по интерфейсу — согласованный визуальный прототип; дальнейшее развитие Operator продолжается вместе с функциями приложения.
+Следующий технический результат — вручную установить C++ Gateway как systemd-службу в Ubuntu VM и проверить `enable/start/stop/restart`, восстановление после перезагрузки, `journalctl` и доступность обоих GET endpoint через SSH-туннель. После этого, при наличии Repka Pi 5, отдельно выполнить ARM64-сборку и повторить сетевые испытания на целевой плате. Первый пользовательский результат по интерфейсу — согласованный визуальный прототип; дальнейшее развитие Operator продолжается вместе с функциями приложения.
 
 ## 12. История изменений
 
@@ -686,6 +688,7 @@ USB/UART, пины и формат кадров остаются открыты�
 | 1.31 | 2026-11-13 | Добавлены типизированные тела read-only ControllerProtocol: пустые HELLO/HELLO_ACK/HEARTBEAT/REQUEST_SNAPSHOT, TELEMETRY_SNAPSHOT с caller-owned типизированными измерениями и ERROR со структурированной серьёзностью; реализована отдельная fail-closed проверка payload. Формат wire, timestamps, сериализация, кадрирование и транспорт остаются открытыми. |
 | 1.32 | 2026-11-13 | Подтверждён полный host CI для C++ read-only Gateway (run 43499328759): сборка всех Linux targets, 10/10 CTest с ASan/UBSan, 31/31 C++ host programs и 130 pytest. Сквозной процессный тест проверяет оба GET-контракта через Operator validator, отказ POST/неизвестного маршрута и SIGTERM shutdown. Ручной C++ Gateway VM-тест, Repka ARM64 и аппаратные проверки остаются открытыми. |
 | 1.33 | 2026-11-14 | Сверен мастер-план с фактической реализацией C++ Gateway и ручным испытанием Windows Operator ↔ C++ Gateway в Ubuntu 24.04.5 LTS x86_64 VM. Уточнены bootstrap/HTTP API, 10 CTest и последний успешный CI run 43516203836; зафиксированы health/diagnostics HTTP 200, совпадение системных показателей, восстановление API-обмена после перезапуска Gateway и loopback-only bind. systemd, ARM64/Repka Pi 5 и аппаратные испытания остаются открытыми. |
+| 1.34 | 2026-11-14 | Добавлены C++ Gateway systemd unit template, пример конфигурации и CMake install. CI run 43520279910 SUCCESS: 10/10 CTest, 31/31 C++ host tests, install layout/systemd-analyze проверки, права dockstation и запуск не-root Gateway с health/diagnostics, loopback-only bind и SIGTERM shutdown. Ручные `systemctl` lifecycle и reboot проверка в пользовательской Ubuntu VM остаются открытыми. |
 
 **Ограничение:** это план. Функции не считаются реализованными до появления кода, проверок и, где требуется, аппаратных испытаний.
 
@@ -693,13 +696,18 @@ USB/UART, пины и формат кадров остаются открыты�
 
 ## 13. Результат полного host CI
 
-Полный workflow \`.github/workflows/linux-cmake.yml\` [43499328759](https://github.com/GooseRabbit/dockstation/actions/runs/43499328759) завершился SUCCESS на Ubuntu 24.04 x86_64 для коммита \`008723ee50282c1a0027b48f7d42e54e2d80ce58\`.
+Полный workflow `.github/workflows/linux-cmake.yml` [43520279910](https://github.com/GooseRabbit/dockstation/actions/runs/43520279910) завершился SUCCESS на Ubuntu 24.04.5 x86_64 для коммита `e6367030fbabb3fea3a168dcbc6219c7475bf02e`.
 
 | Проверка | Результат |
 |---|---:|
 | CMake configure и сборка всех Linux targets, включая C++ Gateway | PASS |
 | CTest с ASan/UBSan | 10/10 PASS |
 | C++ host unit/contract программы StationStateManager и ConfigurationManager | 31/31 PASS |
+| Установочная раскладка C++ Gateway, unit и примера конфигурации | PASS |
+| `systemd-analyze verify` для установленного unit | PASS |
+| Доступность конфигурации и бинарного файла для `dockstation` без права записи | PASS |
+| Запуск C++ Gateway от имени `dockstation`, health и diagnostics | PASS |
+| Listener ограничен `127.0.0.1:8080`; завершение по SIGTERM | PASS |
 | Python compileall | PASS |
 | Python pytest: Operator, Python Gateway и integration | 130 PASS |
 | QML package entry point и ресурсы | PASS |
@@ -707,5 +715,7 @@ USB/UART, пины и формат кадров остаются открыты�
 
 Сквозной тест запускает собранный C++ Gateway отдельным процессом. Он получает health и system diagnostics, проверяет JSON существующим Operator API validator, подтверждает 404 для неизвестного маршрута и 405 для POST, затем отправляет SIGTERM и проверяет успешное завершение процесса.
 
-Это подтверждает host-проверки на Ubuntu x86_64. Это не проверка Windows SSH-туннеля к C++ Gateway, не ARM64/Repka Pi 5 deployment, не systemd service и не испытание ESP32/физической станции. Ручное VM-переключение с временного Python Gateway на C++ процесс остаётся следующим обязательным шагом.
+Отдельный deployment CI-шаг устанавливает unit и конфигурацию, проверяет unit через `systemd-analyze verify`, права непривилегированной учётной записи, запуск C++ Gateway от имени `dockstation`, оба GET endpoint, loopback-only listener и завершение процесса по SIGTERM. Этот шаг не использует systemd manager и не подтверждает `systemctl enable/start/stop/restart` или запуск после перезагрузки.
+
+Это подтверждает host-проверки на Ubuntu 24.04.5 x86_64. Это не ARM64/Repka Pi 5 deployment, не ручной lifecycle systemd в пользовательской VM и не испытание ESP32/физической станции.
 
