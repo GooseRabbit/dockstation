@@ -165,3 +165,53 @@ def test_failed_connection_attempt_retains_profile_for_a_later_retry():
         server.shutdown()
         server.server_close()
         thread.join(timeout=2.0)
+
+
+
+def test_connection_manager_recovers_after_gateway_restart_and_reads_fresh_snapshot():
+    payload = diagnostics_payload()
+    payload["test_marker"] = "before-restart"
+    server = create_server(port=0, diagnostics_provider=lambda: payload)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    tunnel = FakeTunnel()
+    manager = ConnectionManager(tunnel=tunnel)
+    profile = ConnectionProfile(
+        host="repka-vm.local", username="operator", local_port=port
+    )
+    restarted_server = None
+    restarted_thread = None
+    try:
+        connected = manager.connect_to_station(profile, timeout_seconds=2.0)
+        assert connected.connected is True
+        before = manager.get_system_diagnostics()
+        assert before["test_marker"] == "before-restart"
+
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2.0)
+        manager.handle_connection_loss()
+        assert manager.profile == profile
+        assert manager.is_connected is False
+
+        payload["test_marker"] = "after-restart"
+        restarted_server = create_server(port=port, diagnostics_provider=lambda: payload)
+        restarted_thread = threading.Thread(
+            target=restarted_server.serve_forever, daemon=True
+        )
+        restarted_thread.start()
+
+        recovered = manager.reconnect_connection(timeout_seconds=2.0)
+        assert recovered.connected is True
+        after = manager.get_system_diagnostics()
+        assert after["test_marker"] == "after-restart"
+        assert manager.get_connection_status() == "CONNECTED"
+    finally:
+        manager.disconnect_from_station()
+        if restarted_server is not None:
+            restarted_server.shutdown()
+            restarted_server.server_close()
+        if restarted_thread is not None:
+            restarted_thread.join(timeout=2.0)
