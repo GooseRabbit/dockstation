@@ -10,7 +10,6 @@ from PySide6.QtCore import QObject, Property, Signal, Slot
 from ..config.settings import (
     ConnectionProfile,
     load_profile,
-    save_profile,
     validate_profile,
 )
 from ..config.station_registry import (
@@ -368,13 +367,13 @@ class QmlOperatorBridge(QObject):
         self._profile = self._replace_profile(known_hosts_path=value)
         self.profileChanged.emit()
 
-    @Slot()
-    def saveProfile(self) -> None:
+    @Slot(result=bool)
+    def saveProfile(self) -> bool:
         profile = self._profile_with_port_drafts()
         errors = validate_profile(profile, require_files=False)
         if errors:
             self._append_event("Профиль не сохранён: " + "; ".join(errors))
-            return
+            return False
         try:
             self._profile = profile
             if self._selected_profile_id is None:
@@ -408,6 +407,7 @@ class QmlOperatorBridge(QObject):
         self.viewChanged.emit()
         self._append_event(f"Локальный профиль подключения сохранён: {target}")
         self._append_event("Содержимое приватного SSH-ключа не копируется в настройки.")
+        return True
 
     @Slot()
     def connectToStation(self) -> None:
@@ -418,11 +418,7 @@ class QmlOperatorBridge(QObject):
         if errors:
             self._append_event("Профиль подключения не прошёл проверку: " + "; ".join(errors))
             return
-        try:
-            save_profile(profile)
-            self._profile = profile
-        except (OSError, ValueError) as exc:
-            self._append_event(f"Не удалось сохранить профиль: {exc}")
+        if not self.saveProfile():
             return
 
         profile = self._profile
