@@ -113,6 +113,7 @@ ApplicationWindow {
         color: root.primaryText
         selectionColor: root.accent
         selectedTextColor: "#101820"
+        verticalAlignment: TextInput.AlignVCenter
         background: Rectangle {
             radius: 6
             color: root.elevated
