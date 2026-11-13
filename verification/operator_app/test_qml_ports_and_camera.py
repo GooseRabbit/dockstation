@@ -16,6 +16,55 @@ import dockstation_operator
 from dockstation_operator.ui.qml_bridge import QmlOperatorBridge
 
 
+def test_qml_bridge_formats_system_metrics_and_marks_stale_snapshot():
+    bridge = QmlOperatorBridge()
+    try:
+        bridge.model.apply_diagnostics({
+            "platform": {
+                "resources": {
+                    "cpu_temperature": {
+                        "status": "PASS", "message": "read",
+                        "celsius": 44.2, "sensor_type": "cpu-thermal",
+                    },
+                    "memory": {
+                        "status": "PASS", "message": "read",
+                        "total_bytes": 1024 * 1024 * 1024,
+                        "available_bytes": 256 * 1024 * 1024,
+                        "used_bytes": 768 * 1024 * 1024,
+                        "used_percent": 75.0,
+                    },
+                    "storage": {
+                        "status": "PASS", "message": "read", "path": "/",
+                        "total_bytes": 10 * 1024 * 1024 * 1024,
+                        "available_bytes": 2 * 1024 * 1024 * 1024,
+                        "used_bytes": 8 * 1024 * 1024 * 1024,
+                        "used_percent": 80.0,
+                    },
+                    "cpu_load": {
+                        "status": "PASS", "message": "read",
+                        "one_minute": 0.1, "five_minutes": 0.2,
+                        "fifteen_minutes": 0.3, "runnable_tasks": 1,
+                        "total_tasks": 20,
+                    },
+                },
+            },
+        })
+        metrics = bridge.systemMetrics
+        assert metrics["cpu_temperature_value"] == "44.2 °C"
+        assert metrics["memory_value"] == "75.0 %"
+        assert "768.0 МиБ" in metrics["memory_detail"]
+        assert metrics["storage_value"] == "80.0 %"
+        assert "0.10 / 0.20 / 0.30" == metrics["load_value"]
+        assert metrics["cpu_temperature_color"] == "#46A982"
+
+        bridge.model.mark_diagnostics_stale("test disconnect")
+        stale_metrics = bridge.systemMetrics
+        assert stale_metrics["cpu_temperature_value"] == "44.2 °C"
+        assert stale_metrics["cpu_temperature_color"] == "#D6A34A"
+    finally:
+        bridge.shutdown()
+
+
 def test_empty_port_drafts_resolve_to_defaults_and_invalid_text_stays_invalid():
     bridge = QmlOperatorBridge()
     try:
