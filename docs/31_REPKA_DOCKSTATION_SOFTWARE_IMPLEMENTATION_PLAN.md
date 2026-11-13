@@ -231,34 +231,47 @@ Windows-клиент не обращается к GPIO, драйверам и с
 
 **Сразу после подтверждения сетевого соединения начинаем графическое Windows-приложение.** Это не консольная утилита и не макет: оно подключается к реальному API, показывает диагностику и разрывы связи. Физические команды пока не исполняются.
 
-**Файлы:**
-- operator/pyproject.toml.
-- operator/src/dockstation_operator/main.py и application.py.
-- config/settings.py.
-- connection/connection_manager.py и ssh_tunnel.py.
-- api/station_api_client.py и api_models.py.
-- models/diagnostics_model.py.
-- viewmodels/main_viewmodel.py, connection_viewmodel.py, diagnostics_viewmodel.py.
-- ui/Main.qml, ConnectionPage.qml, DiagnosticsPage.qml, EventsPage.qml.
+**Файлы текущей реализации:**
+- `operator/pyproject.toml` — пакет, зависимости и отдельные GUI entry points.
+- `operator/src/dockstation_operator/main.py` — сохранённый Tkinter entry point `dockstation-operator`.
+- `operator/src/dockstation_operator/qml_app.py` — QML entry point `dockstation-operator-qml`.
+- `operator/src/dockstation_operator/config/settings.py` и `config/station_registry.py` — профиль соединения и локальный реестр лабораторных профилей.
+- `operator/src/dockstation_operator/connection/connection_manager.py` и `connection/ssh_tunnel.py` — управление SSH/API-сеансом и OpenSSH local-forward.
+- `operator/src/dockstation_operator/api/station_api_client.py` — проверенный read-only API-клиент и opt-in тестовый PING.
+- `operator/src/dockstation_operator/models/diagnostics_model.py` — последний диагностический снимок, состояние актуальности и события клиента.
+- `operator/src/dockstation_operator/ui/qml_bridge.py` — мост Qt/QML, профили, диагностика, фоновые операции и автоматическое восстановление связи.
+- `operator/src/dockstation_operator/ui/qml/Main.qml` — текущий семивкладочный QML-интерфейс.
 
-Python + PySide6 + QML — рекомендуемый кандидат из docs/23; пригодность подтверждается первым прототипом.
+В прототипе пока нет отдельных `application.py`, `api_models.py`, ViewModel-каталога и раздельных QML-файлов страниц: соответствующая логика находится в перечисленных существующих файлах. Не создавать эти модули только ради совпадения с предварительным эскизом; выделение выполнять при появлении конкретной необходимости.
+
+Python + PySide6 + QML — выбранный для текущего прототипа технологический вариант; продуктовая архитектура и все целевые сценарии Operator ещё не завершены.
 
 **main.py / application.py:**
 - main(), create_application(), load_application_settings(), initialize_application_services(), show_main_window(), shutdown_application().
 
-**ssh_tunnel.py:**
-- find_ssh_executable(), validate_ssh_profile(), verify_known_host(), start_ssh_tunnel(), wait_for_tunnel_ready(), get_ssh_tunnel_status(), stop_ssh_tunnel().
+**`qml_app.py`:**
+- `main()` — создаёт `QGuiApplication`, `QQmlApplicationEngine`, регистрирует `QmlOperatorBridge` и загружает `ui/qml/Main.qml`.
 
-**connection_manager.py:**
-- validate_connection_config(), connect_to_station(), disconnect_from_station(), get_connection_status(), check_connection_health(), handle_connection_loss(), reconnect_connection().
+**`ssh_tunnel.py`:**
+- `find_ssh_executable()`, `find_ssh_keygen_executable()`, `verify_known_host()`, `build_ssh_command()`, `is_local_port_available()`.
+- `SshTunnel.start()`, `wait_for_process_or_stop()`, `stop()`.
 
-Повторное подключение относится только к восстановлению канала и не повторяет физических команд.
+**`connection_manager.py`:**
+- `connect_to_station()`, `disconnect_from_station()`, `get_connection_status()`, `get_tunnel_status()`, `check_connection_health()`, `get_system_diagnostics()`, `handle_connection_loss()`, `reconnect_connection()`.
+- `reconnect_connection()` повторно использует сохранённый профиль и создаёт новый SSH/API-сеанс. Ограниченные автоматические интервалы повторов и отмену ожидания координирует QML bridge.
 
-**station_api_client.py:**
-- get_health(), get_system_diagnostics(), validate_api_response(), map_api_error(), cancel_pending_request().
+**`station_api_client.py`:**
+- `get_health()`, `get_system_diagnostics()`, `validate_health_response()`, `validate_diagnostics_response()`, `submit_test_adapter_request()`, `validate_test_adapter_response()`, `map_api_error()`.
 
-**diagnostics_model.py / ViewModel:**
-- apply_diagnostics(), mark_diagnostics_stale(), clear_connection_state(), refresh_diagnostics(), format_diagnostic_value(), append_client_event().
+**`diagnostics_model.py`:**
+- `apply_diagnostics()`, `mark_diagnostics_stale()`, `clear_connection_state()`, `append_client_event()`, `diagnostics_age_seconds()`, `format_diagnostic_value()`.
+
+**`qml_bridge.py` и `Main.qml`:**
+- `connectToStation()`, `poll()`, `refresh()`, `disconnectFromStation()`, `_schedule_reconnect()`, `_reconnect_operation()`, `_on_operation_finished()`.
+- `QmlOperatorBridge` предоставляет QML статусы соединения, актуальность снимка, системные метрики, сетевые показатели, события и локальные профили. Длительные SSH/API-операции выполняются в фоновом потоке.
+- `Main.qml` содержит семь вкладок и таймер периодического опроса. Полноэкранный просмотр камеры открывается только по явному действию; видеопоток остаётся недоступным до реализации реального camera pipeline.
+
+Повторное подключение относится только к восстановлению канала и не повторяет физические команды.
 
 **Работа над дизайном начинается вместе с первым GUI, а не откладывается до завершения функций.** В docs/23 подготовлены пользовательские сценарии, информационная архитектура, карта навигации, макеты ключевых экранов и проект дизайн-системы. Основное визуальное направление владелец согласовал 2026-11-13; подробная информационная архитектура и полный набор продуктовых сценариев остаются предметом дальнейшей проверки и уточнения. Первый QML-прототип реализован и проверен на типовом Windows-экране; дальнейшее развитие ведётся по фактическим результатам использования.
 
