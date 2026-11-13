@@ -307,6 +307,7 @@ ApplicationWindow {
                         leftPadding: 8
                     }
                     Repeater {
+                        objectName: "stations.local-profile-list"
                         model: bridge.stationProfiles
                         delegate: Button {
                             required property var modelData
