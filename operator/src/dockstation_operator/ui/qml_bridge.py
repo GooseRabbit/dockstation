@@ -260,7 +260,7 @@ class QmlOperatorBridge(QObject):
             self.refresh()
 
     @Slot()
-    def refresh(self) -> None
+    def refresh(self) -> None:
         if self._busy or self._closing:
             return
         if not self.connection_manager.is_connected:
