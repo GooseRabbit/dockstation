@@ -116,6 +116,7 @@ def test_qml_bridge_schedules_read_only_reconnect_after_unexpected_loss(
         bridge._schedule_reconnect("SSH-туннель неожиданно завершился.")
         assert manager.loss_handled is True
         assert bridge._reconnect_pending is True
+        assert bridge.reconnecting is True
         assert bridge._reconnect_attempt == 0
         assert bridge._next_reconnect_at == 105.0
         assert bridge.model.stale is True
