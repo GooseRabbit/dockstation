@@ -69,6 +69,8 @@ class QmlOperatorBridge(QObject):
     def connectionState(self) -> str:
         if self.connection_manager.is_connected and not self.model.stale:
             return "ПОДКЛЮЧЕНО · SSH + API"
+        if self.model.connection_state == "CONNECTED":
+            return "ПРОВЕРКА СОСТОЯНИЯ КАНАЛА"
         if self.model.connection_state == "DEGRADED":
             return "СВЯЗЬ НАРУШЕНА · ДАННЫЕ УСТАРЕЛИ"
         if self.model.connection_state == "DISCONNECTED":
@@ -188,12 +190,12 @@ class QmlOperatorBridge(QObject):
 
     @Slot(str)
     def setSshPort(self, value: str) -> None:
-        self._profile = self._replace_profile(ssh_port=self._parse_int(value, self._profile.ssh_port))
+        self._profile = self._replace_profile(ssh_port=self._parse_int(value, -1))
         self.profileChanged.emit()
 
     @Slot(str)
     def setLocalPort(self, value: str) -> None:
-        self._profile = self._replace_profile(local_port=self._parse_int(value, self._profile.local_port))
+        self._profile = self._replace_profile(local_port=self._parse_int(value, -1))
         self.profileChanged.emit()
 
     @Slot(str)
@@ -234,8 +236,10 @@ class QmlOperatorBridge(QObject):
             self._append_event(f"Не удалось сохранить профиль: {exc}")
             return
 
+        profile = self._profile
+
         def operation() -> tuple[dict[str, Any], str]:
-            result = self.connection_manager.connect_to_station(self._profile)
+            result = self.connection_manager.connect_to_station(profile)
             if not result.connected:
                 raise RuntimeError(result.message)
             snapshot = self.connection_manager.get_system_diagnostics()
@@ -274,6 +278,9 @@ class QmlOperatorBridge(QObject):
     @Slot()
     def shutdown(self) -> None:
         self._closing = True
+        worker = getattr(self, "_worker_thread", None)
+        if worker is not None and worker.is_alive() and worker is not threading.current_thread():
+            worker.join(timeout=13.5)
         self.connection_manager.disconnect_from_station()
 
     def _disconnect_operation(self) -> tuple[None, str]:
@@ -286,7 +293,12 @@ class QmlOperatorBridge(QObject):
 
         def run() -> None:
             try:
+                if self._closing:
+                    return
                 result = operation()
+                if self._closing:
+                    self.connection_manager.disconnect_from_station()
+                    return
                 if isinstance(result, tuple) and len(result) == 2 and isinstance(result[1], str):
                     payload, message = result
                 else:
@@ -296,7 +308,8 @@ class QmlOperatorBridge(QObject):
                 self.connection_manager.handle_connection_loss()
                 self._operationFinished.emit(False, str(exc), None)
 
-        threading.Thread(target=run, name="dockstation-qml-worker", daemon=True).start()
+        self._worker_thread = threading.Thread(target=run, name="dockstation-qml-worker", daemon=True)
+        self._worker_thread.start()
 
     @Slot(bool, str, object)
     def _on_operation_finished(self, success: bool, message: str, payload: object) -> None:
