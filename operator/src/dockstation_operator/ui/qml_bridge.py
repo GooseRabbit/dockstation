@@ -85,7 +85,6 @@ class QmlOperatorBridge(QObject):
         self._reconnect_attempt_by_profile: dict[str, int] = {}
         self._next_reconnect_by_profile: dict[str, float] = {}
         self._station_profiles_expanded = False
-        self._all_client_events: list[str] = []
         self._busy = False
         self._closing = False
         self._reconnect_pending = False
@@ -417,13 +416,12 @@ class QmlOperatorBridge(QObject):
 
     @Property("QVariantList", notify=viewChanged)
     def events(self) -> list[str]:
-        """Return the combined Operator event buffer from all station sessions."""
-        source = self._all_client_events or self.model.client_events
-        return list(reversed(source))
+        """Return the selected station's Operator events, newest first."""
+        return list(reversed(self.model.client_events))
 
     @Property(str, notify=viewChanged)
     def eventsText(self) -> str:
-        """Return all retained events, tagged with their station alias, newest first."""
+        """Return only the selected station's retained Operator events."""
         return "\n".join(self.events)
 
     @Property(str, notify=viewChanged)
@@ -469,7 +467,7 @@ class QmlOperatorBridge(QObject):
             self._logs_action_status = f"Не удалось сохранить логи: {exc}"
             self.viewChanged.emit()
             return False
-        count = len(self.model.client_events)
+        count = len(self.events)
         self._logs_action_status = (
             f"Сохранено записей: {count} · {target.name}"
             if count else f"Сохранён пустой журнал · {target.name}"
@@ -983,10 +981,6 @@ class QmlOperatorBridge(QObject):
         tagged_message = f"[{alias}] {message}" if alias else message
         self._notice = tagged_message
         model.append_client_event(tagged_message)
-        if model.client_events:
-            self._all_client_events.append(model.client_events[-1])
-            if len(self._all_client_events) > 500:
-                del self._all_client_events[: len(self._all_client_events) - 500]
         self.viewChanged.emit()
 
     def _network_section(self, name: str) -> dict[str, Any] | None:

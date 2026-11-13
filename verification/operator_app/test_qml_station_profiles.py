@@ -309,9 +309,19 @@ def test_switching_profiles_preserves_each_station_connection_and_diagnostic_con
         statuses = {item["profile_id"]: item["status"] for item in bridge.stationProfiles}
         assert statuses == {home_id: "CONNECTED", warehouse_id: "CONNECTED"}
         bridge._append_event("Лог дома", home_id)
-        bridge._append_event("Лог склада", warehouse_id)
         assert "[Дом] Лог дома" in bridge.eventsText
+        assert "[Склад] Лог склада" not in bridge.eventsText
+
+        bridge._append_event("Лог склада", warehouse_id)
         assert "[Склад] Лог склада" in bridge.eventsText
+        assert "[Дом] Лог дома" not in bridge.eventsText
+
+        bridge.selectStationProfile(home_id)
+        assert "[Дом] Лог дома" in bridge.eventsText
+        assert "[Склад] Лог склада" not in bridge.eventsText
+        bridge.selectStationProfile(warehouse_id)
+        assert "[Склад] Лог склада" in bridge.eventsText
+        assert "[Дом] Лог дома" not in bridge.eventsText
     finally:
         bridge.shutdown()
 
@@ -450,6 +460,69 @@ def test_qml_bridge_reorders_visible_profiles_and_preserves_hidden_profiles(
         assert [item["profile_id"] for item in bridge.stationProfiles] == before_invalid_change
     finally:
         bridge.shutdown()
+
+
+
+def test_qml_logs_follow_selected_station_and_show_last_diagnostics_update(
+    tmp_path: Path, monkeypatch
+):
+    registry_file = tmp_path / "stations.json"
+    monkeypatch.setattr(station_registry, "station_registry_path", lambda: registry_file)
+    monkeypatch.setattr(qml_bridge, "station_registry_path", lambda: registry_file)
+    monkeypatch.setattr(qml_bridge, "load_profile", lambda: ConnectionProfile())
+
+    bridge = qml_bridge.QmlOperatorBridge(connection_manager=InertConnectionManager())
+    bridge.addStationProfile("Дом")
+    home_id = bridge.selectedProfileId
+    bridge._append_event("Событие дома", home_id)
+
+    bridge.addStationProfile("Склад")
+    warehouse_id = bridge.selectedProfileId
+    bridge._on_operation_finished(
+        warehouse_id,
+        True,
+        "Связь с Linux Gateway восстановлена; получен новый диагностический снимок.",
+        {"source": "LINUX_HOST"},
+        True,
+        False,
+    )
+
+    app = QGuiApplication.instance() or QGuiApplication([])
+    engine = QQmlApplicationEngine()
+    engine.rootContext().setContextProperty("bridge", bridge)
+    qml_path = Path(dockstation_operator.__file__).parent / "ui" / "qml" / "Main.qml"
+    engine.load(QUrl.fromLocalFile(str(qml_path)))
+
+    try:
+        app.processEvents()
+        roots = engine.rootObjects()
+        assert roots
+        root = roots[0]
+        root.setProperty("currentTab", 4)
+        app.processEvents()
+
+        log_text = root.findChild(QObject, "logs.text-area")
+        station_context = root.findChild(QObject, "logs.station-context")
+        last_update = root.findChild(QObject, "logs.last-update")
+        assert log_text is not None and station_context is not None and last_update is not None
+        assert "[Склад] Связь с Linux Gateway восстановлена" in log_text.property("text")
+        assert "[Дом] Событие дома" not in log_text.property("text")
+        assert station_context.property("text") == "Станция: Склад"
+        assert "Получено:" in last_update.property("text")
+        assert "ДАННЫЕ АКТУАЛЬНЫ" in last_update.property("text")
+
+        bridge.selectStationProfile(home_id)
+        app.processEvents()
+        assert "[Дом] Событие дома" in log_text.property("text")
+        assert "[Склад] Связь с Linux Gateway восстановлена" not in log_text.property("text")
+        assert station_context.property("text") == "Станция: Дом"
+        assert "Последнее обновление: —" in last_update.property("text")
+    finally:
+        bridge.shutdown()
+        for root_object in engine.rootObjects():
+            root_object.close()
+        engine.deleteLater()
+        app.processEvents()
 
 
 def test_connecting_first_unsaved_profile_uses_its_new_session_manager(

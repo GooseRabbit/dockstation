@@ -1185,7 +1185,7 @@ ApplicationWindow {
                                 RowLayout {
                                     Layout.fillWidth: true
                                     Text {
-                                        text: "События Operator"
+                                        text: "События текущей станции"
                                         color: root.primaryText
                                         font.pixelSize: 16
                                         font.bold: true
@@ -1203,6 +1203,24 @@ ApplicationWindow {
                                         enabled: bridge.events.length > 0
                                         onClicked: logsSaveDialog.open()
                                     }
+                                }
+                                Text {
+                                    objectName: "logs.station-context"
+                                    Layout.fillWidth: true
+                                    text: bridge.stationAlias.length > 0
+                                          ? "Станция: " + bridge.stationAlias
+                                          : "Локальный сеанс Operator"
+                                    color: root.secondaryText
+                                    font.pixelSize: 11
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    objectName: "logs.last-update"
+                                    Layout.fillWidth: true
+                                    text: bridge.lastUpdateText + " · " + bridge.freshnessText
+                                    color: root.muted
+                                    font.pixelSize: 10
+                                    wrapMode: Text.WordWrap
                                 }
                                 Text {
                                     objectName: "logs.action-status"

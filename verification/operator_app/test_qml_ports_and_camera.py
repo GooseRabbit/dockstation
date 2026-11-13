@@ -189,6 +189,7 @@ def test_qml_log_panel_is_fixed_height_selectable_and_keeps_recordings_separate(
             bridge.model.append_client_event(f"Дополнительное событие {index}")
         bridge.viewChanged.emit()
         app.processEvents()
+        assert "Дополнительное событие 499" in log_text.property("text")
         assert panel.property("height") == original_panel_height
         assert root.findChild(QObject, "logs.recordings-panel") is recordings
     finally:
