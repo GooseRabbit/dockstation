@@ -127,3 +127,43 @@ def test_connection_health_failure_stops_owned_tunnel():
     assert manager.check_connection_health() is False
     assert tunnel.is_running is False
     assert manager.get_connection_status() == "DISCONNECTED"
+
+
+
+def test_failed_connection_attempt_retains_profile_for_a_later_retry():
+    class InitiallyFailingTunnel(FakeTunnel):
+        def __init__(self):
+            super().__init__()
+            self.fail_once = True
+
+        def start(self, profile):
+            if self.fail_once:
+                self.fail_once = False
+                from dockstation_operator.connection.ssh_tunnel import SshTunnelError
+                raise SshTunnelError("temporary SSH failure")
+            super().start(profile)
+
+    manager = ConnectionManager(tunnel=InitiallyFailingTunnel())
+    profile = ConnectionProfile(host="repka-vm.local", username="operator")
+    try:
+        first = manager.connect_to_station(profile, timeout_seconds=0.1)
+        assert first.connected is False
+        assert manager.profile == profile
+
+        # The retry can reuse the retained profile and establish a fresh tunnel.
+        server = create_server(port=0, diagnostics_provider=diagnostics_payload)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        profile = ConnectionProfile(
+            host="repka-vm.local", username="operator",
+            local_port=server.server_address[1],
+        )
+        result = manager.connect_to_station(profile, timeout_seconds=2.0)
+        assert result.connected is True
+        assert manager.profile == profile
+    finally:
+        manager.disconnect_from_station()
+        if "server" in locals():
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2.0)
