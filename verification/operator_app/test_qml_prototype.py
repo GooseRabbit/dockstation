@@ -8,7 +8,7 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Basic")
 
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import QObject, QUrl
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
 
@@ -26,8 +26,24 @@ def test_qml_prototype_loads_with_the_six_approved_tabs():
     engine.load(QUrl.fromLocalFile(str(qml_path)))
 
     try:
+        app.processEvents()
         roots = engine.rootObjects()
         assert roots, "QML engine did not create the application window."
+        page_names = [
+            "page.connection",
+            "page.climate",
+            "page.sensors",
+            "page.network",
+            "page.logs",
+            "page.camera",
+        ]
+        for page_name in page_names:
+            page = roots[0].findChild(QObject, page_name)
+            assert page is not None, f"Missing page container: {page_name}"
+            assert page.property("padding") == 28
+            assert page.property("contentWidth") > 0
+        cover_status = roots[0].findChild(QObject, "sensor.cover-status")
+        assert cover_status is not None, "Lid position must have its own panel."
         navigation = roots[0].property("navigation")
         if hasattr(navigation, "toVariant"):
             navigation = navigation.toVariant()

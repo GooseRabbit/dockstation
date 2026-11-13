@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Window
 import QtQuick.Layouts
 import QtQuick.Dialogs
 
@@ -10,6 +11,7 @@ ApplicationWindow {
     minimumWidth: 1024
     minimumHeight: 700
     visible: true
+    visibility: Window.Maximized
     title: "DockStation Operator"
     color: "#101820"
 
@@ -39,10 +41,17 @@ ApplicationWindow {
     }
 
     component Panel: Rectangle {
-        radius: 10
+        radius: 12
         color: root.surface
         border.color: root.borderColor
         border.width: 1
+    }
+
+    component PageScrollView: ScrollView {
+        clip: true
+        padding: 28
+        contentWidth: availableWidth
+        ScrollBar.vertical.policy: ScrollBar.AsNeeded
     }
 
     component ActionButton: Button {
@@ -309,12 +318,11 @@ ApplicationWindow {
                 currentIndex: root.currentTab
 
                 // 1. Connection
-                ScrollView {
-                    clip: true
+                PageScrollView {
+                    objectName: "page.connection"
                     ColumnLayout {
                         width: parent.width
-                        spacing: 16
-                        anchors.margins: 24
+                        spacing: 20
 
                         Text {
                             text: "Подключение к станции"
@@ -413,11 +421,11 @@ ApplicationWindow {
                         }
                         Panel {
                             Layout.fillWidth: true
-                            implicitHeight: statusInfo.implicitHeight + 32
+                            implicitHeight: statusInfo.implicitHeight + 40
                             ColumnLayout {
                                 id: statusInfo
                                 anchors.fill: parent
-                                anchors.margins: 16
+                                anchors.margins: 20
                                 spacing: 8
                                 Text { text: "Состояние соединения"; color: root.primaryText; font.bold: true; font.pixelSize: 15 }
                                 Text { text: bridge.connectionState; color: bridge.connected ? root.success : root.warning; font.pixelSize: 14 }
@@ -437,12 +445,11 @@ ApplicationWindow {
                 }
 
                 // 2. Climate
-                ScrollView {
-                    clip: true
+                PageScrollView {
+                    objectName: "page.climate"
                     ColumnLayout {
                         width: parent.width
-                        anchors.margins: 24
-                        spacing: 16
+                        spacing: 20
                         Text { text: "Климат"; color: root.primaryText; font.pixelSize: 24; font.bold: true }
                         Text {
                             text: "Два независимых датчика DHT22 · температура и относительная влажность"
@@ -461,7 +468,7 @@ ApplicationWindow {
                                     implicitHeight: 254
                                     ColumnLayout {
                                         anchors.fill: parent
-                                        anchors.margins: 16
+                                        anchors.margins: 20
                                         spacing: 8
                                         Text { text: modelData; color: root.primaryText; font.pixelSize: 16; font.bold: true }
                                         RowLayout {
@@ -484,92 +491,157 @@ ApplicationWindow {
                 }
 
                 // 3. Sensors and cover
-                ScrollView {
-                    clip: true
+                PageScrollView {
+                    objectName: "page.sensors"
                     ColumnLayout {
                         width: parent.width
-                        anchors.margins: 24
-                        spacing: 16
-                        Text { text: "Состояние датчиков"; color: root.primaryText; font.pixelSize: 24; font.bold: true }
-                        Panel {
-                            Layout.fillWidth: true
-                            implicitHeight: coverStatus.implicitHeight + 32
-                            ColumnLayout {
-                                id: coverStatus
-                                anchors.fill: parent
-                                anchors.margins: 16
-                                spacing: 8
-                                Text { text: "Крышка станции"; color: root.primaryText; font.pixelSize: 16; font.bold: true }
-                                Text { text: "Положение: НЕИЗВЕСТНО"; color: root.warning; font.pixelSize: 20; font.bold: true }
-                                Text {
-                                    text: "Текущий API не публикует сигналы концевиков. Положение крышки не подтверждено."
-                                    color: root.muted
-                                    wrapMode: Text.WordWrap
-                                }
-                            }
+                        spacing: 20
+                        Text {
+                            text: "Состояние датчиков"
+                            color: root.primaryText
+                            font.pixelSize: 24
+                            font.bold: true
                         }
                         Panel {
                             Layout.fillWidth: true
-                            implicitHeight: sensorList.implicitHeight + 32
+                            implicitHeight: sensorList.implicitHeight + 40
                             ColumnLayout {
                                 id: sensorList
                                 anchors.fill: parent
-                                anchors.margins: 16
-                                spacing: 10
-                                Text { text: "Ожидаемое оборудование прототипа"; color: root.primaryText; font.pixelSize: 16; font.bold: true }
+                                anchors.margins: 20
+                                spacing: 12
+                                Text {
+                                    text: "Подключение оборудования"
+                                    color: root.primaryText
+                                    font.pixelSize: 16
+                                    font.bold: true
+                                }
+                                Text {
+                                    text: "Для каждого устройства отображается подтверждённое состояние подключения."
+                                    color: root.secondaryText
+                                    wrapMode: Text.WordWrap
+                                }
                                 Repeater {
                                     model: [
                                         { name: "DHT22 №1", role: "Температура и влажность" },
                                         { name: "DHT22 №2", role: "Температура и влажность" },
-                                        { name: "Концевик открытия крышки", role: "Положение крышки" },
-                                        { name: "Концевик закрытия крышки", role: "Положение крышки" },
-                                        { name: "USB-камера", role: "Видеопоток" }
+                                        { name: "Концевик открытия крышки", role: "Концевик положения" },
+                                        { name: "Концевик закрытия крышки", role: "Концевик положения" },
+                                        { name: "USB-камера", role: "Видеоустройство" }
                                     ]
                                     delegate: RowLayout {
                                         required property var modelData
                                         Layout.fillWidth: true
-                                        Text { text: modelData.name; color: root.primaryText; Layout.fillWidth: true }
-                                        Text { text: modelData.role; color: root.secondaryText }
+                                        spacing: 16
+                                        Text {
+                                            text: modelData.name
+                                            color: root.primaryText
+                                            font.pixelSize: 14
+                                            Layout.preferredWidth: 270
+                                        }
+                                        Text {
+                                            text: modelData.role
+                                            color: root.secondaryText
+                                            Layout.fillWidth: true
+                                        }
                                         Rectangle {
-                                            radius: 5
+                                            radius: 7
                                             color: "#303A43"
-                                            implicitWidth: 112
-                                            implicitHeight: 25
+                                            border.color: root.borderColor
+                                            implicitWidth: 132
+                                            implicitHeight: 30
                                             Text {
                                                 anchors.centerIn: parent
-                                                text: "Нет данных"
+                                                text: "Неизвестно"
                                                 color: root.muted
-                                                font.pixelSize: 11
+                                                font.pixelSize: 12
+                                                font.bold: true
                                             }
                                         }
                                     }
                                 }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: "Состояния подключения (например, «Подключён» и «Отключён») будут показаны после публикации достоверных результатов диагностики. Сейчас API их не предоставляет."
+                                    color: root.muted
+                                    wrapMode: Text.WordWrap
+                                    font.pixelSize: 12
+                                }
                             }
                         }
-                        Text {
-                            text: "«Нет данных» не означает «не обнаружен»: текущий API пока не позволяет достоверно установить состояние этих устройств."
-                            color: root.muted
-                            wrapMode: Text.WordWrap
+                        Panel {
+                            objectName: "sensor.cover-status"
+                            Layout.fillWidth: true
+                            implicitHeight: coverStatus.implicitHeight + 40
+                            ColumnLayout {
+                                id: coverStatus
+                                anchors.fill: parent
+                                anchors.margins: 20
+                                spacing: 12
+                                Text {
+                                    text: "Положение крышки"
+                                    color: root.primaryText
+                                    font.pixelSize: 16
+                                    font.bold: true
+                                }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 16
+                                    Text {
+                                        text: "Текущее состояние"
+                                        color: root.secondaryText
+                                        font.pixelSize: 14
+                                        Layout.fillWidth: true
+                                    }
+                                    Rectangle {
+                                        radius: 7
+                                        color: "#3A3325"
+                                        border.color: root.warning
+                                        implicitWidth: 160
+                                        implicitHeight: 34
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: "НЕИЗВЕСТНО"
+                                            color: root.warning
+                                            font.pixelSize: 12
+                                            font.bold: true
+                                        }
+                                    }
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: "Возможные состояния: ОТКРЫТА · ЗАКРЫТА · НЕИЗВЕСТНО · В ПРОЦЕССЕ · ОШИБКА"
+                                    color: root.secondaryText
+                                    font.pixelSize: 13
+                                    wrapMode: Text.WordWrap
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: "Текущий API не публикует сигналы концевиков и обратную связь привода. Поэтому положение крышки пока не подтверждено."
+                                    color: root.muted
+                                    font.pixelSize: 12
+                                    wrapMode: Text.WordWrap
+                                }
+                            }
                         }
                     }
                 }
 
                 // 4. Network
-                ScrollView {
-                    clip: true
+                PageScrollView {
+                    objectName: "page.network"
                     ColumnLayout {
                         width: parent.width
-                        anchors.margins: 24
-                        spacing: 16
+                        spacing: 20
                         Text { text: "Сеть"; color: root.primaryText; font.pixelSize: 24; font.bold: true }
                         Text { text: bridge.freshnessText; color: root.secondaryText; wrapMode: Text.WordWrap }
                         Panel {
                             Layout.fillWidth: true
-                            implicitHeight: interfacesColumn.implicitHeight + 32
+                            implicitHeight: interfacesColumn.implicitHeight + 40
                             ColumnLayout {
                                 id: interfacesColumn
                                 anchors.fill: parent
-                                anchors.margins: 16
+                                anchors.margins: 20
                                 spacing: 10
                                 Text { text: "Сетевые интерфейсы"; color: root.primaryText; font.pixelSize: 16; font.bold: true }
                                 Repeater {
@@ -592,11 +664,11 @@ ApplicationWindow {
                         }
                         Panel {
                             Layout.fillWidth: true
-                            implicitHeight: routesColumn.implicitHeight + 32
+                            implicitHeight: routesColumn.implicitHeight + 40
                             ColumnLayout {
                                 id: routesColumn
                                 anchors.fill: parent
-                                anchors.margins: 16
+                                anchors.margins: 20
                                 spacing: 10
                                 Text { text: "Маршруты по умолчанию"; color: root.primaryText; font.pixelSize: 16; font.bold: true }
                                 Repeater {
@@ -615,11 +687,11 @@ ApplicationWindow {
                         }
                         Panel {
                             Layout.fillWidth: true
-                            implicitHeight: networkStatus.implicitHeight + 32
+                            implicitHeight: networkStatus.implicitHeight + 40
                             ColumnLayout {
                                 id: networkStatus
                                 anchors.fill: parent
-                                anchors.margins: 16
+                                anchors.margins: 20
                                 spacing: 8
                                 Text { text: bridge.dnsSummary; color: root.primaryText; wrapMode: Text.WordWrap }
                                 Text { text: bridge.sshSummary; color: root.primaryText; wrapMode: Text.WordWrap }
@@ -630,20 +702,19 @@ ApplicationWindow {
                 }
 
                 // 5. Logs
-                ScrollView {
-                    clip: true
+                PageScrollView {
+                    objectName: "page.logs"
                     ColumnLayout {
                         width: parent.width
-                        anchors.margins: 24
-                        spacing: 16
+                        spacing: 20
                         Text { text: "Логи"; color: root.primaryText; font.pixelSize: 24; font.bold: true }
                         Panel {
                             Layout.fillWidth: true
-                            implicitHeight: clientLogs.implicitHeight + 32
+                            implicitHeight: clientLogs.implicitHeight + 40
                             ColumnLayout {
                                 id: clientLogs
                                 anchors.fill: parent
-                                anchors.margins: 16
+                                anchors.margins: 20
                                 spacing: 10
                                 Text { text: "События Operator"; color: root.primaryText; font.pixelSize: 16; font.bold: true }
                                 Repeater {
@@ -667,11 +738,11 @@ ApplicationWindow {
                         }
                         Panel {
                             Layout.fillWidth: true
-                            implicitHeight: recordings.implicitHeight + 32
+                            implicitHeight: recordings.implicitHeight + 40
                             ColumnLayout {
                                 id: recordings
                                 anchors.fill: parent
-                                anchors.margins: 16
+                                anchors.margins: 20
                                 spacing: 8
                                 Text { text: "Записи камеры"; color: root.primaryText; font.pixelSize: 16; font.bold: true }
                                 Text {
@@ -685,12 +756,11 @@ ApplicationWindow {
                 }
 
                 // 6. Camera placeholder
-                ScrollView {
-                    clip: true
+                PageScrollView {
+                    objectName: "page.camera"
                     ColumnLayout {
                         width: parent.width
-                        anchors.margins: 24
-                        spacing: 16
+                        spacing: 20
                         Text { text: "Камера"; color: root.primaryText; font.pixelSize: 24; font.bold: true }
                         Panel {
                             Layout.fillWidth: true
