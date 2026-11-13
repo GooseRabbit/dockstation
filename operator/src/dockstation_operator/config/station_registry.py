@@ -139,7 +139,7 @@ def load_registry(path: Path | None = None) -> StationRegistry:
 def save_registry(registry: StationRegistry, path: Path | None = None) -> Path:
     errors = validate_registry(registry)
     if errors:
-        raise ValueError("\\n".join(errors))
+        raise ValueError("\n".join(errors))
 
     target = path or station_registry_path()
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -160,7 +160,7 @@ def save_registry(registry: StationRegistry, path: Path | None = None) -> Path:
         with tempfile.NamedTemporaryFile(
             mode="w",
             encoding="utf-8",
-            newline="\\n",
+            newline="\n",
             prefix=f"{target.name}.",
             suffix=".tmp",
             dir=target.parent,
@@ -168,7 +168,7 @@ def save_registry(registry: StationRegistry, path: Path | None = None) -> Path:
         ) as temporary:
             temporary_path = Path(temporary.name)
             json.dump(payload, temporary, ensure_ascii=False, indent=2)
-            temporary.write("\\n")
+            temporary.write("\n")
             temporary.flush()
             os.fsync(temporary.fileno())
         if os.name == "posix":
@@ -203,7 +203,7 @@ def add_profile(
     )
     errors = validate_registry(result)
     if errors:
-        raise ValueError("\\n".join(errors))
+        raise ValueError("\n".join(errors))
     return result
 
 
@@ -223,7 +223,7 @@ def rename_profile(registry: StationRegistry, profile_id: str, alias: str) -> St
     )
     errors = validate_registry(result)
     if errors:
-        raise ValueError("\\n".join(errors))
+        raise ValueError("\n".join(errors))
     return result
 
 
