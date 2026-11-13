@@ -860,6 +860,11 @@ PlatformLogger обслуживает технические сообщения 
 | `ControllerProtocolVersion` | Пара major/minor без фиксации текущей версии протокола или правил совместимости. |
 | `ControllerMessageEnvelope` | Невладеющее представление общих метаданных сообщения: тип, версия, controller_id, controller_instance_id, sequence_number и sent_at. |
 | `SensorQualityStatus` | Шесть статусов телеметрии из docs/06 §3 и §25.1: OK, STALE, INVALID, UNAVAILABLE, NOT_CONFIGURED и UNKNOWN. ERROR не является качеством измерения. |
-| `validate_controller_message()` | Fail-closed проверка типа и наличия обязательных полей общего конверта. Не проверяет тело конкретного сообщения, совместимость версий, порядок/повторы последовательности и формат временной метки. |
+| `EmptyControllerMessagePayload` | Пустое тело для HELLO, HELLO_ACK, HEARTBEAT и REQUEST_SNAPSHOT; тип сообщения задаёт смысл операции. |
+| `ControllerTelemetryMeasurement` / `ControllerTelemetrySnapshotPayload` | Caller-owned список измерений со sensor_id, variant-значением, единицей, качеством и отдельным временем измерения. |
+| `ControllerErrorPayload` / `ControllerErrorSeverity` | Структурированная ошибка с кодом, серьёзностью, описанием и необязательной известной причиной. |
+| `ControllerMessagePayload` | Типизированный variant логических тел; это не wire-сериализация. |
+| `validate_controller_message()` | Fail-closed проверка типа и наличия обязательных полей общего конверта. Не проверяет совместимость версий, порядок/повторы последовательности и формат временной метки. |
+| `validate_controller_message_payload()` | Проверяет соответствие типа сообщения телу, обязательные поля измерений и ошибок, известность quality/severity и конечность вещественных значений. |
 
-Проверка: `verification/repka_gateway/test_controller_protocol.cpp`; CTest — `controller_protocol`. Формат кадров, сериализация, физический транспорт и точные схемы тел сообщений не выбраны.
+Проверка: `verification/repka_gateway/test_controller_protocol.cpp`; CTest — `controller_protocol`. Логические тела реализованы, но JSON/бинарная сериализация, формат и границы кадров, timestamp standard, согласование версий и физический транспорт не выбраны.
