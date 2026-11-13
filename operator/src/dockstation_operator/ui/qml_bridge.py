@@ -20,6 +20,7 @@ from ..config.station_registry import (
     rename_profile,
     save_registry,
     select_profile,
+    station_registry_path,
 )
 from ..connection.connection_manager import ConnectionManager
 from ..models.diagnostics_model import DiagnosticsModel
@@ -36,12 +37,15 @@ class QmlOperatorBridge(QObject):
         super().__init__()
         self.connection_manager = connection_manager or ConnectionManager()
         self.model = DiagnosticsModel()
-        self._registry = load_registry()
+        registry_path = station_registry_path()
+        self._registry = load_registry(registry_path)
         legacy_profile = load_profile()
-        if not self._registry.profiles and legacy_profile.host and legacy_profile.username:
+        # Migrate the old single-profile settings exactly once. An existing but
+        # empty or damaged registry must not resurrect a profile the user removed.
+        if not registry_path.exists() and legacy_profile.host and legacy_profile.username:
             self._registry = add_profile(self._registry, legacy_profile.host, legacy_profile)
             try:
-                save_registry(self._registry)
+                save_registry(self._registry, registry_path)
             except (OSError, ValueError):
                 pass
         self._selected_profile_id = self._registry.selected_profile_id
