@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+import time
 from typing import Any
 
 from PySide6.QtCore import QObject, Property, Signal, Slot
@@ -65,6 +66,9 @@ class QmlOperatorBridge(QObject):
         self._local_port_text = "" if self._profile.local_port == 18080 else str(self._profile.local_port)
         self._busy = False
         self._closing = False
+        self._reconnect_pending = False
+        self._reconnect_attempt = 0
+        self._next_reconnect_at = 0.0
         self._notice = "Ожидание подключения."
         self._operationFinished.connect(self._on_operation_finished)
 
@@ -495,6 +499,8 @@ class QmlOperatorBridge(QObject):
     def connectToStation(self) -> None:
         if self._busy or self._closing:
             return
+        self._reconnect_pending = False
+        self._reconnect_attempt = 0
         profile = self._profile_with_port_drafts()
         errors = validate_profile(profile, require_files=True)
         if errors:
@@ -521,12 +527,12 @@ class QmlOperatorBridge(QObject):
     def poll(self) -> None:
         if self._busy or self._closing:
             return
+        if self._reconnect_pending:
+            if time.monotonic() >= self._next_reconnect_at:
+                self._start_worker(self._reconnect_operation)
+            return
         if self.connection_manager.get_connection_status() == "DEGRADED" and self.model.connection_state == "CONNECTED":
-            self.connection_manager.handle_connection_loss()
-            if self._selected_profile_id is not None:
-                self._station_status[self._selected_profile_id] = "UNKNOWN"
-            self.model.mark_diagnostics_stale("SSH-туннель неожиданно завершился.")
-            self._append_event("SSH-туннель завершился; диагностические данные помечены как устаревшие.")
+            self._schedule_reconnect("SSH-туннель неожиданно завершился.")
             return
         if self.connection_manager.is_connected:
             self.refresh()
@@ -547,11 +553,14 @@ class QmlOperatorBridge(QObject):
     def disconnectFromStation(self) -> None:
         if self._busy or self._closing:
             return
+        self._reconnect_pending = False
+        self._reconnect_attempt = 0
         self._start_worker(self._disconnect_operation)
 
     @Slot()
     def shutdown(self) -> None:
         self._closing = True
+        self._reconnect_pending = False
         worker = getattr(self, "_worker_thread", None)
         if worker is not None and worker.is_alive() and worker is not threading.current_thread():
             worker.join(timeout=15.0)
@@ -560,6 +569,23 @@ class QmlOperatorBridge(QObject):
     def _disconnect_operation(self) -> tuple[None, str]:
         self.connection_manager.disconnect_from_station()
         return None, "Подключение закрыто пользователем."
+
+    def _reconnect_operation(self) -> tuple[dict[str, Any], str]:
+        result = self.connection_manager.reconnect_connection(timeout_seconds=5.0)
+        if not result.connected:
+            raise RuntimeError(result.message)
+        snapshot = self.connection_manager.get_system_diagnostics()
+        return snapshot, "Связь с Linux Gateway восстановлена; получен новый диагностический снимок."
+
+    def _schedule_reconnect(self, reason: str) -> None:
+        self.connection_manager.handle_connection_loss()
+        self._reconnect_pending = self.connection_manager.profile is not None
+        self._reconnect_attempt = 0
+        self._next_reconnect_at = time.monotonic() + 5.0
+        if self._selected_profile_id is not None:
+            self._station_status[self._selected_profile_id] = "UNKNOWN"
+        self.model.mark_diagnostics_stale(reason)
+        self._append_event(reason + " Автоматическое восстановление начнётся через 5 с.")
 
     def _start_worker(self, operation) -> None:
         self._busy = True
@@ -579,7 +605,16 @@ class QmlOperatorBridge(QObject):
                     payload, message = result, "Диагностический снимок обновлён."
                 self._operationFinished.emit(True, message, payload)
             except Exception as exc:
+                unexpected_loss = (
+                    not self._reconnect_pending
+                    and self.model.connection_state == "CONNECTED"
+                    and self.connection_manager.profile is not None
+                )
                 self.connection_manager.handle_connection_loss()
+                if unexpected_loss:
+                    self._reconnect_pending = True
+                    self._reconnect_attempt = 0
+                    self._next_reconnect_at = time.monotonic() + 5.0
                 self._operationFinished.emit(False, str(exc), None)
 
         self._worker_thread = threading.Thread(target=run, name="dockstation-qml-worker", daemon=True)
@@ -596,6 +631,8 @@ class QmlOperatorBridge(QObject):
             )
         if success:
             if isinstance(payload, dict):
+                self._reconnect_pending = False
+                self._reconnect_attempt = 0
                 self.model.apply_diagnostics(payload)
                 self._append_event(message)
             else:
@@ -604,6 +641,12 @@ class QmlOperatorBridge(QObject):
         else:
             self.model.mark_diagnostics_stale(message)
             self._append_event("Ошибка подключения/обмена: " + message)
+            if self._reconnect_pending:
+                delays = (5.0, 10.0, 20.0, 30.0)
+                delay = delays[min(self._reconnect_attempt, len(delays) - 1)]
+                self._reconnect_attempt += 1
+                self._next_reconnect_at = time.monotonic() + delay
+                self._append_event(f"Повторная попытка подключения через {int(delay)} с.")
         self.viewChanged.emit()
 
     def _append_event(self, message: str) -> None:
