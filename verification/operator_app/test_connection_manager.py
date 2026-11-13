@@ -21,6 +21,29 @@ def diagnostics_payload():
             "os": {"status": "PASS", "message": "read", "name": "Repka OS", "version": "1", "identifier": "repka"},
             "kernel": "6.1.0", "architecture": "aarch64", "word_size_bits": 64,
             "uptime": {"status": "PASS", "message": "read", "seconds": 3600.0},
+            "resources": {
+                "memory": {
+                    "status": "PASS", "message": "read",
+                    "total_bytes": 1024, "available_bytes": 256,
+                    "used_bytes": 768, "used_percent": 75.0,
+                },
+                "storage": {
+                    "status": "PASS", "message": "read", "path": "/",
+                    "total_bytes": 4096, "free_bytes": 1024,
+                    "available_bytes": 900, "used_bytes": 3072,
+                    "used_percent": 75.0,
+                },
+                "cpu_temperature": {
+                    "status": "UNAVAILABLE", "message": "No CPU thermal zone",
+                    "celsius": None, "sensor_type": None,
+                },
+                "cpu_load": {
+                    "status": "PASS", "message": "read",
+                    "one_minute": 0.1, "five_minutes": 0.2,
+                    "fifteen_minutes": 0.3, "runnable_tasks": 1,
+                    "total_tasks": 20,
+                },
+            },
         },
         "network": {
             "interfaces": {"status": "PASS", "message": "read", "interfaces": []},
