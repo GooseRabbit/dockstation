@@ -308,10 +308,18 @@ def test_switching_profiles_preserves_each_station_connection_and_diagnostic_con
 
         statuses = {item["profile_id"]: item["status"] for item in bridge.stationProfiles}
         assert statuses == {home_id: "CONNECTED", warehouse_id: "CONNECTED"}
+        # The active log view is scoped to the selected station. An event
+        # recorded for another profile must not leak into this view.
         bridge._append_event("Лог дома", home_id)
+        assert "[Дом] Лог дома" not in bridge.eventsText
+        assert "[Склад] Лог склада" not in bridge.eventsText
+
+        bridge.selectStationProfile(home_id)
         assert "[Дом] Лог дома" in bridge.eventsText
         assert "[Склад] Лог склада" not in bridge.eventsText
 
+        bridge.selectStationProfile(warehouse_id)
+        assert "[Дом] Лог дома" not in bridge.eventsText
         bridge._append_event("Лог склада", warehouse_id)
         assert "[Склад] Лог склада" in bridge.eventsText
         assert "[Дом] Лог дома" not in bridge.eventsText
