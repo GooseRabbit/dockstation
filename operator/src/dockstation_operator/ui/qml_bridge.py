@@ -499,6 +499,10 @@ class QmlOperatorBridge(QObject):
         except (OSError, ValueError) as exc:
             self._append_event(f"Ошибка сохранения профиля: {exc}")
             return False
+        # When the link is down, keep the reconnect target aligned with the
+        # profile that was just saved. An in-flight active tunnel is untouched.
+        if not self.connection_manager.is_connected:
+            self.connection_manager.profile = profile
         self.profileChanged.emit()
         self.viewChanged.emit()
         self._append_event(f"Локальный профиль подключения сохранён: {target}")
