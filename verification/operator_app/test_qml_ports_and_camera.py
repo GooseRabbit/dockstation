@@ -39,7 +39,7 @@ def test_empty_port_drafts_resolve_to_defaults_and_invalid_text_stays_invalid():
         bridge.shutdown()
 
 
-def test_qml_uses_port_placeholders_and_a_16_by_9_fullscreen_camera_view():
+def test_qml_uses_port_placeholders_and_fixed_camera_viewport_without_auto_fullscreen():
     app = QGuiApplication.instance() or QGuiApplication([])
     engine = QQmlApplicationEngine()
     bridge = QmlOperatorBridge()
@@ -59,13 +59,18 @@ def test_qml_uses_port_placeholders_and_a_16_by_9_fullscreen_camera_view():
         assert local_field.property("verticalAlignment") == Qt.AlignVCenter
         assert root.findChild(QObject, "stations.local-profile-list") is not None
 
+        fullscreen = root.findChild(QObject, "camera.fullscreen-window")
+        assert fullscreen is not None
+        assert fullscreen.property("visible") is False
+
         root.setProperty("currentTab", 5)
         app.processEvents()
         preview = root.findChild(QObject, "camera.preview")
-        fullscreen = root.findChild(QObject, "camera.fullscreen-window")
-        assert preview is not None and fullscreen is not None
-        assert preview.property("height") > 0
-        assert abs(preview.property("width") / preview.property("height") - (16 / 9)) < 0.02
+        assert preview is not None
+        assert round(preview.property("width")) == 960
+        assert round(preview.property("height")) == 540
+        assert abs(preview.property("width") / preview.property("height") - (16 / 9)) < 0.001
+        assert fullscreen.property("visible") is False
     finally:
         bridge.shutdown()
         for root in engine.rootObjects():
