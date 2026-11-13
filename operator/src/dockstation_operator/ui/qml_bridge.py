@@ -280,7 +280,7 @@ class QmlOperatorBridge(QObject):
         self._closing = True
         worker = getattr(self, "_worker_thread", None)
         if worker is not None and worker.is_alive() and worker is not threading.current_thread():
-            worker.join(timeout=13.5)
+            worker.join(timeout=15.0)
         self.connection_manager.disconnect_from_station()
 
     def _disconnect_operation(self) -> tuple[None, str]:
