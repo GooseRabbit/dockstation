@@ -250,18 +250,25 @@ class StationApiClient:
         ):
             raise ApiClientError("Поле platform.uptime.seconds должно быть неотрицательным числом или null.")
 
-        resources = _require_object(platform.get("resources"), "platform.resources")
-        memory = _require_object(resources.get("memory"), "platform.resources.memory")
-        storage = _require_object(resources.get("storage"), "platform.resources.storage")
-        cpu_temperature = _require_object(resources.get("cpu_temperature"), "platform.resources.cpu_temperature")
-        cpu_load = _require_object(resources.get("cpu_load"), "platform.resources.cpu_load")
-        for label, section in (
-            ("platform.resources.memory", memory),
-            ("platform.resources.storage", storage),
-            ("platform.resources.cpu_temperature", cpu_temperature),
-            ("platform.resources.cpu_load", cpu_load),
-        ):
-            _validate_status_message(section, label)
+        # Older VM Gateway snapshots may predate the additive resources section.
+        # In that case the QML bridge displays these metrics as unavailable.
+        resources: dict[str, Any] = {}
+        if "resources" in platform:
+            resources = _require_object(platform.get("resources"), "platform.resources")
+        if resources:
+            memory = _require_object(resources.get("memory"), "platform.resources.memory")
+            storage = _require_object(resources.get("storage"), "platform.resources.storage")
+            cpu_temperature = _require_object(resources.get("cpu_temperature"), "platform.resources.cpu_temperature")
+            cpu_load = _require_object(resources.get("cpu_load"), "platform.resources.cpu_load")
+            for label, section in (
+                ("platform.resources.memory", memory),
+                ("platform.resources.storage", storage),
+                ("platform.resources.cpu_temperature", cpu_temperature),
+                ("platform.resources.cpu_load", cpu_load),
+            ):
+                _validate_status_message(section, label)
+        else:
+            memory = storage = cpu_temperature = cpu_load = {}
 
         def validate_optional_number(value: object, field: str, *, integer: bool = False, maximum: float | None = None) -> None:
             if value is None:
