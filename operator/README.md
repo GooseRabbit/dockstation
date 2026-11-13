@@ -127,6 +127,16 @@ Station ID. Собственные Linux-журналы Gateway пока не п
 поэтому текущий общий журнал содержит события Operator, а не поддельный поток
 журналов станций. Серверная авторизация и каталог OwnerSpace не реализованы.
 
+## API timeouts
+
+The quick `/api/v1/health` check keeps a 2-second timeout. A full
+`/api/v1/system/diagnostics` request uses a separate 45-second upper bound:
+the temporary Gateway may execute up to eight sequential read-only system
+checks, each with its own 5-second subprocess timeout. This prevents the
+Operator from closing a valid response while the Gateway is still collecting
+a snapshot. If a client closes the response socket for another reason, the
+Gateway closes that request quietly rather than printing a server traceback.
+
 ## Что реализовано
 
 - Проверка профиля и параметров подключения.

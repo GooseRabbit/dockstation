@@ -51,6 +51,15 @@ When explicitly enabled, `POST /api/v1/test/adapter/request` accepts only a sche
 The health route means only that the gateway process is responding. It is not a
 claim that the Ethernet route, DNS, SSH, or physical station is healthy.
 
+## Response handling and client timeouts
+
+The Windows Operator uses a short timeout for `/api/v1/health` and a separate
+longer timeout for `/api/v1/system/diagnostics`. A full diagnostics snapshot can
+run up to eight sequential read-only subprocess checks, each bounded to five
+seconds. If a client closes its socket before a response is written, the
+Gateway treats the broken pipe/reset as a normal connection lifecycle event;
+it does not terminate the service or emit a request-handler traceback.
+
 ## Scope and limitations
 
 - This prototype reports the Linux VM/host, not ESP32 data or physical sensors.

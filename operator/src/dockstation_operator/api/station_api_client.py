@@ -13,6 +13,7 @@ from typing import Any
 
 
 MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+DEFAULT_DIAGNOSTICS_TIMEOUT_SECONDS = 15.0
 _ALLOWED_STATUSES = {"PASS", "NOT_CONFIGURED", "UNAVAILABLE", "UNKNOWN", "WARN", "FAIL"}
 
 
@@ -57,7 +58,12 @@ def _validate_status_message(section: dict[str, Any], field: str) -> None:
 
 
 class StationApiClient:
-    def __init__(self, base_url: str, timeout_seconds: float = 3.0):
+    def __init__(
+        self,
+        base_url: str,
+        timeout_seconds: float = 3.0,
+        diagnostics_timeout_seconds: float = DEFAULT_DIAGNOSTICS_TIMEOUT_SECONDS,
+    ):
         try:
             parsed = urlsplit(base_url)
             port = parsed.port
@@ -77,19 +83,25 @@ class StationApiClient:
             raise ValueError("Порт Gateway API должен быть в диапазоне от 1 до 65535.")
         if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, (int, float)) or not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
             raise ValueError("Тайм-аут API должен быть положительным конечным числом.")
+        if isinstance(diagnostics_timeout_seconds, bool) or not isinstance(diagnostics_timeout_seconds, (int, float)) or not math.isfinite(diagnostics_timeout_seconds) or diagnostics_timeout_seconds <= 0:
+            raise ValueError("Тайм-аут диагностики должен быть положительным конечным числом.")
 
         self.base_url = f"http://127.0.0.1:{port}"
         self.timeout_seconds = float(timeout_seconds)
+        self.diagnostics_timeout_seconds = float(diagnostics_timeout_seconds)
         self._opener = urllib.request.build_opener(_NoRedirectHandler())
 
-    def _get_json(self, route: str) -> dict[str, Any]:
+    def _get_json(self, route: str, *, timeout_seconds: float | None = None) -> dict[str, Any]:
         request = urllib.request.Request(
             self.base_url + route,
             headers={"Accept": "application/json", "Cache-Control": "no-cache"},
             method="GET",
         )
         try:
-            with self._opener.open(request, timeout=self.timeout_seconds) as response:
+            with self._opener.open(
+                request,
+                timeout=self.timeout_seconds if timeout_seconds is None else timeout_seconds,
+            ) as response:
                 content_type = response.headers.get_content_type()
                 if content_type != "application/json":
                     raise ApiClientError(f"API вернул неожиданный Content-Type: {content_type}.")
@@ -195,7 +207,10 @@ class StationApiClient:
             raise ApiClientError("Gateway не подтвердил готовность read-only API.")
 
     def get_system_diagnostics(self) -> dict[str, Any]:
-        payload = self._get_json("/api/v1/system/diagnostics")
+        payload = self._get_json(
+            "/api/v1/system/diagnostics",
+            timeout_seconds=self.diagnostics_timeout_seconds,
+        )
         self.validate_diagnostics_response(payload)
         return payload
 

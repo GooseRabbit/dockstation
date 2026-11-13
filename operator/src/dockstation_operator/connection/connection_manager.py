@@ -10,6 +10,12 @@ from ..config.settings import ConnectionProfile
 from .ssh_tunnel import SshTunnel, SshTunnelError
 
 
+# collect_diagnostics may perform 8 sequential external checks (ip x3,
+# optional getent x1, systemctl x4), each bounded to 5 seconds.
+# Leave a small margin so a valid slow snapshot is not abandoned by the client.
+DIAGNOSTICS_API_TIMEOUT_SECONDS = 45.0
+
+
 @dataclass(frozen=True)
 class ConnectionResult:
     connected: bool
@@ -37,7 +43,11 @@ class ConnectionManager:
         except SshTunnelError as exc:
             return ConnectionResult(False, str(exc))
 
-        client = StationApiClient(f"http://127.0.0.1:{profile.local_port}", timeout_seconds=2.0)
+        client = StationApiClient(
+            f"http://127.0.0.1:{profile.local_port}",
+            timeout_seconds=2.0,
+            diagnostics_timeout_seconds=DIAGNOSTICS_API_TIMEOUT_SECONDS,
+        )
         deadline = time.monotonic() + timeout_seconds
         last_error = "Ожидание готовности SSH-туннеля и Linux API."
         while time.monotonic() < deadline:

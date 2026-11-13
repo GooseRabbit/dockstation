@@ -96,17 +96,24 @@ class _GatewayRequestHandler(BaseHTTPRequestHandler):
         body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         if self.command == "HEAD":
             body = b""
-        self.send_response(status.value)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        if allow is not None:
-            self.send_header("Allow", allow)
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Connection", "close")
-        self.end_headers()
-        if body:
-            self.wfile.write(body)
+        try:
+            self.send_response(status.value)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            if allow is not None:
+                self.send_header("Allow", allow)
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Connection", "close")
+            self.end_headers()
+            if body:
+                self.wfile.write(body)
+        except (ConnectionError, TimeoutError):
+            # The client may time out or close its SSH-forwarded socket while
+            # diagnostics are still being collected. This is a normal network
+            # lifecycle event, not an application failure worth a traceback.
+            self.close_connection = True
+            return
         self.close_connection = True
 
     def _method_not_allowed(self, allow: str = "GET") -> None:
