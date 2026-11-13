@@ -29,6 +29,8 @@ class QmlOperatorBridge(QObject):
         self.connection_manager = connection_manager or ConnectionManager()
         self.model = DiagnosticsModel()
         self._profile = load_profile()
+        self._ssh_port_text = "" if self._profile.ssh_port == 22 else str(self._profile.ssh_port)
+        self._local_port_text = "" if self._profile.local_port == 18080 else str(self._profile.local_port)
         self._busy = False
         self._closing = False
         self._notice = "Ожидание подключения."
@@ -44,11 +46,11 @@ class QmlOperatorBridge(QObject):
 
     @Property(str, notify=profileChanged)
     def sshPort(self) -> str:
-        return str(self._profile.ssh_port)
+        return self._ssh_port_text
 
     @Property(str, notify=profileChanged)
     def localPort(self) -> str:
-        return str(self._profile.local_port)
+        return self._local_port_text
 
     @Property(str, notify=profileChanged)
     def privateKeyPath(self) -> str:
@@ -195,12 +197,12 @@ class QmlOperatorBridge(QObject):
 
     @Slot(str)
     def setSshPort(self, value: str) -> None:
-        self._profile = self._replace_profile(ssh_port=self._parse_int(value, -1))
+        self._ssh_port_text = value
         self.profileChanged.emit()
 
     @Slot(str)
     def setLocalPort(self, value: str) -> None:
-        self._profile = self._replace_profile(local_port=self._parse_int(value, -1))
+        self._local_port_text = value
         self.profileChanged.emit()
 
     @Slot(str)
@@ -215,12 +217,14 @@ class QmlOperatorBridge(QObject):
 
     @Slot()
     def saveProfile(self) -> None:
-        errors = validate_profile(self._profile, require_files=False)
+        profile = self._profile_with_port_drafts()
+        errors = validate_profile(profile, require_files=False)
         if errors:
             self._append_event("Профиль не сохранён: " + "; ".join(errors))
             return
         try:
-            target = save_profile(self._profile)
+            target = save_profile(profile)
+            self._profile = profile
         except (OSError, ValueError) as exc:
             self._append_event(f"Ошибка сохранения профиля: {exc}")
             return
@@ -231,12 +235,14 @@ class QmlOperatorBridge(QObject):
     def connectToStation(self) -> None:
         if self._busy or self._closing:
             return
-        errors = validate_profile(self._profile, require_files=True)
+        profile = self._profile_with_port_drafts()
+        errors = validate_profile(profile, require_files=True)
         if errors:
             self._append_event("Профиль подключения не прошёл проверку: " + "; ".join(errors))
             return
         try:
-            save_profile(self._profile)
+            save_profile(profile)
+            self._profile = profile
         except (OSError, ValueError) as exc:
             self._append_event(f"Не удалось сохранить профиль: {exc}")
             return
@@ -346,6 +352,11 @@ class QmlOperatorBridge(QObject):
         section = network.get(name)
         return section if isinstance(section, dict) else None
 
+    def _profile_with_port_drafts(self) -> ConnectionProfile:
+        ssh_port = self._parse_int(self._ssh_port_text, 22) if self._ssh_port_text.strip() else 22
+        local_port = self._parse_int(self._local_port_text, 18080) if self._local_port_text.strip() else 18080
+        return self._replace_profile(ssh_port=ssh_port, local_port=local_port)
+
     def _replace_profile(self, **changes) -> ConnectionProfile:
         values = {
             "host": self._profile.host,
@@ -364,7 +375,7 @@ class QmlOperatorBridge(QObject):
         try:
             return int(value.strip())
         except (AttributeError, ValueError):
-            return fallback
+            return -1
 
     @staticmethod
     def _format_uptime(seconds: object) -> str:
