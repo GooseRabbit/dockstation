@@ -54,6 +54,37 @@ ApplicationWindow {
         ScrollBar.vertical.policy: ScrollBar.AsNeeded
     }
 
+    component CameraPreviewSurface: Rectangle {
+        color: "#0B1117"
+        radius: 8
+        border.color: root.borderColor
+        Column {
+            anchors.centerIn: parent
+            spacing: 10
+            Text { anchors.horizontalCenter: parent.horizontalCenter; text: "▣"; color: root.muted; font.pixelSize: 48 }
+            Text { anchors.horizontalCenter: parent.horizontalCenter; text: "Видеопоток пока недоступен"; color: root.primaryText; font.pixelSize: 17; font.bold: true }
+            Text { anchors.horizontalCenter: parent.horizontalCenter; text: "USB-камера и медиатранспорт ещё не подключены"; color: root.muted; font.pixelSize: 12 }
+        }
+    }
+
+    Window {
+        id: cameraFullscreenWindow
+        objectName: "camera.fullscreen-window"
+        visible: false
+        visibility: Window.FullScreen
+        color: "#0B1117"
+        title: "DockStation Operator — камера"
+        CameraPreviewSurface {
+            anchors.fill: parent
+            radius: 0
+            border.width: 0
+        }
+        Shortcut {
+            sequence: "Escape"
+            onActivated: cameraFullscreenWindow.hide()
+        }
+    }
+
     component ActionButton: Button {
         id: actionButton
         implicitHeight: 38
@@ -364,14 +395,22 @@ ApplicationWindow {
                                     }
                                     Label { text: "SSH-порт"; color: root.secondaryText }
                                     DarkTextField {
+                                        objectName: "connection.ssh-port-field"
                                         Layout.fillWidth: true
                                         text: bridge.sshPort
+                                        placeholderText: "22"
+                                        placeholderTextColor: root.muted
+                                        inputMethodHints: Qt.ImhDigitsOnly
                                         onTextEdited: bridge.setSshPort(text)
                                     }
                                     Label { text: "Локальный порт туннеля"; color: root.secondaryText }
                                     DarkTextField {
+                                        objectName: "connection.local-port-field"
                                         Layout.fillWidth: true
                                         text: bridge.localPort
+                                        placeholderText: "18080"
+                                        placeholderTextColor: root.muted
+                                        inputMethodHints: Qt.ImhDigitsOnly
                                         onTextEdited: bridge.setLocalPort(text)
                                     }
                                     Label { text: "Приватный SSH-ключ"; color: root.secondaryText }
@@ -755,7 +794,7 @@ ApplicationWindow {
                     }
                 }
 
-                // 6. Camera placeholder
+                // 6. Camera preview placeholder. The viewport uses a 16:9 reference frame.
                 PageScrollView {
                     objectName: "page.camera"
                     ColumnLayout {
@@ -764,33 +803,34 @@ ApplicationWindow {
                         Text { text: "Камера"; color: root.primaryText; font.pixelSize: 24; font.bold: true }
                         Panel {
                             Layout.fillWidth: true
-                            implicitHeight: 430
+                            implicitHeight: cameraPanelContent.implicitHeight + 36
                             ColumnLayout {
+                                id: cameraPanelContent
                                 anchors.fill: parent
                                 anchors.margins: 18
                                 spacing: 12
-                                Rectangle {
+                                CameraPreviewSurface {
+                                    objectName: "camera.preview"
                                     Layout.fillWidth: true
-                                    Layout.fillHeight: true
-                                    color: "#0B1117"
-                                    radius: 8
-                                    border.color: root.borderColor
-                                    Column {
-                                        anchors.centerIn: parent
-                                        spacing: 10
-                                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "▣"; color: root.muted; font.pixelSize: 48 }
-                                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "Видеопоток пока недоступен"; color: root.primaryText; font.pixelSize: 17; font.bold: true }
-                                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "USB-камера и медиатранспорт ещё не подключены"; color: root.muted; font.pixelSize: 12 }
-                                    }
+                                    Layout.preferredHeight: Math.min(width * 9 / 16, 600)
+                                    Layout.minimumHeight: 180
                                 }
                                 RowLayout {
                                     Layout.fillWidth: true
                                     Text { text: "Live View: недоступно"; color: root.muted }
                                     Item { Layout.fillWidth: true }
+                                    ActionButton { text: "На весь экран"; onClicked: cameraFullscreenWindow.showFullScreen() }
                                     ActionButton { text: "Начать запись"; enabled: false }
                                     ActionButton { text: "Остановить"; enabled: false }
                                 }
                             }
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Область предпросмотра сохраняет формат 16:9. При подключении камеры изображение будет центрироваться на чёрном фоне без растяжения; исходное соотношение сторон и разрешение кадра сохраняются."
+                            color: root.muted
+                            wrapMode: Text.WordWrap
+                            font.pixelSize: 11
                         }
                     }
                 }
