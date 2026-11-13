@@ -37,11 +37,15 @@ def test_qml_prototype_loads_with_the_six_approved_tabs():
             "page.logs",
             "page.camera",
         ]
-        for page_name in page_names:
+        for page_index, page_name in enumerate(page_names):
             page = roots[0].findChild(QObject, page_name)
             assert page is not None, f"Missing page container: {page_name}"
             assert page.property("padding") == 28
+            roots[0].setProperty("currentTab", page_index)
+            app.processEvents()
             assert page.property("contentWidth") > 0
+        roots[0].setProperty("currentTab", 0)
+        app.processEvents()
         cover_status = roots[0].findChild(QObject, "sensor.cover-status")
         assert cover_status is not None, "Lid position must have its own panel."
         navigation = roots[0].property("navigation")
