@@ -65,7 +65,7 @@ jobs:
               ready=true
               break
             fi
-            if ! kill -0 "$gateway_pid" 2>/dev/null; then
+            if ! sudo kill -0 "$gateway_pid" 2>/dev/null; then
               break
             fi
             sleep 0.25
