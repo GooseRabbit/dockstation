@@ -141,59 +141,59 @@ REST/JSON и HTTP-библиотека пока являются предлож�
 8. После завершения службы восстанавливаются исходные обработчики сигналов, выполняются flush и shutdown Logger.
 9. Если ServiceRunner не передан, выполняется только bootstrap-проверка и выводится явное сообщение, что HTTP API не запущен.
 
-**Текущая граница:** C++ Bootstrap пока не запускает HTTP/API-службу и не управляет физическими устройствами. Python Gateway остаётся отдельным временным VM-прототипом; второй сервер или listener не создаётся. Загрузчик внешней конфигурации, production-адаптеры, composition root прикладных менеджеров и systemd unit относятся к следующим задачам.
+**Текущая граница:** production-точка входа `repka_gateway/main.cpp` передаёт read-only HTTP-службу в существующий ApplicationBootstrap через ServiceRunner. HTTP API не управляет физическими устройствами и не публикует управляющие маршруты. Python Gateway остаётся отдельным временным VM-прототипом; C++ API ещё не проверен вручную в Ubuntu VM. Production-адаптеры, composition root прикладных менеджеров и systemd unit относятся к следующим задачам.
 
 **Проверки:** `verification/repka_gateway/test_application_bootstrap.cpp` и CTest `application_bootstrap` проверяют справку, ранний отказ CLI, инициализацию/ошибку Logger, сбор диагностик, передачу конфигурации службе, SIGTERM, код ошибки службы и bootstrap-only режим. Вместе с шестью существующими проверочными программами в CTest зарегистрировано семь тестов. Добавлен GitHub Actions workflow для Linux CMake build и CTest с ASan/UBSan; доступный результат выполнения workflow пока не получен.
 
-**Результат:** отдельная Linux-цель запускает bootstrap, собирает read-only диагностику и корректно завершается. Это не означает, что C++ Gateway API уже реализован. Текущая тестовая программа не переписывается.
+**Результат этапа 1:** отдельная Linux-цель запускает bootstrap, собирает read-only диагностику и корректно завершает работу. HTTP API описан в следующем этапе.
 
 ## Этап 2. Локальный read-only API
 
-**Цель:** дать Windows доступ к диагностике через SSH-туннель.
+**Статус:** первый C++ API-срез реализован в исходниках и включён в Linux CMake-цель. Его фактические результаты host CI фиксируются в разделе 3.13 документа испытаний; ручная проверка этого C++ сервера в Ubuntu VM ещё не выполнена.
 
-### Файлы
+**Цель:** дать Windows Operator доступ к health и системной диагностике через SSH local-forward, сохраняя HTTP listener исключительно на loopback.
+
+### Файлы реализации
 
 | Файл | Назначение |
 |---|---|
-| `src/communications/network_types.hpp` | Типы состояний и ошибок |
-| `src/communications/local_api_server.hpp/.cpp` | Жизненный цикл HTTP-сервера |
-| `src/communications/local_api_routes.hpp/.cpp` | Обработчики маршрутов |
-| `src/communications/api_serialization.hpp/.cpp` | JSON-сериализация |
-| `repka/dockstation-gateway.service` | Unit systemd |
+| \`src/communications/network_types.hpp\` | Типы HTTP-запроса, ответа, результата разбора и статуса сервера |
+| \`src/communications/local_api_server.hpp/.cpp\` | Разбор ограниченного HTTP-запроса, маршрутизация, loopback listener, приём одного запроса и штатная остановка |
+| \`src/communications/api_serialization.hpp/.cpp\` | JSON-экранирование, health, системная/сетевая диагностика и структурированные API-ошибки |
+| \`repka_gateway/main.cpp\` | Регистрация C++ API как ServiceRunner существующего ApplicationBootstrap |
+| \`verification/repka_gateway/test_local_api.cpp\` | CTest: сериализация, parser/route contract и реальный loopback round-trip |
+| \`verification/integration/test_cpp_gateway_api.py\` | Проверка реального собранного C++ процесса через HTTP и валидатор Operator API |
 
-### Функции
+### Реализованное поведение
 
-**`local_api_server.cpp`**
-1. `start_local_api_server()` — запуск только на `127.0.0.1`.
-2. `stop_local_api_server()` — прекращение приёма и корректное закрытие соединений.
-3. `get_local_api_status()` — состояние сервера и фактический адрес привязки.
+**Жизненный цикл сервера**
+- \`LocalApiServer::start(port)\` создаёт TCP listener только на фиксированном \`127.0.0.1\`; порт берётся из уже валидированного RuntimeConfig.
+- \`serve_once(timeout)\` принимает ограниченный запрос и отправляет один ответ; listener использует неблокирующее ожидание.
+- \`stop()\` закрывает listener. \`status()\` возвращает фактический loopback-адрес, порт и причину ошибки.
+- \`run_local_api_server()\` работает внутри ServiceRunner ApplicationBootstrap, обрабатывает сигнал штатного завершения и записывает события запуска/остановки в PlatformLogger.
+- Ответ закрывает соединение; ожидание заголовков и отправка ответа ограничены тайм-аутом. Размер HTTP-запроса ограничен 8192 байтами и числом 64 заголовка. Тела запросов и Transfer-Encoding не поддерживаются.
 
-**`local_api_routes.cpp`**
-1. `handle_health_request()` — ответ на `GET /api/v1/health`.
-2. `handle_system_diagnostics_request()` — ответ на `GET /api/v1/system/diagnostics`.
-3. `handle_not_found()` — неизвестный маршрут.
-4. `handle_method_not_allowed()` — неподдерживаемый HTTP-метод.
+**HTTP parser и маршруты**
+- \`parse_http_request()\` принимает корректный origin-form HTTP/1.0 или HTTP/1.1, ограничивает размер и количество заголовков, отклоняет дублирующийся/ненулевой Content-Length, Transfer-Encoding, folded-заголовки и тело запроса.
+- \`dispatch_api_request()\` поддерживает только:
+  - \`GET /api/v1/health\`;
+  - \`GET /api/v1/system/diagnostics\`.
+- Неизвестный маршрут возвращает 404, неподдерживаемый метод — 405 с \`Allow: GET\`, query/fragment в request target отклоняются. Test-only PING и физические/управляющие маршруты в C++ API отсутствуют.
+- Ответы содержат Content-Type JSON, Content-Length, Cache-Control: no-store, X-Content-Type-Options: nosniff и Connection: close.
 
-**`api_serialization.cpp`**
-1. `serialize_health_response()` — статус API и версия контракта.
-2. `serialize_system_diagnostics()` — значения, отметки времени и качество данных.
-3. `serialize_error_response()` — структурированная ошибка без секретов.
+**Диагностика**
+- JSON-контракт системной диагностики сохраняет схему \`1.0\`, источник \`LINUX_HOST\`, UTC timestamp, summary, platform, network и scope, ожидаемые существующим Operator API validator.
+- Используются существующие read-only RuntimeEnvironment, SystemDiagnostics и NetworkDiagnostics; значения, которые сборщики не смогли прочитать, остаются null/UNAVAILABLE, а не подменяются нулями.
+- DNS-проба не запускается автоматически и помечается \`NOT_CONFIGURED\`; статус SSH-службы пока не реализован в C++ сборщике и помечается \`UNAVAILABLE\`. Для IPv4/IPv6 default route сейчас возвращается \`UNKNOWN\` в family_status, потому что существующий C++ сборщик выдаёт общий статус таблиц, а не раздельный статус каждого семейства.
+- Общий статус C++ diagnostics — \`WARN\`, пока DNS и SSH-проверки не реализованы; это намеренно не объявляется полной проверкой сети.
 
-**`dockstation-gateway.service`** — запуск от непривилегированного пользователя, минимальные права на конфигурацию/журналы, отсутствие секретов в unit-файле, контролируемый перезапуск.
+### Границы и безопасность
 
-**Результат:** Windows через SSH-туннель получает оба ответа; API не слушает IP Ethernet и недоступен напрямую из LAN.
+API остаётся read-only и доступен только через локальный loopback listener. Его предполагаемый внешний доступ — ранее проверенная SSH-схема; SSH не является частью C++ HTTP-сервера. Прямой bind на Ethernet/LAN, TLS, пользовательская аутентификация, systemd unit и управляющие команды в этот срез не добавлялись. Для операторского доступа по сети по-прежнему требуется доверенный SSH-туннель и строгая проверка host key.
 
-### Временный test-only маршрут для сквозной проверки
+Python Gateway не удалён и не переписан: он остаётся временным VM-прототипом до отдельной ручной проверки C++ API и согласованного переключения VM на новую службу.
 
-Решением DEC-061 разрешён узкий проверочный маршрут в уже существующем Python VM Gateway:
-- `POST /api/v1/test/adapter/request`;
-- маршрут отключён по умолчанию и доступен только при явном `--enable-test-adapter`;
-- принимает только JSON-контракт версии 1.0 с единственной операцией `PING`;
-- передаёт запрос в `TestRequestService`, затем в `TestRequestAdapter`;
-- возвращает `TEST_ADAPTER_ACCEPTED`, `source=TEST_ADAPTER` и `physical_action_performed=false`;
-- ограничивает тело 4096 байтами, требует UTF-8 JSON и отклоняет дублирующиеся ключи и неизвестные поля.
-
-Это временный тестовый канал, а не включение командного API станции. Он не выполняет физических действий, не подключается к ESP32 и не заменяет запланированный C++ Gateway. Без флага запускаются только прежние GET-маршруты диагностики. Сам Gateway по-прежнему привязан только к 127.0.0.1 и предназначен для SSH local-forward.
+**Критерий host-проверки:** Linux CMake build/CTest, проверка loopback round-trip, а также запуск собранного процесса и валидация обоих GET-ответов существующим Operator API validator. Эти проверки не подтверждают работу на Repka Pi 5/ARM64 или ручной SSH-туннель Windows ↔ C++ Gateway.
 
 ## Этап 3. Первоначальное графическое Windows Operator Application
 

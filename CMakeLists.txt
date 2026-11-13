@@ -36,6 +36,8 @@ add_library(dockstation_linux_runtime STATIC
     src/platform/linux/command_line.cpp
     src/platform/linux/runtime_config_file.cpp
     src/platform/logging/logger.cpp
+    src/communications/api_serialization.cpp
+    src/communications/local_api_server.cpp
 )
 target_include_directories(dockstation_linux_runtime
     PUBLIC "${PROJECT_SOURCE_DIR}/src"
@@ -135,6 +137,15 @@ if(BUILD_TESTING)
     dockstation_apply_compile_policy(test_controller_protocol)
     add_test(NAME controller_protocol COMMAND test_controller_protocol)
 
+    add_executable(test_local_api
+        verification/repka_gateway/test_local_api.cpp
+    )
+    target_link_libraries(test_local_api
+        PRIVATE dockstation_linux_runtime
+    )
+    dockstation_apply_compile_policy(test_local_api)
+    add_test(NAME local_api COMMAND test_local_api)
+
     if(DOCKSTATION_ENABLE_SANITIZERS)
         if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
             foreach(target_name
@@ -148,7 +159,8 @@ if(BUILD_TESTING)
                     test_runtime_config
                     test_command_line
                     test_runtime_config_file
-                    test_controller_protocol)
+                    test_controller_protocol
+                    test_local_api)
                 target_compile_options(${target_name} PRIVATE
                     -fsanitize=address,undefined
                     -fno-omit-frame-pointer
@@ -182,6 +194,9 @@ if(BUILD_TESTING)
                 -fsanitize=address,undefined
             )
             target_link_options(test_controller_protocol PRIVATE
+                -fsanitize=address,undefined
+            )
+            target_link_options(test_local_api PRIVATE
                 -fsanitize=address,undefined
             )
         else()
