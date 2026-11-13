@@ -520,8 +520,8 @@ ApplicationWindow {
                                         onClicked: bridge.connectToStation()
                                     }
                                     ActionButton {
-                                        text: "Отключить"
-                                        enabled: !bridge.busy && bridge.connected
+                                        text: bridge.reconnecting ? "Отменить восстановление" : "Отключить"
+                                        enabled: !bridge.busy && (bridge.connected || bridge.reconnecting)
                                         onClicked: bridge.disconnectFromStation()
                                     }
                                     ActionButton {
