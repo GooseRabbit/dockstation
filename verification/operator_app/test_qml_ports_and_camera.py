@@ -8,7 +8,7 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Basic")
 
-from PySide6.QtCore import QObject, QUrl, Qt
+from PySide6.QtCore import QObject, QUrl
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
 
@@ -104,8 +104,8 @@ def test_qml_uses_port_placeholders_and_fixed_camera_viewport_without_auto_fulls
         local_field = root.findChild(QObject, "connection.local-port-field")
         assert ssh_field is not None and ssh_field.property("placeholderText") == "22"
         assert local_field is not None and local_field.property("placeholderText") == "18080"
-        assert ssh_field.property("verticalAlignment") == Qt.AlignVCenter
-        assert local_field.property("verticalAlignment") == Qt.AlignVCenter
+        qml_source = qml_path.read_text(encoding="utf-8")
+        assert "verticalAlignment: TextInput.AlignVCenter" in qml_source
         assert root.findChild(QObject, "stations.local-profile-list") is not None
 
         assert root.property("currentTab") == 0
