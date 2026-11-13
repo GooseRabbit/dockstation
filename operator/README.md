@@ -102,8 +102,8 @@ dockstation-operator-qml
 
 Реестр хранится отдельно от прежнего одиночного профиля:
 
-- Windows: `%LOCALAPPDATA%\\DockStationOperator\\stations.json` (либо
-  `%APPDATA%\\DockStationOperator\\stations.json`, если LOCALAPPDATA не задан);
+- Windows: `%LOCALAPPDATA%\DockStationOperator\stations.json` (либо
+  `%APPDATA%\DockStationOperator\stations.json`, если LOCALAPPDATA не задан);
 - другие ОС: `~/.config/DockStationOperator/stations.json`.
 
 Это **локальные профили данного компьютера и пользователя Windows**, а не
