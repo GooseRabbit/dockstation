@@ -139,3 +139,26 @@ def test_qml_bridge_schedules_read_only_reconnect_after_unexpected_loss(
         assert bridge.reconnecting is False
     finally:
         bridge.shutdown()
+
+
+
+def test_qml_bridge_uses_bounded_reconnect_backoff(tmp_path: Path, monkeypatch):
+    registry_file = tmp_path / "stations.json"
+    monkeypatch.setattr(station_registry, "station_registry_path", lambda: registry_file)
+    monkeypatch.setattr(qml_bridge, "station_registry_path", lambda: registry_file)
+    monkeypatch.setattr(qml_bridge, "load_profile", lambda: ConnectionProfile())
+
+    clock = {"value": 100.0}
+    monkeypatch.setattr(qml_bridge.time, "monotonic", lambda: clock["value"])
+    bridge = qml_bridge.QmlOperatorBridge(connection_manager=InertConnectionManager())
+    try:
+        bridge._reconnect_pending = True
+        expected_delays = (5.0, 10.0, 20.0, 30.0, 30.0)
+        for attempt, delay in enumerate(expected_delays):
+            clock["value"] += 100.0
+            bridge._on_operation_finished(False, "temporary Gateway failure", None)
+            assert bridge._reconnect_attempt == attempt + 1
+            assert bridge._next_reconnect_at == clock["value"] + delay
+            assert bridge.reconnecting is True
+    finally:
+        bridge.shutdown()
