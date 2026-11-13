@@ -947,8 +947,8 @@ ApplicationWindow {
                                     anchors.margins: 14
                                     spacing: 8
                                     Text { text: "Температура CPU / SoC"; color: root.primaryText; font.pixelSize: 14; font.bold: true; wrapMode: Text.WordWrap }
-                                    Text { text: "— °C"; color: root.muted; font.pixelSize: 30; font.bold: true }
-                                    Text { text: "Gateway API пока не публикует показатель"; color: root.muted; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                                    Text { text: bridge.systemMetrics.cpu_temperature_value; color: bridge.systemMetrics.cpu_temperature_color; font.pixelSize: 30; font.bold: true }
+                                    Text { text: bridge.systemMetrics.cpu_temperature_detail; color: root.muted; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                                 }
                             }
                             Panel {
@@ -960,8 +960,8 @@ ApplicationWindow {
                                     anchors.margins: 14
                                     spacing: 8
                                     Text { text: "Оперативная память"; color: root.primaryText; font.pixelSize: 14; font.bold: true }
-                                    Text { text: "— %"; color: root.muted; font.pixelSize: 30; font.bold: true }
-                                    Text { text: "Использовано / доступно — пока не передаётся API"; color: root.muted; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                                    Text { text: bridge.systemMetrics.memory_value; color: bridge.systemMetrics.memory_color; font.pixelSize: 30; font.bold: true }
+                                    Text { text: bridge.systemMetrics.memory_detail; color: root.muted; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                                 }
                             }
                             Panel {
@@ -973,8 +973,8 @@ ApplicationWindow {
                                     anchors.margins: 14
                                     spacing: 8
                                     Text { text: "Корневая файловая система"; color: root.primaryText; font.pixelSize: 14; font.bold: true; wrapMode: Text.WordWrap }
-                                    Text { text: "— %"; color: root.muted; font.pixelSize: 30; font.bold: true }
-                                    Text { text: "Заполнение диска / пока не передаётся API"; color: root.muted; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                                    Text { text: bridge.systemMetrics.storage_value; color: bridge.systemMetrics.storage_color; font.pixelSize: 30; font.bold: true }
+                                    Text { text: bridge.systemMetrics.storage_detail; color: root.muted; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                                 }
                             }
                             Panel {
@@ -986,8 +986,8 @@ ApplicationWindow {
                                     anchors.margins: 14
                                     spacing: 8
                                     Text { text: "Средняя системная нагрузка"; color: root.primaryText; font.pixelSize: 14; font.bold: true; wrapMode: Text.WordWrap }
-                                    Text { text: "— / — / —"; color: root.muted; font.pixelSize: 25; font.bold: true }
-                                    Text { text: "Load average за 1 / 5 / 15 минут; это не процент загрузки CPU"; color: root.muted; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                                    Text { text: bridge.systemMetrics.load_value; color: bridge.systemMetrics.load_color; font.pixelSize: 25; font.bold: true }
+                                    Text { text: bridge.systemMetrics.load_detail + " · load average за 1 / 5 / 15 мин; не процент CPU"; color: root.muted; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                                 }
                             }
                         }
@@ -1003,7 +1003,7 @@ ApplicationWindow {
                                 Text { text: "Сведения о Linux Gateway"; color: root.primaryText; font.pixelSize: 16; font.bold: true }
                                 Text { text: bridge.platformSummary; color: root.secondaryText; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                                 Text {
-                                    text: "Время работы, ОС, версия ядра и архитектура берутся из текущего диагностического снимка. Температура CPU/SoC, RAM, файловая система и load average пока не входят в ответ Python Gateway API. Их сборщики в Linux C++-части существуют, но ещё не подключены к этому API."
+                                    text: "Показатели обновляются вместе с диагностическим снимком Gateway. Температура выводится только при обнаружении явно обозначенного CPU/SoC/package-термодатчика. Заполнение диска относится к корневой файловой системе; load average не является процентом загрузки процессора."
                                     color: root.muted
                                     wrapMode: Text.WordWrap
                                     Layout.fillWidth: true
