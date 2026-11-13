@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import threading
-from datetime import timezone
 from typing import Any
 
 from PySide6.QtCore import QObject, Property, Signal, Slot
@@ -245,7 +244,19 @@ class QmlOperatorBridge(QObject):
         self._start_worker(operation)
 
     @Slot()
-    def refresh(self) -> None:
+    def poll(self) -> None:
+        if self._busy or self._closing:
+            return
+        if self.connection_manager.get_connection_status() == "DEGRADED" and self.model.connection_state == "CONNECTED":
+            self.connection_manager.handle_connection_loss()
+            self.model.mark_diagnostics_stale("SSH-туннель неожиданно завершился.")
+            self._append_event("SSH-туннель завершился; диагностические данные помечены как устаревшие.")
+            return
+        if self.connection_manager.is_connected:
+            self.refresh()
+
+    @Slot()
+    def refresh(self) -> None
         if self._busy or self._closing:
             return
         if not self.connection_manager.is_connected:
