@@ -59,6 +59,7 @@ def test_qml_uses_port_placeholders_and_fixed_camera_viewport_without_auto_fulls
         assert local_field.property("verticalAlignment") == Qt.AlignVCenter
         assert root.findChild(QObject, "stations.local-profile-list") is not None
 
+        assert root.property("currentTab") == 0
         fullscreen = root.findChild(QObject, "camera.fullscreen-window")
         assert fullscreen is not None
         assert fullscreen.property("visible") is False
