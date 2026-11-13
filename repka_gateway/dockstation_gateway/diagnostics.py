@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import math
 import os
 import platform
 import re
@@ -124,6 +125,141 @@ def read_platform_info(proc_uptime: Path = Path("/proc/uptime")) -> dict[str, ob
         "architecture": platform.machine() or None,
         "word_size_bits": struct.calcsize("P") * 8,
         "uptime": _status_result(uptime_status, uptime_message, seconds=uptime_seconds),
+    }
+
+
+def read_system_resources(
+    *,
+    meminfo_path: Path = Path("/proc/meminfo"),
+    loadavg_path: Path = Path("/proc/loadavg"),
+    thermal_path: Path = Path("/sys/class/thermal"),
+    root_path: str = "/",
+) -> dict[str, object]:
+    """Collect read-only memory, root filesystem, CPU temperature and load average."""
+    memory: dict[str, object]
+    try:
+        memory_values: dict[str, int] = {}
+        for line in meminfo_path.read_text(encoding="ascii").splitlines():
+            key, separator, remainder = line.partition(":")
+            if separator and key in {"MemTotal", "MemAvailable"}:
+                fields = remainder.split()
+                if len(fields) >= 2 and fields[1] == "kB":
+                    memory_values[key] = int(fields[0]) * 1024
+        total = memory_values.get("MemTotal")
+        available = memory_values.get("MemAvailable")
+        if total is None or available is None or total <= 0 or not 0 <= available <= total:
+            raise ValueError("MemTotal/MemAvailable are missing or invalid")
+        used = total - available
+        memory = _status_result(
+            "PASS", "Read from /proc/meminfo",
+            total_bytes=total, available_bytes=available, used_bytes=used,
+            used_percent=round(used * 100.0 / total, 1),
+        )
+    except (OSError, UnicodeError, ValueError, OverflowError):
+        memory = _status_result(
+            "UNAVAILABLE", "Cannot read valid MemTotal/MemAvailable from /proc/meminfo",
+            total_bytes=None, available_bytes=None, used_bytes=None, used_percent=None,
+        )
+
+    storage: dict[str, object]
+    try:
+        details = os.statvfs(root_path)
+        block_size = details.f_frsize or details.f_bsize
+        total = details.f_blocks * block_size
+        free = details.f_bfree * block_size
+        available = details.f_bavail * block_size
+        if block_size <= 0 or total <= 0 or not 0 <= available <= free <= total:
+            raise ValueError("root filesystem returned invalid capacity values")
+        used = total - free
+        storage = _status_result(
+            "PASS", f"Read filesystem capacity for {root_path}",
+            path=root_path, total_bytes=total, free_bytes=free,
+            available_bytes=available, used_bytes=used,
+            used_percent=round(used * 100.0 / total, 1),
+        )
+    except (OSError, ValueError, OverflowError):
+        storage = _status_result(
+            "UNAVAILABLE", f"Cannot read valid filesystem capacity for {root_path}",
+            path=root_path, total_bytes=None, free_bytes=None,
+            available_bytes=None, used_bytes=None, used_percent=None,
+        )
+
+    cpu_temperature: dict[str, object]
+    temperature_value: float | None = None
+    sensor_type: str | None = None
+    temperature_error = False
+    try:
+        zones = sorted(
+            (item for item in thermal_path.iterdir() if item.name.startswith("thermal_zone")),
+            key=lambda item: item.name,
+        )
+    except OSError:
+        zones = []
+        temperature_error = True
+    for zone in zones:
+        try:
+            current_type = (zone / "type").read_text(encoding="utf-8").strip()
+        except (OSError, UnicodeError):
+            continue
+        normalized_type = current_type.lower()
+        if not any(token in normalized_type for token in ("cpu", "soc", "package")):
+            continue
+        try:
+            milli_celsius = int((zone / "temp").read_text(encoding="ascii").strip())
+            if not -100000 <= milli_celsius <= 250000:
+                raise ValueError("temperature outside plausible bounds")
+        except (OSError, UnicodeError, ValueError):
+            temperature_error = True
+            continue
+        sensor_type = current_type
+        temperature_value = round(milli_celsius / 1000.0, 1)
+        break
+    if temperature_value is not None:
+        cpu_temperature = _status_result(
+            "PASS", f"Explicit CPU/SoC/package thermal zone: {sensor_type}",
+            celsius=temperature_value, sensor_type=sensor_type,
+        )
+    else:
+        reason = (
+            "A CPU-labelled thermal zone was found but its temperature could not be read"
+            if temperature_error else
+            "No explicitly CPU/SoC/package-labelled thermal zone was found"
+        )
+        cpu_temperature = _status_result(
+            "UNAVAILABLE", reason, celsius=None, sensor_type=None,
+        )
+
+    cpu_load: dict[str, object]
+    try:
+        fields = loadavg_path.read_text(encoding="ascii").split()
+        if len(fields) < 4:
+            raise ValueError("unexpected /proc/loadavg format")
+        one, five, fifteen = (float(value) for value in fields[:3])
+        if any(not math.isfinite(value) or value < 0 for value in (one, five, fifteen)):
+            raise ValueError("invalid load average")
+        runnable_text, separator, total_text = fields[3].partition("/")
+        if not separator:
+            raise ValueError("invalid task counters")
+        runnable, total_tasks = int(runnable_text), int(total_text)
+        if total_tasks <= 0 or not 0 <= runnable <= total_tasks:
+            raise ValueError("invalid task counters")
+        cpu_load = _status_result(
+            "PASS", "Read Linux load average from /proc/loadavg",
+            one_minute=one, five_minutes=five, fifteen_minutes=fifteen,
+            runnable_tasks=runnable, total_tasks=total_tasks,
+        )
+    except (OSError, UnicodeError, ValueError, OverflowError):
+        cpu_load = _status_result(
+            "UNAVAILABLE", "Cannot read valid load average from /proc/loadavg",
+            one_minute=None, five_minutes=None, fifteen_minutes=None,
+            runnable_tasks=None, total_tasks=None,
+        )
+
+    return {
+        "memory": memory,
+        "storage": storage,
+        "cpu_temperature": cpu_temperature,
+        "cpu_load": cpu_load,
     }
 
 
@@ -431,6 +567,7 @@ def _aggregate_status(*statuses: str) -> str:
 def collect_diagnostics(dns_name: str | None = None) -> dict[str, object]:
     """Collect one timestamped snapshot for the read-only HTTP API."""
     platform_data = read_platform_info()
+    platform_data["resources"] = read_system_resources()
     interfaces = read_network_interfaces()
     routes = read_default_routes()
     dns = resolve_dns_name(dns_name)
