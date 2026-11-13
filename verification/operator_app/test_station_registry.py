@@ -77,6 +77,9 @@ def test_registry_fails_closed_for_unsupported_or_malformed_data(tmp_path: Path)
     path.write_text(json.dumps({"schema_version": 999, "profiles": []}), encoding="utf-8")
     assert load_registry(path) == StationRegistry()
 
+    path.write_text(json.dumps({"schema_version": True, "profiles": []}), encoding="utf-8")
+    assert load_registry(path) == StationRegistry()
+
     path.write_text("{not-json", encoding="utf-8")
     assert load_registry(path) == StationRegistry()
 
