@@ -7,6 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(CTest)
+include(GNUInstallDirs)
 
 find_package(Threads REQUIRED)
 
@@ -205,3 +206,19 @@ if(BUILD_TESTING)
         endif()
     endif()
 endif()
+
+# Install the production C++ Gateway and its systemd deployment assets.
+configure_file(
+    "${PROJECT_SOURCE_DIR}/repka/dockstation-gateway.service.in"
+    "${PROJECT_BINARY_DIR}/dockstation-gateway.service"
+    @ONLY
+)
+install(TARGETS dockstation_linux_bootstrap
+    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+)
+install(FILES "${PROJECT_BINARY_DIR}/dockstation-gateway.service"
+    DESTINATION "lib/systemd/system"
+)
+install(FILES "${PROJECT_SOURCE_DIR}/repka/gateway.conf.example"
+    DESTINATION "${CMAKE_INSTALL_DATADIR}/dockstation"
+)
