@@ -1,0 +1,5 @@
+# DockStation C++ Gateway: local read-only API.
+# API bind address is fixed in code to 127.0.0.1.
+api_port=8080
+log_level=info
+log_stderr=true
