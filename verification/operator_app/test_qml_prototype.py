@@ -1,4 +1,4 @@
-"""Headless smoke test for the six-tab PySide6/QML Operator prototype."""
+"""Headless smoke test for the seven-tab PySide6/QML Operator prototype."""
 
 from __future__ import annotations
 
@@ -36,6 +36,7 @@ def test_qml_prototype_loads_with_the_six_approved_tabs():
             "page.network",
             "page.logs",
             "page.camera",
+            "page.system",
         ]
         for page_index, page_name in enumerate(page_names):
             page = roots[0].findChild(QObject, page_name)
@@ -59,8 +60,12 @@ def test_qml_prototype_loads_with_the_six_approved_tabs():
             "Сеть",
             "Логи",
             "Камера",
+            "Система",
         ]
         assert bridge.connected is False
+        roots[0].setProperty("currentTab", 6)
+        app.processEvents()
+        assert roots[0].findChild(QObject, "page.system") is not None
         assert bridge.freshnessText == "Данные ещё не получены"
     finally:
         bridge.shutdown()
