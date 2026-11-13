@@ -533,6 +533,57 @@ def test_qml_logs_follow_selected_station_and_show_last_diagnostics_update(
         app.processEvents()
 
 
+
+def test_qml_file_picker_urls_update_path_fields_and_save_logs(
+    tmp_path: Path, monkeypatch
+):
+    registry_file = tmp_path / "stations.json"
+    monkeypatch.setattr(station_registry, "station_registry_path", lambda: registry_file)
+    monkeypatch.setattr(qml_bridge, "station_registry_path", lambda: registry_file)
+    monkeypatch.setattr(qml_bridge, "load_profile", lambda: ConnectionProfile())
+
+    bridge = qml_bridge.QmlOperatorBridge(connection_manager=InertConnectionManager())
+    app = QGuiApplication.instance() or QGuiApplication([])
+    engine = QQmlApplicationEngine()
+    engine.rootContext().setContextProperty("bridge", bridge)
+    qml_path = Path(dockstation_operator.__file__).parent / "ui" / "qml" / "Main.qml"
+    engine.load(QUrl.fromLocalFile(str(qml_path)))
+
+    key_path = tmp_path / "private key with spaces"
+    key_path.write_text("test key", encoding="utf-8")
+    known_hosts_path = tmp_path / "known hosts"
+    known_hosts_path.write_text("127.0.0.1 ssh-ed25519 test", encoding="utf-8")
+    log_path = tmp_path / "operator logs.txt"
+
+    try:
+        app.processEvents()
+        roots = engine.rootObjects()
+        assert roots
+        root = roots[0]
+        key_field = root.findChild(QObject, "connection.private-key-field")
+        known_hosts_field = root.findChild(QObject, "connection.known-hosts-field")
+        assert key_field is not None and known_hosts_field is not None
+
+        bridge.setPrivateKeyPathFromUrl(QUrl.fromLocalFile(str(key_path)))
+        bridge.setKnownHostsPathFromUrl(QUrl.fromLocalFile(str(known_hosts_path)))
+        app.processEvents()
+
+        assert bridge.privateKeyPath == str(key_path)
+        assert bridge.knownHostsPath == str(known_hosts_path)
+        assert key_field.property("text") == str(key_path)
+        assert known_hosts_field.property("text") == str(known_hosts_path)
+
+        bridge._append_event("Проверка сохранения журнала")
+        assert bridge.saveLogsFromUrl(QUrl.fromLocalFile(str(log_path))) is True
+        assert "Проверка сохранения журнала" in log_path.read_text(encoding="utf-8")
+    finally:
+        bridge.shutdown()
+        for root_object in engine.rootObjects():
+            root_object.close()
+        engine.deleteLater()
+        app.processEvents()
+
+
 def test_connecting_first_unsaved_profile_uses_its_new_session_manager(
     tmp_path: Path, monkeypatch
 ):

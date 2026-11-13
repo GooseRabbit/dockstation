@@ -309,16 +309,18 @@ ApplicationWindow {
 
     FileDialog {
         id: privateKeyDialog
+        objectName: "connection.private-key-dialog"
         title: "Выбери приватный SSH-ключ"
         fileMode: FileDialog.OpenFile
-        onAccepted: bridge.setPrivateKeyPath(selectedFile.toLocalFile())
+        onAccepted: bridge.setPrivateKeyPathFromUrl(selectedFile)
     }
 
     FileDialog {
         id: knownHostsDialog
+        objectName: "connection.known-hosts-dialog"
         title: "Выбери файл known_hosts"
         fileMode: FileDialog.OpenFile
-        onAccepted: bridge.setKnownHostsPath(selectedFile.toLocalFile())
+        onAccepted: bridge.setKnownHostsPathFromUrl(selectedFile)
     }
 
     FileDialog {
@@ -328,7 +330,7 @@ ApplicationWindow {
         fileMode: FileDialog.SaveFile
         nameFilters: ["Текстовые файлы (*.txt)", "Все файлы (*)"]
         defaultSuffix: "txt"
-        onAccepted: bridge.saveLogs(selectedFile.toLocalFile())
+        onAccepted: bridge.saveLogsFromUrl(selectedFile)
     }
 
     Timer {
@@ -836,6 +838,7 @@ ApplicationWindow {
                                     RowLayout {
                                         Layout.fillWidth: true
                                         DarkTextField {
+                                            objectName: "connection.private-key-field"
                                             Layout.fillWidth: true
                                             text: bridge.privateKeyPath
                                             placeholderText: "Путь к приватному ключу"
@@ -847,6 +850,7 @@ ApplicationWindow {
                                     RowLayout {
                                         Layout.fillWidth: true
                                         DarkTextField {
+                                            objectName: "connection.known-hosts-field"
                                             Layout.fillWidth: true
                                             text: bridge.knownHostsPath
                                             placeholderText: "Путь к known_hosts"

@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QObject, Property, Signal, Slot
+from PySide6.QtCore import QObject, Property, QUrl, Signal, Slot
 from PySide6.QtGui import QGuiApplication
 
 from ..config.settings import (
@@ -475,6 +475,15 @@ class QmlOperatorBridge(QObject):
         self.viewChanged.emit()
         return True
 
+    @Slot(QUrl, result=bool)
+    def saveLogsFromUrl(self, file_url: QUrl) -> bool:
+        path = self._local_file_path(file_url)
+        if not path:
+            self._logs_action_status = "Выбранный файл для сохранения журнала не является локальным."
+            self.viewChanged.emit()
+            return False
+        return self.saveLogs(path)
+
     @Slot(str)
     def setStationAlias(self, value: str) -> None:
         self._station_alias_draft = value
@@ -668,10 +677,32 @@ class QmlOperatorBridge(QObject):
         self._local_port_text = value
         self.profileChanged.emit()
 
+    @staticmethod
+    def _local_file_path(file_url: QUrl) -> str:
+        if not isinstance(file_url, QUrl) or not file_url.isLocalFile():
+            return ""
+        return file_url.toLocalFile()
+
+    @Slot(QUrl)
+    def setPrivateKeyPathFromUrl(self, file_url: QUrl) -> None:
+        path = self._local_file_path(file_url)
+        if not path:
+            self._append_event("Выбранный приватный SSH-ключ не является локальным файлом.")
+            return
+        self.setPrivateKeyPath(path)
+
     @Slot(str)
     def setPrivateKeyPath(self, value: str) -> None:
         self._profile = self._replace_profile(private_key_path=value)
         self.profileChanged.emit()
+
+    @Slot(QUrl)
+    def setKnownHostsPathFromUrl(self, file_url: QUrl) -> None:
+        path = self._local_file_path(file_url)
+        if not path:
+            self._append_event("Выбранный файл known_hosts не является локальным файлом.")
+            return
+        self.setKnownHostsPath(path)
 
     @Slot(str)
     def setKnownHostsPath(self, value: str) -> None:
