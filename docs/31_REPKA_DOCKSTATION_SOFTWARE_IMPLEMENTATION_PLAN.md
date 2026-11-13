@@ -1,7 +1,7 @@
 # Полный план реализации программного комплекса DockStation на Repka Pi 5
 
 **Статус:** мастер-план реализации; последовательность разработки согласована, открытые платформенные, сетевые, серверные и аппаратные детали требуют отдельной проверки и решения.  
-**Редакция:** 1.29.  
+**Редакция:** 1.32.  
 **Дата:** 2026-11-13.  
 **Вычислительная платформа:** Repka Pi 5.  
 **Предполагаемая ОС:** официальная Repka OS; образ и версия проверяются перед развёртыванием.
@@ -624,7 +624,7 @@ USB/UART, пины и формат кадров остаются открыты�
 
 1. **Проверка текущего Windows Operator ↔ Linux Gateway в VM выполнена владельцем 2026-11-13.** Проверены health/diagnostics, ручное отключение/подключение, неожиданное завершение SSH-процесса с автоматическим восстановлением и остановка/повторный запуск Python Gateway с восстановлением свежей диагностики. Подробный результат и границы приведены в `docs/30_REPKA_NETWORK_IMPLEMENTATION_PLAN.md`. Проверка Repka Pi 5/ARM64 и аппаратных каналов остаётся отдельной задачей.
 2. Подготовить инфраструктурные компоненты Linux-приложения: runtime/startup/shutdown, загрузка и проверка конфигурации, журналирование и интерфейсы внешних устройств.
-3. Первый безопасный сквозной VM-запрос через Operator → временный Python Gateway → TestRequestService → TestRequestAdapter → Operator реализован и покрыт host integration test (DEC-061). Следующее расширение этого пути — переход с временного Python Gateway на C++ Gateway — начато: C++ loopback-only read-only API реализован и host-интеграция добавлена; ручное VM-переключение и проверка остаются открытыми. Результат test-adapter не считать физическим выполнением.
+3. Первый безопасный сквозной VM-запрос через Operator → временный Python Gateway → TestRequestService → TestRequestAdapter → Operator реализован и покрыт host integration test (DEC-061). Переход с временного Python Gateway на C++ Gateway реализован на host-уровне: C++ loopback-only read-only API прошёл полный CI run 43499328759 (10/10 CTest и 130 pytest, включая запуск процесса и Operator API validator). Ручное VM-переключение и проверка остаются открытыми. Результат test-adapter не считать физическим выполнением.
 4. Визуальное направление и структура Windows Operator согласованы владельцем 2026-11-13: семь вкладок — Подключение, Климат, Датчики, Сеть, Логи, Камера и Система (docs/23 rev 0.21). Реализован PySide6/QML shell с мостом к SSH/API; вкладка «Система» получает CPU/SoC temperature, RAM, корневую файловую систему и load average из расширенного Python Gateway API. Отображение физических датчиков и камеры остаётся честным состоянием «нет данных/недоступно» до появления соответствующего API и оборудования. Новые host-тесты сбора/валидации/форматирования системных ресурсов ранее были добавлены. Владелец фактически запустил QML-приложение на Windows и проверил подключение к Linux VM по SSH/API, включая два сценария восстановления; это не является проверкой на Repka Pi 5 или аппаратной интеграцией.
 5. Составить карту интеграции StationStateManager F01–F17 и ConfigurationManager CFG-F00…CFG-F08 с production-хранилищами, Timer, источниками событий и composition root.
 6. Продолжить подключение реальных ESP32 и аппаратных подсистем после утверждения интерфейсов и наличия оборудования.
@@ -681,6 +681,7 @@ USB/UART, пины и формат кадров остаются открыты�
 | 1.29 | 2026-11-13 | Добавлен первый host-срез ControllerProtocol: типы логических сообщений, общий конверт, словарь статусов качества и fail-closed проверка обязательных метаданных; 13 проверок локально прошли. Тела сообщений, версия совместимости, сериализация, кадрирование и транспорт не выбраны; полный CMake/CI-прогон после изменения ожидает проверки. |
 | 1.30 | 2026-11-13 | Зафиксирован полный успешный GitHub Actions run 43485099448 после добавления ControllerProtocol: Linux build, 9/9 CTest с ASan/UBSan, 31/31 C++ host test programs, 115 pytest, QML package entry point и shell checks. Уточнены результаты ручных VM-проверок Operator ↔ Python Gateway и статус следующего этапа: ControllerCodec ожидает определения логических тел и отдельного утверждения сериализации/кадрирования. |
 | 1.31 | 2026-11-13 | Добавлены типизированные тела read-only ControllerProtocol: пустые HELLO/HELLO_ACK/HEARTBEAT/REQUEST_SNAPSHOT, TELEMETRY_SNAPSHOT с caller-owned типизированными измерениями и ERROR со структурированной серьёзностью; реализована отдельная fail-closed проверка payload. Формат wire, timestamps, сериализация, кадрирование и транспорт остаются открытыми. |
+| 1.32 | 2026-11-13 | Подтверждён полный host CI для C++ read-only Gateway (run 43499328759): сборка всех Linux targets, 10/10 CTest с ASan/UBSan, 31/31 C++ host programs и 130 pytest. Сквозной процессный тест проверяет оба GET-контракта через Operator validator, отказ POST/неизвестного маршрута и SIGTERM shutdown. Ручной C++ Gateway VM-тест, Repka ARM64 и аппаратные проверки остаются открытыми. |
 
 **Ограничение:** это план. Функции не считаются реализованными до появления кода, проверок и, где требуется, аппаратных испытаний.
 
@@ -688,6 +689,19 @@ USB/UART, пины и формат кадров остаются открыты�
 
 ## 13. Результат полного host CI
 
-Полный workflow `.github/workflows/linux-cmake.yml` [43485099448](https://github.com/GooseRabbit/dockstation/actions/runs/43485099448) завершился успешно на Ubuntu 24.04 x86_64 после добавления ControllerProtocol: Linux CMake configure/build; 9/9 CTest с ASan/UBSan; 31/31 C++ host unit/contract программ; Python compileall; 115 pytest по Operator, временному Gateway и сквозной проверке test-adapter; проверка QML package entry point; синтаксические и поведенческие shell-тесты.
+Полный workflow \`.github/workflows/linux-cmake.yml\` [43499328759](https://github.com/GooseRabbit/dockstation/actions/runs/43499328759) завершился SUCCESS на Ubuntu 24.04 x86_64 для коммита \`008723ee50282c1a0027b48f7d42e54e2d80ce58\`.
 
-Сквозной тест test-adapter использует loopback HTTP-сервер и Operator API client на одном Ubuntu host; он не заменяет ручное VM-испытание. Владелец отдельно подтвердил на Windows Operator ↔ Ubuntu Server VM через SSH-туннель получение health/diagnostics, обнаружение потери SSH/Gateway, восстановление связи после возврата компонентов и изменение показателя RAM под временной нагрузкой около 64 МиБ. Эти результаты относятся только к VM-прототипу. ARM64/Repka Pi 5, целевая сборка ESP32/Arduino, выбор физического транспорта, C++ HTTP API и аппаратные узлы остаются НЕ ПРОВЕРЕНО.
+| Проверка | Результат |
+|---|---:|
+| CMake configure и сборка всех Linux targets, включая C++ Gateway | PASS |
+| CTest с ASan/UBSan | 10/10 PASS |
+| C++ host unit/contract программы StationStateManager и ConfigurationManager | 31/31 PASS |
+| Python compileall | PASS |
+| Python pytest: Operator, Python Gateway и integration | 130 PASS |
+| QML package entry point и ресурсы | PASS |
+| Shell syntax/behavior и network helper tests | PASS |
+
+Сквозной тест запускает собранный C++ Gateway отдельным процессом. Он получает health и system diagnostics, проверяет JSON существующим Operator API validator, подтверждает 404 для неизвестного маршрута и 405 для POST, затем отправляет SIGTERM и проверяет успешное завершение процесса.
+
+Это подтверждает host-проверки на Ubuntu x86_64. Это не проверка Windows SSH-туннеля к C++ Gateway, не ARM64/Repka Pi 5 deployment, не systemd service и не испытание ESP32/физической станции. Ручное VM-переключение с временного Python Gateway на C++ процесс остаётся следующим обязательным шагом.
+

@@ -1,7 +1,7 @@
 # Испытания и приёмка
 
 **Статус:** предварительный план.  
-**Редакция:** 2.6.
+**Редакция:** 2.7.
 **Дата актуализации:** 2026-11-13.
 
 ## 1. Назначение
@@ -615,3 +615,23 @@ Workflow `.github/workflows/linux-cmake.yml`, прогон [43378693068](https:/
 | TEST-SW-127 | Пользователь сохраняет логи в файл | Создаётся текстовый файл UTF-8 со всеми записями текущего буфера в порядке отображения; ошибка записи не сопровождается сообщением об успехе |
 
 Эти проверки относятся к клиентским событиям текущего лабораторного Operator. Они не подтверждают получение системных журналов Linux, серверного аудита или записей камеры.
+
+## 17. Результат C++ read-only Gateway API (2026-11-13)
+
+Workflow \`.github/workflows/linux-cmake.yml\`, run [43499328759](https://github.com/GooseRabbit/dockstation/actions/runs/43499328759), завершился SUCCESS на Ubuntu 24.04 x86_64 для commit \`008723ee50282c1a0027b48f7d42e54e2d80ce58\`.
+
+| Проверка | Результат |
+|---|---:|
+| CMake configure/build всех Linux targets, включая C++ Gateway | PASS |
+| CTest с ASan/UBSan | 10/10 PASS |
+| C++ host unit/contract programs | 31/31 PASS |
+| Python compileall | PASS |
+| Python pytest | 130 PASS |
+| Сквозной запуск C++ Gateway и получение health/diagnostics | PASS |
+| Валидация diagnostics JSON существующим Operator API validator | PASS |
+| Неизвестный GET route → 404; POST → 405 с \`Allow: GET\` | PASS |
+| Штатная остановка процесса по SIGTERM | PASS |
+| Shell syntax/behavior и network helper tests | PASS |
+
+**Границы результата:** это host-интеграция C++ процесса на Ubuntu x86_64. Не выполнялись ручное подключение Windows Operator через SSH-туннель к C++ Gateway, переключение действующей Ubuntu VM с Python-сервера на C++, установка systemd unit, сборка/запуск на Repka Pi 5 ARM64 и испытания ESP32 или физического оборудования. Существующие ручные VM-проверки относятся к Python Gateway и не переносятся автоматически на C++ реализацию.
+
