@@ -217,6 +217,16 @@ ApplicationWindow {
         onAccepted: bridge.setKnownHostsPath(selectedFile.toLocalFile())
     }
 
+    FileDialog {
+        id: logsSaveDialog
+        objectName: "logs.save-dialog"
+        title: "Сохранить журнал Operator"
+        fileMode: FileDialog.SaveFile
+        nameFilters: ["Текстовые файлы (*.txt)", "Все файлы (*)"]
+        defaultSuffix: "txt"
+        onAccepted: bridge.saveLogs(selectedFile.toLocalFile())
+    }
+
     Timer {
         interval: 5000
         running: true
@@ -828,34 +838,84 @@ ApplicationWindow {
                         spacing: 20
                         Text { text: "Логи"; color: root.primaryText; font.pixelSize: 24; font.bold: true }
                         Panel {
+                            objectName: "logs.events-panel"
                             Layout.fillWidth: true
-                            implicitHeight: clientLogs.implicitHeight + 40
+                            Layout.preferredHeight: 420
+                            Layout.minimumHeight: 420
+                            Layout.maximumHeight: 420
+                            implicitHeight: 420
                             ColumnLayout {
-                                id: clientLogs
                                 anchors.fill: parent
                                 anchors.margins: 20
-                                spacing: 10
-                                Text { text: "События Operator"; color: root.primaryText; font.pixelSize: 16; font.bold: true }
-                                Repeater {
-                                    model: bridge.events
-                                    delegate: Text {
-                                        required property string modelData
+                                spacing: 8
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Text {
+                                        text: "События Operator"
+                                        color: root.primaryText
+                                        font.pixelSize: 16
+                                        font.bold: true
                                         Layout.fillWidth: true
-                                        text: modelData
-                                        color: root.secondaryText
-                                        font.family: "Consolas"
-                                        font.pixelSize: 11
-                                        wrapMode: Text.WrapAnywhere
+                                    }
+                                    ActionButton {
+                                        objectName: "logs.copy-button"
+                                        text: "Скопировать логи"
+                                        enabled: bridge.events.length > 0
+                                        onClicked: bridge.copyLogs()
+                                    }
+                                    ActionButton {
+                                        objectName: "logs.save-button"
+                                        text: "Сохранить в файл…"
+                                        enabled: bridge.events.length > 0
+                                        onClicked: logsSaveDialog.open()
                                     }
                                 }
                                 Text {
-                                    visible: bridge.events.length === 0
-                                    text: "Событий пока нет."
-                                    color: root.muted
+                                    objectName: "logs.action-status"
+                                    Layout.fillWidth: true
+                                    visible: bridge.logsActionStatus.length > 0
+                                    text: bridge.logsActionStatus
+                                    color: root.accent
+                                    font.pixelSize: 11
+                                    wrapMode: Text.WordWrap
+                                }
+                                ScrollView {
+                                    id: logsScrollView
+                                    objectName: "logs.scroll"
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    clip: true
+                                    ScrollBar.vertical.policy: ScrollBar.AsNeeded
+                                    TextArea {
+                                        id: clientLogsText
+                                        objectName: "logs.text-area"
+                                        width: logsScrollView.availableWidth
+                                        implicitHeight: Math.max(contentHeight + topPadding + bottomPadding,
+                                                                 logsScrollView.availableHeight)
+                                        text: bridge.eventsText
+                                        placeholderText: "Событий пока нет."
+                                        readOnly: true
+                                        selectByMouse: true
+                                        persistentSelection: true
+                                        wrapMode: TextEdit.WrapAnywhere
+                                        color: root.secondaryText
+                                        selectionColor: root.accent
+                                        selectedTextColor: root.primaryText
+                                        font.family: "Consolas"
+                                        font.pixelSize: 11
+                                        padding: 10
+                                        background: Rectangle {
+                                            color: "#111A22"
+                                            radius: 6
+                                            border.color: root.borderColor
+                                            border.width: 1
+                                        }
+                                    }
                                 }
                             }
                         }
                         Panel {
+                            objectName: "logs.recordings-panel"
                             Layout.fillWidth: true
                             implicitHeight: recordings.implicitHeight + 40
                             ColumnLayout {

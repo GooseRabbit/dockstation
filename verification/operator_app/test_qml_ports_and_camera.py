@@ -127,3 +127,73 @@ def test_qml_uses_port_placeholders_and_fixed_camera_viewport_without_auto_fulls
             root.close()
         engine.deleteLater()
         app.processEvents()
+
+
+
+def test_qml_bridge_copies_and_saves_all_retained_client_events(tmp_path: Path):
+    app = QGuiApplication.instance() or QGuiApplication([])
+    bridge = QmlOperatorBridge()
+    try:
+        for index in range(505):
+            bridge.model.append_client_event(f"Событие {index}")
+        expected = "\n".join(reversed(bridge.model.client_events))
+        assert len(bridge.model.client_events) == 500
+        assert bridge.eventsText == expected
+        assert bridge.events == list(reversed(bridge.model.client_events))
+        app.clipboard().clear()
+        assert bridge.copyLogs() is True
+        assert app.clipboard().text() == expected
+        assert "500" in bridge.logsActionStatus
+        destination = tmp_path / "operator-logs.txt"
+        assert bridge.saveLogs(str(destination)) is True
+        assert destination.read_text(encoding="utf-8").rstrip("\n") == expected
+        assert "500" in bridge.logsActionStatus
+        missing_directory = tmp_path / "missing"
+        assert bridge.saveLogs(str(missing_directory / "logs.txt")) is False
+        assert "Не удалось сохранить логи" in bridge.logsActionStatus
+    finally:
+        bridge.shutdown()
+
+
+def test_qml_log_panel_is_fixed_height_selectable_and_keeps_recordings_separate():
+    app = QGuiApplication.instance() or QGuiApplication([])
+    engine = QQmlApplicationEngine()
+    bridge = QmlOperatorBridge()
+    for index in range(250):
+        bridge.model.append_client_event(f"Длинное событие журнала {index}")
+    bridge.viewChanged.emit()
+    engine.rootContext().setContextProperty("bridge", bridge)
+    qml_path = Path(dockstation_operator.__file__).parent / "ui" / "qml" / "Main.qml"
+    engine.load(QUrl.fromLocalFile(str(qml_path)))
+    try:
+        app.processEvents()
+        roots = engine.rootObjects()
+        assert roots
+        root = roots[0]
+        root.setProperty("currentTab", 4)
+        app.processEvents()
+        panel = root.findChild(QObject, "logs.events-panel")
+        scroll = root.findChild(QObject, "logs.scroll")
+        log_text = root.findChild(QObject, "logs.text-area")
+        copy_button = root.findChild(QObject, "logs.copy-button")
+        save_button = root.findChild(QObject, "logs.save-button")
+        recordings = root.findChild(QObject, "logs.recordings-panel")
+        assert panel is not None and scroll is not None and log_text is not None
+        assert copy_button is not None and save_button is not None and recordings is not None
+        assert round(panel.property("implicitHeight")) == 420
+        assert log_text.property("readOnly") is True
+        assert log_text.property("selectByMouse") is True
+        assert "Длинное событие журнала 0" in log_text.property("text")
+        original_panel_height = panel.property("height")
+        for index in range(250, 500):
+            bridge.model.append_client_event(f"Дополнительное событие {index}")
+        bridge.viewChanged.emit()
+        app.processEvents()
+        assert panel.property("height") == original_panel_height
+        assert root.findChild(QObject, "logs.recordings-panel") is recordings
+    finally:
+        bridge.shutdown()
+        for root in engine.rootObjects():
+            root.close()
+        engine.deleteLater()
+        app.processEvents()

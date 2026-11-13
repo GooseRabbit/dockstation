@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import threading
 import time
+from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QObject, Property, Signal, Slot
+from PySide6.QtGui import QGuiApplication
 
 from ..config.settings import (
     ConnectionProfile,
@@ -70,6 +72,7 @@ class QmlOperatorBridge(QObject):
         self._reconnect_attempt = 0
         self._next_reconnect_at = 0.0
         self._notice = "Ожидание подключения."
+        self._logs_action_status = ""
         self._operationFinished.connect(self._on_operation_finished)
 
     @Property("QVariantList", notify=viewChanged)
@@ -322,7 +325,64 @@ class QmlOperatorBridge(QObject):
 
     @Property("QVariantList", notify=viewChanged)
     def events(self) -> list[str]:
-        return list(reversed(self.model.client_events[-200:]))
+        """Return every event currently retained by DiagnosticsModel, newest first."""
+        return list(reversed(self.model.client_events))
+
+    @Property(str, notify=viewChanged)
+    def eventsText(self) -> str:
+        """Return the complete retained event buffer in the same order as the UI."""
+        return "\n".join(reversed(self.model.client_events))
+
+    @Property(str, notify=viewChanged)
+    def logsActionStatus(self) -> str:
+        return self._logs_action_status
+
+    @Slot(result=bool)
+    def copyLogs(self) -> bool:
+        """Copy all currently retained Operator events to the desktop clipboard."""
+        try:
+            clipboard = QGuiApplication.clipboard()
+            if clipboard is None:
+                raise RuntimeError("Системный буфер обмена недоступен.")
+            clipboard.setText(self.eventsText)
+        except (AttributeError, RuntimeError) as exc:
+            self._logs_action_status = f"Не удалось скопировать логи: {exc}"
+            self.viewChanged.emit()
+            return False
+        count = len(self.model.client_events)
+        self._logs_action_status = (
+            f"Скопировано записей: {count}."
+            if count else "Журнал пуст; буфер обмена очищен."
+        )
+        self.viewChanged.emit()
+        return True
+
+    @Slot(str, result=bool)
+    def saveLogs(self, file_path: str) -> bool:
+        """Save the complete retained Operator event buffer as UTF-8 plain text."""
+        if not isinstance(file_path, str) or not file_path.strip():
+            self._logs_action_status = "Не выбран путь для сохранения журнала."
+            self.viewChanged.emit()
+            return False
+        target = Path(file_path)
+        contents = self.eventsText
+        try:
+            target.write_text(
+                contents + ("\n" if contents else ""),
+                encoding="utf-8",
+                newline="\n",
+            )
+        except (OSError, ValueError) as exc:
+            self._logs_action_status = f"Не удалось сохранить логи: {exc}"
+            self.viewChanged.emit()
+            return False
+        count = len(self.model.client_events)
+        self._logs_action_status = (
+            f"Сохранено записей: {count} · {target.name}"
+            if count else f"Сохранён пустой журнал · {target.name}"
+        )
+        self.viewChanged.emit()
+        return True
 
     @Slot(str)
     def setStationAlias(self, value: str) -> None:
