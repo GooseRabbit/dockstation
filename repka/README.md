@@ -51,6 +51,8 @@ cmake -S . -B build \
   -DDOCKSTATION_ENABLE_SANITIZERS=OFF \
   -DCMAKE_INSTALL_PREFIX=/usr/local
 cmake --build build --parallel
+# Подготовить relink-артефакт, используемый CMake install для этой цели
+cmake --build build --target preinstall --parallel
 ```
 
 Создайте отдельную системную группу и непривилегированную учётную запись без
@@ -122,10 +124,17 @@ read-only Gateway и не дают ему права выполнять дейс
 согласовать и добавить адресно, а не отключать hardening целиком.
 
 **Статус проверки:** установочная раскладка и systemd unit проходят автоматическую
-проверку CI; фактические `systemctl enable/start/stop/restart` и запуск после
-перезагрузки в пользовательской Ubuntu VM остаются отдельной ручной проверкой.
-CI-проверка запускает установленный бинарный файл от имени `dockstation`, но
-не заменяет испытание самим systemd manager.
+проверку CI. Дополнительно владелец вручную проверил в Ubuntu 24.04.5 LTS x86_64 VM
+установку и `systemctl enable/start/stop/restart`, пользователя `dockstation`,
+HTTP health/diagnostics, loopback-only listener, journal и автозапуск после reboot.
+После перезагрузки служба имела `enabled` и `active`, а journal текущей загрузки
+подтвердил запуск unit; Windows Operator снова отображал Connected.
+CI не заменяет ручное испытание systemd manager. Протокол — в
+`docs/30_REPKA_NETWORK_IMPLEMENTATION_PLAN.md`.
+
+Примечание по CMake: в проверенной конфигурации перед `sudo cmake --install build`
+потребовалось явно выполнить `cmake --build build --target preinstall --parallel`.
+Этот шаг формирует relink-артефакт, на который ссылается `cmake_install.cmake`.
 
 ## Временный Python Gateway
 
