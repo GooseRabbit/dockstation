@@ -44,5 +44,7 @@ def test_qml_prototype_loads_with_the_six_approved_tabs():
         assert bridge.freshnessText == "Данные ещё не получены"
     finally:
         bridge.shutdown()
-        engine.clear()
+        for root in engine.rootObjects():
+            root.close()
+        engine.deleteLater()
         app.processEvents()
