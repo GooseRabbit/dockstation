@@ -131,6 +131,10 @@ class QmlOperatorBridge(QObject):
         return self._busy
 
     @Property(bool, notify=viewChanged)
+    def reconnecting(self) -> bool:
+        return self._reconnect_pending
+
+    @Property(bool, notify=viewChanged)
     def connected(self) -> bool:
         return self.connection_manager.is_connected and not self.model.stale
 
