@@ -31,8 +31,14 @@ from the Windows host to `127.0.0.1:8080` inside the VM.
 
 By default, all other routes return 404 and non-GET methods return 405. Responses are JSON
 with `Cache-Control: no-store`. The diagnostics object includes a UTC collection
-time, schema version, system platform details, network interfaces and addresses,
-default routes, optional DNS resolution, SSH unit state, and an aggregate status.
+time, schema version, system platform details, RAM, root filesystem capacity,
+explicitly labelled CPU/SoC temperature when available, Linux load average,
+network interfaces and addresses, default routes, optional DNS resolution,
+SSH unit state, and an aggregate status. Resource metrics are grouped under
+`platform.resources`; each has an independent status and unavailable numeric
+values are represented as JSON `null`. Load average is not CPU utilization
+percent, and the temperature collector does not guess from an unknown thermal
+zone type.
 
 A separate test-only route can be enabled for VM integration checks:
 
