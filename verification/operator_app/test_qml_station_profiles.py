@@ -19,6 +19,7 @@ def test_qml_bridge_manages_multiple_local_profiles_and_personal_aliases(
 ):
     registry_file = tmp_path / "stations.json"
     monkeypatch.setattr(station_registry, "station_registry_path", lambda: registry_file)
+    monkeypatch.setattr(qml_bridge, "station_registry_path", lambda: registry_file)
     monkeypatch.setattr(qml_bridge, "load_profile", lambda: ConnectionProfile())
 
     bridge = qml_bridge.QmlOperatorBridge(connection_manager=InertConnectionManager())
