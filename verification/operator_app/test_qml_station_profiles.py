@@ -40,6 +40,11 @@ def test_qml_bridge_manages_multiple_local_profiles_and_personal_aliases(
         assert [item["alias"] for item in bridge.stationProfiles] == ["Дом · основная", "Склад"]
         assert all(item["status"] == "UNKNOWN" for item in bridge.stationProfiles)
 
+        bridge._station_status[second_id] = "DISCONNECTED"
+        second_status = next(item for item in bridge.stationProfiles if item["profile_id"] == second_id)
+        assert second_status["status_label"] == "Отключено"
+        assert second_status["status_color"] == "danger"
+
         bridge.selectStationProfile(first_id)
         assert bridge.stationAlias == "Дом · основная"
         assert bridge.host == "192.0.2.10"
