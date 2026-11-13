@@ -188,6 +188,7 @@ def read_system_resources(
     temperature_value: float | None = None
     sensor_type: str | None = None
     temperature_error = False
+    cpu_sensor_seen = False
     try:
         zones = sorted(
             (item for item in thermal_path.iterdir() if item.name.startswith("thermal_zone")),
@@ -204,6 +205,7 @@ def read_system_resources(
         normalized_type = current_type.lower()
         if not any(token in normalized_type for token in ("cpu", "soc", "package")):
             continue
+        cpu_sensor_seen = True
         try:
             milli_celsius = int((zone / "temp").read_text(encoding="ascii").strip())
             if not -100000 <= milli_celsius <= 250000:
@@ -222,6 +224,8 @@ def read_system_resources(
     else:
         reason = (
             "A CPU-labelled thermal zone was found but its temperature could not be read"
+            if cpu_sensor_seen and temperature_error else
+            "Cannot inspect Linux thermal zones"
             if temperature_error else
             "No explicitly CPU/SoC/package-labelled thermal zone was found"
         )
