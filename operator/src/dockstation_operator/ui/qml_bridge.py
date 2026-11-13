@@ -251,9 +251,14 @@ class QmlOperatorBridge(QObject):
         if self._busy or self._closing:
             return
         try:
-            self._registry = add_profile(self._registry, alias, self._profile)
+            new_profile = ConnectionProfile()
+            self._registry = add_profile(self._registry, alias, new_profile)
             self._selected_profile_id = self._registry.selected_profile_id
+            self._profile = new_profile
             self._station_alias_draft = alias.strip()
+            self._ssh_port_text = ""
+            self._local_port_text = ""
+            self.model = DiagnosticsModel()
             save_registry(self._registry)
         except (OSError, ValueError) as exc:
             self._append_event(f"Не удалось добавить локальный профиль: {exc}")
@@ -379,6 +384,14 @@ class QmlOperatorBridge(QObject):
                 self._station_alias_draft = alias
                 self._station_status[self._selected_profile_id] = "UNKNOWN"
             else:
+                selected_item = next(
+                    item for item in self._registry.profiles
+                    if item.profile_id == self._selected_profile_id
+                )
+                if self._station_alias_draft.strip() != selected_item.alias:
+                    self._registry = rename_profile(
+                        self._registry, self._selected_profile_id, self._station_alias_draft
+                    )
                 self._registry = StationRegistry(
                     profiles=tuple(
                         type(item)(item.profile_id, item.alias, profile)
