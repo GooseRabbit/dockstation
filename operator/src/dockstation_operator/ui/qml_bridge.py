@@ -185,6 +185,75 @@ class QmlOperatorBridge(QObject):
         uptime_text = self._format_uptime(uptime_seconds)
         return " · ".join(str(value) for value in (os_name, os_version, kernel, architecture, uptime_text) if value not in (None, ""))
 
+    @Property("QVariantMap", notify=viewChanged)
+    def systemMetrics(self) -> dict[str, str]:
+        snapshot = self.model.snapshot
+        platform = snapshot.get("platform", {}) if isinstance(snapshot, dict) else {}
+        resources = platform.get("resources", {}) if isinstance(platform, dict) else {}
+        if not isinstance(resources, dict):
+            resources = {}
+
+        def section(name: str) -> dict[str, Any]:
+            value = resources.get(name, {})
+            return value if isinstance(value, dict) else {}
+
+        def format_bytes(value: object) -> str:
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
+                return "—"
+            amount = float(value)
+            for unit in ("Б", "КиБ", "МиБ", "ГиБ", "ТиБ"):
+                if amount < 1024.0 or unit == "ТиБ":
+                    return f"{amount:.1f} {unit}" if unit != "Б" else f"{int(amount)} {unit}"
+                amount /= 1024.0
+            return "—"
+
+        def metric_status(item: dict[str, Any]) -> str:
+            if self.model.snapshot is None:
+                return "Нет диагностического снимка"
+            if self.model.stale:
+                return "Значение из устаревшего снимка"
+            return str(item.get("message") or "Источник не предоставил значение")
+
+        temperature = section("cpu_temperature")
+        temperature_ok = temperature.get("status") == "PASS" and isinstance(temperature.get("celsius"), (int, float))
+        memory = section("memory")
+        memory_ok = memory.get("status") == "PASS" and isinstance(memory.get("used_percent"), (int, float))
+        storage = section("storage")
+        storage_ok = storage.get("status") == "PASS" and isinstance(storage.get("used_percent"), (int, float))
+        load = section("cpu_load")
+        load_ok = load.get("status") == "PASS" and all(
+            isinstance(load.get(key), (int, float))
+            for key in ("one_minute", "five_minutes", "fifteen_minutes")
+        )
+        return {
+            "cpu_temperature_value": f"{temperature['celsius']:.1f} °C" if temperature_ok else "Недоступно",
+            "cpu_temperature_detail": str(temperature.get("sensor_type") or metric_status(temperature)),
+            "cpu_temperature_color": "#46A982" if temperature_ok and not self.model.stale else "#D6A34A",
+            "memory_value": f"{memory['used_percent']:.1f} %" if memory_ok else "Недоступно",
+            "memory_detail": (
+                f"Занято {format_bytes(memory.get('used_bytes'))} из {format_bytes(memory.get('total_bytes'))}; "
+                f"доступно {format_bytes(memory.get('available_bytes'))}"
+                if memory_ok else metric_status(memory)
+            ),
+            "memory_color": "#46A982" if memory_ok and not self.model.stale else "#D6A34A",
+            "storage_value": f"{storage['used_percent']:.1f} %" if storage_ok else "Недоступно",
+            "storage_detail": (
+                f"Занято {format_bytes(storage.get('used_bytes'))} из {format_bytes(storage.get('total_bytes'))}; "
+                f"доступно {format_bytes(storage.get('available_bytes'))}"
+                if storage_ok else metric_status(storage)
+            ),
+            "storage_color": "#46A982" if storage_ok and not self.model.stale else "#D6A34A",
+            "load_value": (
+                f"{load['one_minute']:.2f} / {load['five_minutes']:.2f} / {load['fifteen_minutes']:.2f}"
+                if load_ok else "Недоступно"
+            ),
+            "load_detail": (
+                f"Задач: {load.get('runnable_tasks', '—')} выполняется/ожидает из {load.get('total_tasks', '—')}"
+                if load_ok else metric_status(load)
+            ),
+            "load_color": "#46A982" if load_ok and not self.model.stale else "#D6A34A",
+        }
+
     @Property("QVariantList", notify=viewChanged)
     def networkInterfaces(self) -> list[dict[str, str]]:
         network = self._network_section("interfaces")
