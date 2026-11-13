@@ -1,7 +1,7 @@
 # Испытания и приёмка
 
 **Статус:** предварительный план.  
-**Редакция:** 2.2.
+**Редакция:** 2.3.
 **Дата актуализации:** 2026-11-12.
 
 ## 1. Назначение
@@ -561,7 +561,7 @@ Host runner использует GCC C++17, `-Wall -Wextra -Wpedantic -Werror`; 
 
 ## 15. Проверка первого QML-прототипа Operator (2026-11-13)
 
-Workflow `.github/workflows/linux-cmake.yml`, прогон [43378417832](https://github.com/GooseRabbit/dockstation/actions/runs/43378417832), завершился со статусом SUCCESS на Ubuntu 24.04 x86_64.
+Workflow `.github/workflows/linux-cmake.yml`, прогон [43378693068](https://github.com/GooseRabbit/dockstation/actions/runs/43378417832), завершился со статусом SUCCESS на Ubuntu 24.04 x86_64.
 
 | Проверка | Результат |
 |---|---:|
@@ -571,6 +571,7 @@ Workflow `.github/workflows/linux-cmake.yml`, прогон [43378417832](https:/
 | Python compileall | PASS |
 | Python pytest: Operator, Gateway, integration и QML smoke test | 93 PASS |
 | QML ApplicationWindow загружается через PySide6 QQmlApplicationEngine в offscreen режиме и содержит шесть согласованных вкладок | PASS |
+| Editable package install, `dockstation-operator-qml` GUI entry point и включение QML-файла в package resources | PASS |
 | Синтаксис shell-скриптов | PASS |
 | Shell-сценарии сетевой диагностики | PASS |
 
