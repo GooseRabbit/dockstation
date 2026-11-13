@@ -367,6 +367,7 @@ ApplicationWindow {
                                 spacing: 8
                                 Text { text: "Состояние соединения"; color: root.primaryText; font.bold: true; font.pixelSize: 15 }
                                 Text { text: bridge.connectionState; color: bridge.connected ? root.success : root.warning; font.pixelSize: 14 }
+                                Text { text: bridge.noticeText; color: root.secondaryText; wrapMode: Text.WordWrap }
                                 Text { text: bridge.freshnessText; color: root.secondaryText; wrapMode: Text.WordWrap }
                                 Text { text: bridge.lastUpdateText; color: root.muted; font.pixelSize: 11 }
                                 Text {
