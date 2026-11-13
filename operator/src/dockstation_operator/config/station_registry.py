@@ -80,12 +80,14 @@ def validate_registry(registry: StationRegistry) -> list[str]:
             errors.append(prefix + alias_error)
         if not isinstance(item.connection, ConnectionProfile):
             errors.append(prefix + "неверный формат параметров подключения.")
+        elif not all(
+            isinstance(getattr(item.connection, field_name), str)
+            for field_name in ("host", "username", "private_key_path", "known_hosts_path")
+        ):
+            errors.append(prefix + "некорректное текстовое поле подключения.")
         elif not item.connection.host.strip() and not item.connection.username.strip():
             # An empty draft is allowed in the local editor; connect/save validates
             # the complete profile before any network operation.
-            for field_name in ("host", "username", "private_key_path", "known_hosts_path"):
-                if not isinstance(getattr(item.connection, field_name), str):
-                    errors.append(prefix + "некорректное текстовое поле подключения.")
             for field_name, minimum in (("ssh_port", 1), ("local_port", 1024), ("remote_api_port", 1)):
                 value = getattr(item.connection, field_name)
                 if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= 65535:
