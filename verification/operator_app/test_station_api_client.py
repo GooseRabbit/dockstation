@@ -41,6 +41,29 @@ def valid_diagnostics():
             "architecture": "aarch64",
             "word_size_bits": 64,
             "uptime": {"status": "PASS", "message": "read", "seconds": 120.5},
+            "resources": {
+                "memory": {
+                    "status": "PASS", "message": "read",
+                    "total_bytes": 1024, "available_bytes": 256,
+                    "used_bytes": 768, "used_percent": 75.0,
+                },
+                "storage": {
+                    "status": "PASS", "message": "read", "path": "/",
+                    "total_bytes": 4096, "free_bytes": 1024,
+                    "available_bytes": 900, "used_bytes": 3072,
+                    "used_percent": 75.0,
+                },
+                "cpu_temperature": {
+                    "status": "PASS", "message": "cpu-thermal",
+                    "celsius": 42.5, "sensor_type": "cpu-thermal",
+                },
+                "cpu_load": {
+                    "status": "PASS", "message": "read",
+                    "one_minute": 0.1, "five_minutes": 0.2,
+                    "fifteen_minutes": 0.3, "runnable_tasks": 1,
+                    "total_tasks": 20,
+                },
+            },
         },
         "network": {
             "interfaces": {
@@ -84,6 +107,18 @@ def test_validate_health_response_requires_expected_gateway():
 
 def test_validate_diagnostics_response_accepts_gateway_contract():
     StationApiClient.validate_diagnostics_response(valid_diagnostics())
+
+
+def test_validate_diagnostics_response_rejects_invalid_system_resource_values():
+    payload = valid_diagnostics()
+    payload["platform"]["resources"]["memory"]["used_percent"] = 101
+    with pytest.raises(ApiClientError):
+        StationApiClient.validate_diagnostics_response(payload)
+
+    payload = valid_diagnostics()
+    payload["platform"]["resources"]["cpu_temperature"]["celsius"] = float("nan")
+    with pytest.raises(ApiClientError):
+        StationApiClient.validate_diagnostics_response(payload)
 
 
 def test_validate_diagnostics_response_rejects_missing_fields():
