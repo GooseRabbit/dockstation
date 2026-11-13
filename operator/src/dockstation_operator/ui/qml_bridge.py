@@ -329,6 +329,8 @@ class QmlOperatorBridge(QObject):
     def addStationProfile(self, alias: str) -> None:
         if self._busy or self._closing:
             return
+        self._reconnect_pending = False
+        self._reconnect_attempt = 0
         try:
             new_profile = ConnectionProfile()
             updated_registry = add_profile(self._registry, alias, new_profile)
@@ -373,6 +375,8 @@ class QmlOperatorBridge(QObject):
     def selectStationProfile(self, profile_id: str) -> None:
         if self._busy or self._closing or profile_id == self._selected_profile_id:
             return
+        self._reconnect_pending = False
+        self._reconnect_attempt = 0
         try:
             updated = select_profile(self._registry, profile_id)
         except KeyError:
@@ -401,6 +405,8 @@ class QmlOperatorBridge(QObject):
     def removeSelectedStation(self) -> None:
         if self._busy or self._closing or self._selected_profile_id is None:
             return
+        self._reconnect_pending = False
+        self._reconnect_attempt = 0
         removed_id = self._selected_profile_id
         self.connection_manager.disconnect_from_station()
         try:
