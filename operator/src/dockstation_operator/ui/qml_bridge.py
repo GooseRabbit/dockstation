@@ -10,8 +10,16 @@ from PySide6.QtCore import QObject, Property, Signal, Slot
 from ..config.settings import (
     ConnectionProfile,
     load_profile,
-    save_profile,
     validate_profile,
+)
+from ..config.station_registry import (
+    StationRegistry,
+    add_profile,
+    load_registry,
+    remove_profile,
+    rename_profile,
+    save_registry,
+    select_profile,
 )
 from ..connection.connection_manager import ConnectionManager
 from ..models.diagnostics_model import DiagnosticsModel
@@ -28,13 +36,60 @@ class QmlOperatorBridge(QObject):
         super().__init__()
         self.connection_manager = connection_manager or ConnectionManager()
         self.model = DiagnosticsModel()
-        self._profile = load_profile()
+        self._registry = load_registry()
+        legacy_profile = load_profile()
+        if not self._registry.profiles and legacy_profile.host and legacy_profile.username:
+            self._registry = add_profile(self._registry, legacy_profile.host, legacy_profile)
+            try:
+                save_registry(self._registry)
+            except (OSError, ValueError):
+                pass
+        self._selected_profile_id = self._registry.selected_profile_id
+        selected = next(
+            (item for item in self._registry.profiles if item.profile_id == self._selected_profile_id),
+            None,
+        )
+        self._profile = selected.connection if selected is not None else legacy_profile
+        self._station_status: dict[str, str] = {
+            item.profile_id: "UNKNOWN" for item in self._registry.profiles
+        }
+        self._station_alias_draft = selected.alias if selected is not None else ""
         self._ssh_port_text = "" if self._profile.ssh_port == 22 else str(self._profile.ssh_port)
         self._local_port_text = "" if self._profile.local_port == 18080 else str(self._profile.local_port)
         self._busy = False
         self._closing = False
         self._notice = "Ожидание подключения."
         self._operationFinished.connect(self._on_operation_finished)
+
+    @Property("QVariantList", notify=viewChanged)
+    def stationProfiles(self) -> list[dict[str, str | bool]]:
+        items: list[dict[str, str | bool]] = []
+        for item in self._registry.profiles:
+            status = self._station_status.get(item.profile_id, "UNKNOWN")
+            labels = {
+                "CONNECTED": ("Подключено", "success"),
+                "DISCONNECTED": ("Отключено", "danger"),
+                "CONNECTING": ("Проверка", "warning"),
+                "UNKNOWN": ("Неизвестно", "warning"),
+            }
+            label, color = labels.get(status, labels["UNKNOWN"])
+            items.append({
+                "profile_id": item.profile_id,
+                "alias": item.alias,
+                "status": status,
+                "status_label": label,
+                "status_color": color,
+                "selected": item.profile_id == self._selected_profile_id,
+            })
+        return items
+
+    @Property(str, notify=profileChanged)
+    def selectedProfileId(self) -> str:
+        return self._selected_profile_id or ""
+
+    @Property(str, notify=profileChanged)
+    def stationAlias(self) -> str:
+        return self._station_alias_draft
 
     @Property(str, notify=profileChanged)
     def host(self) -> str:
@@ -186,6 +241,95 @@ class QmlOperatorBridge(QObject):
         return list(reversed(self.model.client_events[-200:]))
 
     @Slot(str)
+    def setStationAlias(self, value: str) -> None:
+        self._station_alias_draft = value
+        self.profileChanged.emit()
+
+    @Slot(str)
+    def addStationProfile(self, alias: str) -> None:
+        if self._busy or self._closing:
+            return
+        try:
+            self._registry = add_profile(self._registry, alias, self._profile)
+            self._selected_profile_id = self._registry.selected_profile_id
+            self._station_alias_draft = alias.strip()
+            save_registry(self._registry)
+        except (OSError, ValueError) as exc:
+            self._append_event(f"Не удалось добавить локальный профиль: {exc}")
+            return
+        self._station_status[self._selected_profile_id] = "UNKNOWN"
+        self.profileChanged.emit()
+        self.viewChanged.emit()
+        self._append_event("Локальный профиль подключения добавлен. Это не регистрация станции в аккаунте.")
+
+    @Slot(str)
+    def renameSelectedStation(self, alias: str) -> None:
+        if self._selected_profile_id is None:
+            self._append_event("Сначала добавь локальный профиль подключения.")
+            return
+        try:
+            updated = rename_profile(self._registry, self._selected_profile_id, alias)
+            save_registry(updated)
+            self._registry = updated
+            self._station_alias_draft = alias.strip()
+        except (KeyError, OSError, ValueError) as exc:
+            self._append_event(f"Не удалось переименовать профиль: {exc}")
+            return
+        self.profileChanged.emit()
+        self.viewChanged.emit()
+
+    @Slot(str)
+    def selectStationProfile(self, profile_id: str) -> None:
+        if self._busy or self._closing or profile_id == self._selected_profile_id:
+            return
+        try:
+            updated = select_profile(self._registry, profile_id)
+        except KeyError:
+            self._append_event("Локальный профиль не найден.")
+            return
+        self.connection_manager.disconnect_from_station()
+        self._registry = updated
+        self._selected_profile_id = profile_id
+        selected = next(item for item in self._registry.profiles if item.profile_id == profile_id)
+        self._profile = selected.connection
+        self._station_alias_draft = selected.alias
+        self._ssh_port_text = "" if self._profile.ssh_port == 22 else str(self._profile.ssh_port)
+        self._local_port_text = "" if self._profile.local_port == 18080 else str(self._profile.local_port)
+        self.model = DiagnosticsModel()
+        try:
+            save_registry(self._registry)
+        except (OSError, ValueError) as exc:
+            self._append_event(f"Не удалось сохранить выбранный профиль: {exc}")
+        self.profileChanged.emit()
+        self.viewChanged.emit()
+
+    @Slot()
+    def removeSelectedStation(self) -> None:
+        if self._busy or self._closing or self._selected_profile_id is None:
+            return
+        removed_id = self._selected_profile_id
+        self.connection_manager.disconnect_from_station()
+        try:
+            self._registry = remove_profile(self._registry, removed_id)
+            save_registry(self._registry)
+        except (KeyError, OSError, ValueError) as exc:
+            self._append_event(f"Не удалось удалить локальный профиль: {exc}")
+            return
+        self._station_status.pop(removed_id, None)
+        self._selected_profile_id = self._registry.selected_profile_id
+        selected = next(
+            (item for item in self._registry.profiles if item.profile_id == self._selected_profile_id),
+            None,
+        )
+        self._profile = selected.connection if selected is not None else ConnectionProfile()
+        self._station_alias_draft = selected.alias if selected is not None else ""
+        self._ssh_port_text = "" if self._profile.ssh_port == 22 else str(self._profile.ssh_port)
+        self._local_port_text = "" if self._profile.local_port == 18080 else str(self._profile.local_port)
+        self.model = DiagnosticsModel()
+        self.profileChanged.emit()
+        self.viewChanged.emit()
+
+    @Slot(str)
     def setHost(self, value: str) -> None:
         self._profile = self._replace_profile(host=value)
         self.profileChanged.emit()
@@ -223,13 +367,30 @@ class QmlOperatorBridge(QObject):
             self._append_event("Профиль не сохранён: " + "; ".join(errors))
             return
         try:
-            target = save_profile(profile)
             self._profile = profile
+            if self._selected_profile_id is None:
+                alias = self._station_alias_draft.strip() or profile.host.strip() or "Новая станция"
+                self._registry = add_profile(self._registry, alias, profile)
+                self._selected_profile_id = self._registry.selected_profile_id
+                self._station_alias_draft = alias
+                self._station_status[self._selected_profile_id] = "UNKNOWN"
+            else:
+                self._registry = StationRegistry(
+                    profiles=tuple(
+                        type(item)(item.profile_id, item.alias, profile)
+                        if item.profile_id == self._selected_profile_id else item
+                        for item in self._registry.profiles
+                    ),
+                    selected_profile_id=self._selected_profile_id,
+                )
+            target = save_registry(self._registry)
         except (OSError, ValueError) as exc:
             self._append_event(f"Ошибка сохранения профиля: {exc}")
             return
-        self._append_event(f"Профиль подключения сохранён: {target}")
-        self._append_event("Содержимое приватного ключа не копируется в настройки.")
+        self.profileChanged.emit()
+        self.viewChanged.emit()
+        self._append_event(f"Локальный профиль подключения сохранён: {target}")
+        self._append_event("Содержимое приватного SSH-ключа не копируется в настройки.")
 
     @Slot()
     def connectToStation(self) -> None:
@@ -248,6 +409,9 @@ class QmlOperatorBridge(QObject):
             return
 
         profile = self._profile
+        if self._selected_profile_id is not None:
+            self._station_status[self._selected_profile_id] = "CONNECTING"
+            self.viewChanged.emit()
 
         def operation() -> tuple[dict[str, Any], str]:
             result = self.connection_manager.connect_to_station(profile)
@@ -325,6 +489,12 @@ class QmlOperatorBridge(QObject):
     @Slot(bool, str, object)
     def _on_operation_finished(self, success: bool, message: str, payload: object) -> None:
         self._busy = False
+        if self._selected_profile_id is not None:
+            self._station_status[self._selected_profile_id] = (
+                "CONNECTED" if success and isinstance(payload, dict)
+                else "DISCONNECTED" if not success or payload is None
+                else self._station_status.get(self._selected_profile_id, "UNKNOWN")
+            )
         if success:
             if isinstance(payload, dict):
                 self.model.apply_diagnostics(payload)
