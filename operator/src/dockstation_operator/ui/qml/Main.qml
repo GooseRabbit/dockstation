@@ -939,6 +939,7 @@ ApplicationWindow {
                             rowSpacing: 16
                             columnSpacing: 16
                             Panel {
+                                objectName: "system.cpu-temperature"
                                 Layout.fillWidth: true
                                 implicitHeight: 190
                                 ColumnLayout {
@@ -951,6 +952,7 @@ ApplicationWindow {
                                 }
                             }
                             Panel {
+                                objectName: "system.memory"
                                 Layout.fillWidth: true
                                 implicitHeight: 190
                                 ColumnLayout {
@@ -963,6 +965,7 @@ ApplicationWindow {
                                 }
                             }
                             Panel {
+                                objectName: "system.storage"
                                 Layout.fillWidth: true
                                 implicitHeight: 190
                                 ColumnLayout {
@@ -975,6 +978,7 @@ ApplicationWindow {
                                 }
                             }
                             Panel {
+                                objectName: "system.load-average"
                                 Layout.fillWidth: true
                                 implicitHeight: 190
                                 ColumnLayout {
@@ -988,6 +992,7 @@ ApplicationWindow {
                             }
                         }
                         Panel {
+                            objectName: "system.platform-info"
                             Layout.fillWidth: true
                             implicitHeight: systemInfo.implicitHeight + 40
                             ColumnLayout {
