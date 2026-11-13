@@ -101,8 +101,16 @@ def test_qml_bridge_schedules_read_only_reconnect_after_unexpected_loss(
         def handle_connection_loss(self):
             self.loss_handled = True
 
+        def reconnect_connection(self, timeout_seconds):
+            self.reconnect_timeout = timeout_seconds
+            return qml_bridge.ConnectionResult(True, "reconnected")
+
+        def get_system_diagnostics(self):
+            return {"schema_version": "1.0", "source": "LINUX_HOST"}
+
     manager = RecoverableConnectionManager()
-    monkeypatch.setattr(qml_bridge.time, "monotonic", lambda: 100.0)
+    clock = {"value": 100.0}
+    monkeypatch.setattr(qml_bridge.time, "monotonic", lambda: clock["value"])
     bridge = qml_bridge.QmlOperatorBridge(connection_manager=manager)
     try:
         bridge._schedule_reconnect("SSH-туннель неожиданно завершился.")
@@ -112,5 +120,18 @@ def test_qml_bridge_schedules_read_only_reconnect_after_unexpected_loss(
         assert bridge._next_reconnect_at == 105.0
         assert bridge.model.stale is True
         assert bridge.connectionState == "СВЯЗЬ НАРУШЕНА · ДАННЫЕ УСТАРЕЛИ"
+
+        scheduled = []
+        bridge._start_worker = scheduled.append
+        clock["value"] = 104.9
+        bridge.poll()
+        assert scheduled == []
+        clock["value"] = 105.0
+        bridge.poll()
+        assert len(scheduled) == 1
+        snapshot, message = scheduled[0]()
+        assert snapshot["source"] == "LINUX_HOST"
+        assert "восстановлена" in message
+        assert manager.reconnect_timeout == 5.0
     finally:
         bridge.shutdown()
