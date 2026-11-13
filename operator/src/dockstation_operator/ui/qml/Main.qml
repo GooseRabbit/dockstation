@@ -45,6 +45,40 @@ ApplicationWindow {
         border.width: 1
     }
 
+    component ActionButton: Button {
+        id: actionButton
+        implicitHeight: 38
+        contentItem: Text {
+            text: actionButton.text
+            color: actionButton.enabled ? root.primaryText : root.muted
+            font.pixelSize: 12
+            font.bold: actionButton.highlighted
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+        }
+        background: Rectangle {
+            radius: 6
+            color: actionButton.highlighted ? "#23423F" : (actionButton.enabled ? root.elevated : root.surface)
+            border.width: 1
+            border.color: actionButton.highlighted ? root.accent : root.borderColor
+            opacity: actionButton.enabled ? 1.0 : 0.65
+        }
+    }
+
+    component DarkTextField: TextField {
+        id: darkField
+        implicitHeight: 38
+        color: root.primaryText
+        selectionColor: root.accent
+        selectedTextColor: "#101820"
+        background: Rectangle {
+            radius: 6
+            color: root.elevated
+            border.width: 1
+            border.color: darkField.activeFocus ? root.accent : root.borderColor
+        }
+    }
+
     component MetricGauge: Item {
         id: gauge
         property string caption: ""
@@ -52,6 +86,7 @@ ApplicationWindow {
         property string unit: ""
         property string note: "Нет данных"
         property bool available: false
+        property real progress: -1
         implicitWidth: 148
         implicitHeight: 176
 
@@ -62,12 +97,29 @@ ApplicationWindow {
                 Layout.alignment: Qt.AlignHCenter
                 width: 124
                 height: 124
-                Rectangle {
+                Canvas {
+                    id: dialCanvas
                     anchors.fill: parent
-                    radius: width / 2
-                    color: "transparent"
-                    border.width: 8
-                    border.color: gauge.available ? root.accent : "#46535E"
+                    onPaint: {
+                        var context = getContext("2d")
+                        context.clearRect(0, 0, width, height)
+                        var startAngle = Math.PI * 0.75
+                        var endAngle = Math.PI * 2.25
+                        context.lineWidth = 8
+                        context.lineCap = "round"
+                        context.strokeStyle = "#46535E"
+                        context.beginPath()
+                        context.arc(width / 2, height / 2, 50, startAngle, endAngle, false)
+                        context.stroke()
+                        if (gauge.available && gauge.progress >= 0) {
+                            var boundedProgress = Math.min(1, Math.max(0, gauge.progress))
+                            context.strokeStyle = root.accent
+                            context.beginPath()
+                            context.arc(width / 2, height / 2, 50, startAngle,
+                                        startAngle + (endAngle - startAngle) * boundedProgress, false)
+                            context.stroke()
+                        }
+                    }
                 }
                 Column {
                     anchors.centerIn: parent
@@ -104,6 +156,8 @@ ApplicationWindow {
                 wrapMode: Text.WordWrap
             }
         }
+        onAvailableChanged: dialCanvas.requestPaint()
+        onProgressChanged: dialCanvas.requestPaint()
     }
 
     FileDialog {
@@ -203,7 +257,7 @@ ApplicationWindow {
                     spacing: 6
                     Repeater {
                         model: root.navigation
-                        delegate: Button {
+                        delegate: ActionButton {
                             required property var modelData
                             required property int index
                             Layout.fillWidth: true
@@ -287,27 +341,27 @@ ApplicationWindow {
                                     columnSpacing: 16
                                     rowSpacing: 10
                                     Label { text: "Адрес Linux VM"; color: root.secondaryText }
-                                    TextField {
+                                    DarkTextField {
                                         Layout.fillWidth: true
                                         text: bridge.host
                                         placeholderText: "192.168.56.10"
                                         onTextEdited: bridge.setHost(text)
                                     }
                                     Label { text: "Linux-пользователь"; color: root.secondaryText }
-                                    TextField {
+                                    DarkTextField {
                                         Layout.fillWidth: true
                                         text: bridge.username
                                         placeholderText: "operator"
                                         onTextEdited: bridge.setUsername(text)
                                     }
                                     Label { text: "SSH-порт"; color: root.secondaryText }
-                                    TextField {
+                                    DarkTextField {
                                         Layout.fillWidth: true
                                         text: bridge.sshPort
                                         onTextEdited: bridge.setSshPort(text)
                                     }
                                     Label { text: "Локальный порт туннеля"; color: root.secondaryText }
-                                    TextField {
+                                    DarkTextField {
                                         Layout.fillWidth: true
                                         text: bridge.localPort
                                         onTextEdited: bridge.setLocalPort(text)
@@ -315,40 +369,40 @@ ApplicationWindow {
                                     Label { text: "Приватный SSH-ключ"; color: root.secondaryText }
                                     RowLayout {
                                         Layout.fillWidth: true
-                                        TextField {
+                                        DarkTextField {
                                             Layout.fillWidth: true
                                             text: bridge.privateKeyPath
                                             placeholderText: "Путь к приватному ключу"
                                             onTextEdited: bridge.setPrivateKeyPath(text)
                                         }
-                                        Button { text: "Обзор…"; onClicked: privateKeyDialog.open() }
+                                        ActionButton { text: "Обзор…"; onClicked: privateKeyDialog.open() }
                                     }
                                     Label { text: "Файл known_hosts"; color: root.secondaryText }
                                     RowLayout {
                                         Layout.fillWidth: true
-                                        TextField {
+                                        DarkTextField {
                                             Layout.fillWidth: true
                                             text: bridge.knownHostsPath
                                             placeholderText: "Путь к known_hosts"
                                             onTextEdited: bridge.setKnownHostsPath(text)
                                         }
-                                        Button { text: "Обзор…"; onClicked: knownHostsDialog.open() }
+                                        ActionButton { text: "Обзор…"; onClicked: knownHostsDialog.open() }
                                     }
                                 }
                                 RowLayout {
                                     Layout.fillWidth: true
-                                    Button {
+                                    ActionButton {
                                         text: bridge.busy ? "Подключение…" : "Подключить"
                                         enabled: !bridge.busy && !bridge.connected
                                         highlighted: true
                                         onClicked: bridge.connectToStation()
                                     }
-                                    Button {
+                                    ActionButton {
                                         text: "Отключить"
                                         enabled: !bridge.busy && bridge.connected
                                         onClicked: bridge.disconnectFromStation()
                                     }
-                                    Button {
+                                    ActionButton {
                                         text: "Сохранить профиль"
                                         enabled: !bridge.busy
                                         onClicked: bridge.saveProfile()
@@ -663,8 +717,8 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     Text { text: "Live View: недоступно"; color: root.muted }
                                     Item { Layout.fillWidth: true }
-                                    Button { text: "Начать запись"; enabled: false }
-                                    Button { text: "Остановить"; enabled: false }
+                                    ActionButton { text: "Начать запись"; enabled: false }
+                                    ActionButton { text: "Остановить"; enabled: false }
                                 }
                             }
                         }
