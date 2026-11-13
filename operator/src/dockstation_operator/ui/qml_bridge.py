@@ -19,6 +19,9 @@ from ..config.station_registry import (
     StationProfile,
     StationRegistry,
     add_profile,
+    allocate_local_port,
+    repair_duplicate_local_ports,
+    move_profile,
     load_registry,
     remove_profile,
     rename_profile,
@@ -35,37 +38,54 @@ class QmlOperatorBridge(QObject):
 
     viewChanged = Signal()
     profileChanged = Signal()
-    _operationFinished = Signal(bool, str, object)
+    _operationFinished = Signal(str, bool, str, object, bool, bool)
 
-    def __init__(self, connection_manager: ConnectionManager | None = None):
+    def __init__(
+        self,
+        connection_manager: ConnectionManager | None = None,
+        connection_manager_factory=None,
+    ):
         super().__init__()
-        self.connection_manager = connection_manager or ConnectionManager()
-        self.model = DiagnosticsModel()
+        self._connection_manager_factory = connection_manager_factory or ConnectionManager
+        self._initial_connection_manager = connection_manager or ConnectionManager()
+        self._connection_managers: dict[str, ConnectionManager] = {}
+        self._default_model = DiagnosticsModel()
+        self._models: dict[str, DiagnosticsModel] = {}
         registry_path = station_registry_path()
-        self._registry = load_registry(registry_path)
+        loaded_registry = load_registry(registry_path)
+        self._registry = repair_duplicate_local_ports(loaded_registry)
+        if self._registry != loaded_registry:
+            try:
+                save_registry(self._registry, registry_path)
+            except (OSError, ValueError):
+                pass
         legacy_profile = load_profile()
-        # Migrate the old single-profile settings exactly once. An existing but
-        # empty or damaged registry must not resurrect a profile the user removed.
         if not registry_path.exists() and legacy_profile.host and legacy_profile.username:
             try:
                 migrated_registry = add_profile(self._registry, legacy_profile.host, legacy_profile)
                 save_registry(migrated_registry, registry_path)
                 self._registry = migrated_registry
             except (OSError, ValueError):
-                # Keep the GUI available; the user can correct the profile manually.
                 pass
+
         self._selected_profile_id = self._registry.selected_profile_id
-        selected = next(
-            (item for item in self._registry.profiles if item.profile_id == self._selected_profile_id),
-            None,
-        )
-        self._profile = selected.connection if selected is not None else legacy_profile
+        for item in self._registry.profiles:
+            self._models[item.profile_id] = DiagnosticsModel()
         self._station_status: dict[str, str] = {
             item.profile_id: "UNKNOWN" for item in self._registry.profiles
         }
-        self._station_alias_draft = selected.alias if selected is not None else ""
+        self._station_alias_draft = ""
+        self._profile = legacy_profile
         self._ssh_port_text = "" if self._profile.ssh_port == 22 else str(self._profile.ssh_port)
         self._local_port_text = "" if self._profile.local_port == 18080 else str(self._profile.local_port)
+
+        self._busy_profiles: set[str] = set()
+        self._worker_threads: dict[str, threading.Thread] = {}
+        self._reconnect_pending_by_profile: dict[str, bool] = {}
+        self._reconnect_attempt_by_profile: dict[str, int] = {}
+        self._next_reconnect_by_profile: dict[str, float] = {}
+        self._station_profiles_expanded = False
+        self._all_client_events: list[str] = []
         self._busy = False
         self._closing = False
         self._reconnect_pending = False
@@ -73,18 +93,63 @@ class QmlOperatorBridge(QObject):
         self._next_reconnect_at = 0.0
         self._notice = "Ожидание подключения."
         self._logs_action_status = ""
+        self.connection_manager = self._manager_for(self._selected_profile_id)
+        self.model = self._model_for(self._selected_profile_id)
+        selected = next(
+            (item for item in self._registry.profiles if item.profile_id == self._selected_profile_id),
+            None,
+        )
+        if selected is not None:
+            self._profile = selected.connection
+            self._station_alias_draft = selected.alias
+            self._ssh_port_text = "" if self._profile.ssh_port == 22 else str(self._profile.ssh_port)
+            self._local_port_text = "" if self._profile.local_port == 18080 else str(self._profile.local_port)
+        self._sync_active_session_flags()
         self._operationFinished.connect(self._on_operation_finished)
+
+    def _session_key(self, profile_id: str | None) -> str:
+        return profile_id or "__default__"
+
+    def _manager_for(self, profile_id: str | None) -> ConnectionManager:
+        key = self._session_key(profile_id)
+        manager = self._connection_managers.get(key)
+        if manager is None:
+            if self._initial_connection_manager is not None:
+                manager = self._initial_connection_manager
+                self._initial_connection_manager = None
+            else:
+                manager = self._connection_manager_factory()
+            self._connection_managers[key] = manager
+        return manager
+
+    def _model_for(self, profile_id: str | None) -> DiagnosticsModel:
+        if profile_id is None:
+            return self._default_model
+        return self._models.setdefault(profile_id, DiagnosticsModel())
+
+    def _sync_active_session_flags(self) -> None:
+        key = self._session_key(self._selected_profile_id)
+        self._busy = key in self._busy_profiles
+        self._reconnect_pending = self._reconnect_pending_by_profile.get(key, False)
+        self._reconnect_attempt = self._reconnect_attempt_by_profile.get(key, 0)
+        self._next_reconnect_at = self._next_reconnect_by_profile.get(key, 0.0)
 
     @Property("QVariantList", notify=viewChanged)
     def stationProfiles(self) -> list[dict[str, str | bool]]:
         items: list[dict[str, str | bool]] = []
-        for item in self._registry.profiles:
+        profiles = self._registry.profiles
+        for index, item in enumerate(profiles):
             status = self._station_status.get(item.profile_id, "UNKNOWN")
+            manager = self._connection_managers.get(self._session_key(item.profile_id))
+            model = self._models.get(item.profile_id)
+            if manager is not None and manager.is_connected and model is not None and not model.stale:
+                status = "CONNECTED"
+                self._station_status[item.profile_id] = status
             labels = {
                 "CONNECTED": ("Подключено", "success"),
                 "DISCONNECTED": ("Отключено", "danger"),
-                "CONNECTING": ("Проверка", "warning"),
-                "UNKNOWN": ("Неизвестно", "warning"),
+                "CONNECTING": ("Подключение", "warning"),
+                "UNKNOWN": ("Ошибка / неизвестно", "warning"),
             }
             label, color = labels.get(status, labels["UNKNOWN"])
             items.append({
@@ -94,8 +159,29 @@ class QmlOperatorBridge(QObject):
                 "status_label": label,
                 "status_color": color,
                 "selected": item.profile_id == self._selected_profile_id,
+                "can_move_up": index > 0,
+                "can_move_down": index < len(profiles) - 1,
             })
         return items
+
+    @Property("QVariantList", notify=viewChanged)
+    def visibleStationProfiles(self) -> list[dict[str, str | bool]]:
+        profiles = self.stationProfiles
+        return profiles if self._station_profiles_expanded else profiles[:3]
+
+    @Property(bool, notify=viewChanged)
+    def hasMoreStationProfiles(self) -> bool:
+        return len(self._registry.profiles) > 3
+
+    @Property(bool, notify=viewChanged)
+    def stationProfilesExpanded(self) -> bool:
+        return self._station_profiles_expanded
+
+    @Slot()
+    def toggleStationProfilesExpanded(self) -> None:
+        if self.hasMoreStationProfiles:
+            self._station_profiles_expanded = not self._station_profiles_expanded
+            self.viewChanged.emit()
 
     @Property(str, notify=profileChanged)
     def selectedProfileId(self) -> str:
@@ -135,7 +221,9 @@ class QmlOperatorBridge(QObject):
 
     @Property(bool, notify=viewChanged)
     def reconnecting(self) -> bool:
-        return self._reconnect_pending
+        return self._reconnect_pending_by_profile.get(
+            self._session_key(self._selected_profile_id), self._reconnect_pending
+        )
 
     @Property(bool, notify=viewChanged)
     def connected(self) -> bool:
@@ -325,13 +413,14 @@ class QmlOperatorBridge(QObject):
 
     @Property("QVariantList", notify=viewChanged)
     def events(self) -> list[str]:
-        """Return every event currently retained by DiagnosticsModel, newest first."""
-        return list(reversed(self.model.client_events))
+        """Return the combined Operator event buffer from all station sessions."""
+        source = self._all_client_events or self.model.client_events
+        return list(reversed(source))
 
     @Property(str, notify=viewChanged)
     def eventsText(self) -> str:
-        """Return the complete retained event buffer in the same order as the UI."""
-        return "\n".join(reversed(self.model.client_events))
+        """Return all retained events, tagged with their station alias, newest first."""
+        return "\n".join(self.events)
 
     @Property(str, notify=viewChanged)
     def logsActionStatus(self) -> str:
@@ -349,7 +438,7 @@ class QmlOperatorBridge(QObject):
             self._logs_action_status = f"Не удалось скопировать логи: {exc}"
             self.viewChanged.emit()
             return False
-        count = len(self.model.client_events)
+        count = len(self.events)
         self._logs_action_status = (
             f"Скопировано записей: {count}."
             if count else "Журнал пуст; буфер обмена очищен."
@@ -391,33 +480,30 @@ class QmlOperatorBridge(QObject):
 
     @Slot(str)
     def addStationProfile(self, alias: str) -> None:
-        if self._busy or self._closing:
+        if self._closing:
             return
-        self._reconnect_pending = False
-        self._reconnect_attempt = 0
         try:
-            new_profile = ConnectionProfile()
+            local_port = allocate_local_port(self._registry)
+            new_profile = ConnectionProfile(local_port=local_port)
             updated_registry = add_profile(self._registry, alias, new_profile)
             save_registry(updated_registry)
-            previous_id = self._selected_profile_id
-            if self.connection_manager.is_connected:
-                self.connection_manager.disconnect_from_station()
-            if previous_id is not None and self._station_status.get(previous_id) == "CONNECTED":
-                self._station_status[previous_id] = "DISCONNECTED"
-            self._registry = updated_registry
-            self._selected_profile_id = self._registry.selected_profile_id
-            self._profile = new_profile
-            self._station_alias_draft = alias.strip()
-            self._ssh_port_text = ""
-            self._local_port_text = ""
-            self.model = DiagnosticsModel()
         except (OSError, ValueError) as exc:
             self._append_event(f"Не удалось добавить локальный профиль: {exc}")
             return
+        self._registry = updated_registry
+        self._selected_profile_id = self._registry.selected_profile_id
+        self._models[self._selected_profile_id] = DiagnosticsModel()
         self._station_status[self._selected_profile_id] = "UNKNOWN"
+        self.connection_manager = self._manager_for(self._selected_profile_id)
+        self.model = self._model_for(self._selected_profile_id)
+        self._profile = new_profile
+        self._station_alias_draft = alias.strip()
+        self._ssh_port_text = ""
+        self._local_port_text = str(local_port)
+        self._sync_active_session_flags()
         self.profileChanged.emit()
         self.viewChanged.emit()
-        self._append_event("Локальный профиль подключения добавлен. Это не регистрация станции в аккаунте.")
+        self._append_event("Локальный профиль добавлен. Ранее подключённые станции продолжают работать.")
 
     @Slot(str)
     def renameSelectedStation(self, alias: str) -> None:
@@ -437,59 +523,77 @@ class QmlOperatorBridge(QObject):
 
     @Slot(str)
     def selectStationProfile(self, profile_id: str) -> None:
-        if self._busy or self._closing or profile_id == self._selected_profile_id:
+        if self._closing or profile_id == self._selected_profile_id:
             return
-        self._reconnect_pending = False
-        self._reconnect_attempt = 0
         try:
             updated = select_profile(self._registry, profile_id)
         except KeyError:
             self._append_event("Локальный профиль не найден.")
             return
-        previous_id = self._selected_profile_id
-        self.connection_manager.disconnect_from_station()
-        if previous_id is not None and self._station_status.get(previous_id) == "CONNECTED":
-            self._station_status[previous_id] = "DISCONNECTED"
         self._registry = updated
         self._selected_profile_id = profile_id
         selected = next(item for item in self._registry.profiles if item.profile_id == profile_id)
+        self.connection_manager = self._manager_for(profile_id)
+        self.model = self._model_for(profile_id)
         self._profile = selected.connection
         self._station_alias_draft = selected.alias
         self._ssh_port_text = "" if self._profile.ssh_port == 22 else str(self._profile.ssh_port)
         self._local_port_text = "" if self._profile.local_port == 18080 else str(self._profile.local_port)
-        self.model = DiagnosticsModel()
+        self._sync_active_session_flags()
         try:
             save_registry(self._registry)
         except (OSError, ValueError) as exc:
-            self._append_event(f"Не удалось сохранить выбранный профиль: {exc}")
+            self._append_event(f"Не удалось сохранить выбранный профиль: {exc}", profile_id)
         self.profileChanged.emit()
+        self.viewChanged.emit()
+
+    @Slot(str, int)
+    def moveStationProfile(self, profile_id: str, offset: int) -> None:
+        try:
+            updated = move_profile(self._registry, profile_id, offset)
+            if updated == self._registry:
+                return
+            save_registry(updated)
+            self._registry = updated
+        except (KeyError, OSError, ValueError) as exc:
+            self._append_event(f"Не удалось изменить порядок станций: {exc}")
+            return
         self.viewChanged.emit()
 
     @Slot()
     def removeSelectedStation(self) -> None:
-        if self._busy or self._closing or self._selected_profile_id is None:
+        if self._closing or self._selected_profile_id is None:
             return
-        self._reconnect_pending = False
-        self._reconnect_attempt = 0
         removed_id = self._selected_profile_id
-        self.connection_manager.disconnect_from_station()
+        key = self._session_key(removed_id)
+        if key in self._busy_profiles:
+            self._append_event("Нельзя удалить станцию, пока выполняется операция обмена.")
+            return
+        manager = self._connection_managers.get(key)
+        if manager is not None:
+            manager.disconnect_from_station()
         try:
-            self._registry = remove_profile(self._registry, removed_id)
-            save_registry(self._registry)
+            updated = remove_profile(self._registry, removed_id)
+            save_registry(updated)
         except (KeyError, OSError, ValueError) as exc:
             self._append_event(f"Не удалось удалить локальный профиль: {exc}")
             return
+        self._registry = updated
         self._station_status.pop(removed_id, None)
+        self._models.pop(removed_id, None)
+        self._connection_managers.pop(key, None)
+        self._reconnect_pending_by_profile.pop(key, None)
+        self._reconnect_attempt_by_profile.pop(key, None)
+        self._next_reconnect_by_profile.pop(key, None)
         self._selected_profile_id = self._registry.selected_profile_id
-        selected = next(
-            (item for item in self._registry.profiles if item.profile_id == self._selected_profile_id),
-            None,
-        )
+        selected = next((item for item in self._registry.profiles if item.profile_id == self._selected_profile_id), None)
+        self.connection_manager = self._manager_for(self._selected_profile_id)
+        self.model = self._model_for(self._selected_profile_id)
         self._profile = selected.connection if selected is not None else ConnectionProfile()
         self._station_alias_draft = selected.alias if selected is not None else ""
         self._ssh_port_text = "" if self._profile.ssh_port == 22 else str(self._profile.ssh_port)
         self._local_port_text = "" if self._profile.local_port == 18080 else str(self._profile.local_port)
-        self.model = DiagnosticsModel()
+        self._sync_active_session_flags()
         self.profileChanged.emit()
         self.viewChanged.emit()
 
@@ -536,17 +640,15 @@ class QmlOperatorBridge(QObject):
                 alias = self._station_alias_draft.strip() or profile.host.strip() or "Новая станция"
                 self._registry = add_profile(self._registry, alias, profile)
                 self._selected_profile_id = self._registry.selected_profile_id
-                self._station_alias_draft = alias
+                self._models[self._selected_profile_id] = DiagnosticsModel()
                 self._station_status[self._selected_profile_id] = "UNKNOWN"
+                self.connection_manager = self._manager_for(self._selected_profile_id)
+                self.model = self._model_for(self._selected_profile_id)
+                self._station_alias_draft = alias
             else:
-                selected_item = next(
-                    item for item in self._registry.profiles
-                    if item.profile_id == self._selected_profile_id
-                )
+                selected_item = next(item for item in self._registry.profiles if item.profile_id == self._selected_profile_id)
                 if self._station_alias_draft.strip() != selected_item.alias:
-                    self._registry = rename_profile(
-                        self._registry, self._selected_profile_id, self._station_alias_draft
-                    )
+                    self._registry = rename_profile(self._registry, self._selected_profile_id, self._station_alias_draft)
                 self._registry = StationRegistry(
                     profiles=tuple(
                         StationProfile(item.profile_id, item.alias, profile)
@@ -559,10 +661,11 @@ class QmlOperatorBridge(QObject):
         except (OSError, ValueError) as exc:
             self._append_event(f"Ошибка сохранения профиля: {exc}")
             return False
-        # When the link is down, keep the reconnect target aligned with the
-        # profile that was just saved. An in-flight active tunnel is untouched.
-        if not self.connection_manager.is_connected:
-            self.connection_manager.profile = profile
+        manager = self._manager_for(self._selected_profile_id)
+        if not manager.is_connected:
+            manager.profile = profile
+        self._profile = profile
+        self._sync_active_session_flags()
         self.profileChanged.emit()
         self.viewChanged.emit()
         self._append_event(f"Локальный профиль подключения сохранён: {target}")
@@ -571,10 +674,10 @@ class QmlOperatorBridge(QObject):
 
     @Slot()
     def connectToStation(self) -> None:
-        if self._busy or self._closing:
+        profile_id = self._selected_profile_id
+        key = self._session_key(profile_id)
+        if self._closing or key in self._busy_profiles:
             return
-        self._reconnect_pending = False
-        self._reconnect_attempt = 0
         profile = self._profile_with_port_drafts()
         errors = validate_profile(profile, require_files=True)
         if errors:
@@ -582,87 +685,133 @@ class QmlOperatorBridge(QObject):
             return
         if not self.saveProfile():
             return
-
         profile = self._profile
-        if self._selected_profile_id is not None:
-            self._station_status[self._selected_profile_id] = "CONNECTING"
-            self.viewChanged.emit()
+        manager = self._manager_for(profile_id)
+        if profile_id is not None:
+            self._station_status[profile_id] = "CONNECTING"
+        self.viewChanged.emit()
 
         def operation() -> tuple[dict[str, Any], str]:
-            result = self.connection_manager.connect_to_station(profile)
+            result = manager.connect_to_station(profile)
             if not result.connected:
                 raise RuntimeError(result.message)
-            snapshot = self.connection_manager.get_system_diagnostics()
-            return snapshot, result.message
+            return manager.get_system_diagnostics(), result.message
 
-        self._start_worker(operation)
+        self._start_worker(profile_id, operation)
 
     @Slot()
     def poll(self) -> None:
-        if self._busy or self._closing:
+        if self._closing:
             return
+        active_key = self._session_key(self._selected_profile_id)
         if self._reconnect_pending:
-            if time.monotonic() >= self._next_reconnect_at:
-                self._start_worker(self._reconnect_operation)
-            return
-        if self.connection_manager.get_connection_status() == "DEGRADED" and self.model.connection_state == "CONNECTED":
-            self._schedule_reconnect("SSH-туннель неожиданно завершился.")
-            return
-        if self.connection_manager.is_connected:
-            self.refresh()
+            self._reconnect_pending_by_profile.setdefault(active_key, True)
+            self._reconnect_attempt_by_profile.setdefault(active_key, self._reconnect_attempt)
+            self._next_reconnect_by_profile.setdefault(active_key, self._next_reconnect_at)
+        profile_ids = [item.profile_id for item in self._registry.profiles]
+        if not profile_ids and (
+            self._connection_managers.get("__default__") is not None
+            or self._initial_connection_manager is not None
+        ):
+            profile_ids = [None]
+        now = time.monotonic()
+        for profile_id in profile_ids:
+            key = self._session_key(profile_id)
+            if key in self._busy_profiles:
+                continue
+            manager = self._connection_managers.get(key)
+            if manager is None:
+                continue
+            if self._reconnect_pending_by_profile.get(key, False):
+                if now >= self._next_reconnect_by_profile.get(key, 0.0):
+                    self._start_worker(profile_id, lambda manager=manager: self._reconnect_operation(manager), is_reconnect=True)
+                continue
+            status_getter = getattr(manager, "get_connection_status", None)
+            connection_status = status_getter() if callable(status_getter) else ("CONNECTED" if manager.is_connected else "DISCONNECTED")
+            model = self._model_for(profile_id)
+            if connection_status == "DEGRADED" and model.connection_state in {"CONNECTED", "DEGRADED"}:
+                self._schedule_reconnect("SSH-туннель неожиданно завершился.", profile_id)
+            elif manager.is_connected:
+                self._start_worker(profile_id, manager.get_system_diagnostics)
 
     @Slot()
     def refresh(self) -> None:
-        if self._busy or self._closing:
+        profile_id = self._selected_profile_id
+        key = self._session_key(profile_id)
+        if self._closing or key in self._busy_profiles:
             return
-        if not self.connection_manager.is_connected:
-            if self._selected_profile_id is not None:
-                self._station_status[self._selected_profile_id] = "UNKNOWN"
-            self.model.mark_diagnostics_stale("Нет активного SSH/API-подключения.")
-            self._append_event("Обновление пропущено: нет активного подключения.")
+        manager = self._manager_for(profile_id)
+        model = self._model_for(profile_id)
+        if not manager.is_connected:
+            if profile_id is not None:
+                self._station_status[profile_id] = "UNKNOWN"
+            model.mark_diagnostics_stale("Нет активного SSH/API-подключения.")
+            self._append_event("Обновление пропущено: нет активного подключения.", profile_id)
             return
-        self._start_worker(self.connection_manager.get_system_diagnostics)
+        self._start_worker(profile_id, manager.get_system_diagnostics)
 
     @Slot()
     def disconnectFromStation(self) -> None:
-        if self._busy or self._closing:
+        profile_id = self._selected_profile_id
+        key = self._session_key(profile_id)
+        if self._closing or key in self._busy_profiles:
             return
-        self._reconnect_pending = False
-        self._reconnect_attempt = 0
-        self._start_worker(self._disconnect_operation)
+        self._reconnect_pending_by_profile[key] = False
+        self._reconnect_attempt_by_profile[key] = 0
+        manager = self._manager_for(profile_id)
+
+        def operation() -> tuple[None, str]:
+            manager.disconnect_from_station()
+            return None, "Подключение закрыто пользователем."
+
+        self._start_worker(profile_id, operation)
+        self._sync_active_session_flags()
 
     @Slot()
     def shutdown(self) -> None:
         self._closing = True
-        self._reconnect_pending = False
-        worker = getattr(self, "_worker_thread", None)
-        if worker is not None and worker.is_alive() and worker is not threading.current_thread():
-            worker.join(timeout=15.0)
-        self.connection_manager.disconnect_from_station()
+        deadline = time.monotonic() + 15.0
+        for worker in list(self._worker_threads.values()):
+            if worker.is_alive() and worker is not threading.current_thread():
+                worker.join(timeout=max(0.0, deadline - time.monotonic()))
+        managers = list(self._connection_managers.values())
+        if self._initial_connection_manager is not None:
+            managers.append(self._initial_connection_manager)
+        for manager in managers:
+            try:
+                manager.disconnect_from_station()
+            except Exception:
+                pass
 
-    def _disconnect_operation(self) -> tuple[None, str]:
-        self.connection_manager.disconnect_from_station()
-        return None, "Подключение закрыто пользователем."
-
-    def _reconnect_operation(self) -> tuple[dict[str, Any], str]:
-        result = self.connection_manager.reconnect_connection(timeout_seconds=5.0)
+    def _reconnect_operation(self, manager: ConnectionManager | None = None) -> tuple[dict[str, Any], str]:
+        selected_manager = manager or self.connection_manager
+        result = selected_manager.reconnect_connection(timeout_seconds=5.0)
         if not result.connected:
             raise RuntimeError(result.message)
-        snapshot = self.connection_manager.get_system_diagnostics()
-        return snapshot, "Связь с Linux Gateway восстановлена; получен новый диагностический снимок."
+        return selected_manager.get_system_diagnostics(), "Связь с Linux Gateway восстановлена; получен новый диагностический снимок."
 
-    def _schedule_reconnect(self, reason: str) -> None:
-        self.connection_manager.handle_connection_loss()
-        self._reconnect_pending = self.connection_manager.profile is not None
-        self._reconnect_attempt = 0
-        self._next_reconnect_at = time.monotonic() + 5.0
-        if self._selected_profile_id is not None:
-            self._station_status[self._selected_profile_id] = "UNKNOWN"
-        self.model.mark_diagnostics_stale(reason)
-        self._append_event(reason + " Автоматическое восстановление начнётся через 5 с.")
+    def _schedule_reconnect(self, reason: str, profile_id: str | None = None) -> None:
+        key = self._session_key(profile_id)
+        manager = self._manager_for(profile_id)
+        manager.handle_connection_loss()
+        self._reconnect_pending_by_profile[key] = manager.profile is not None
+        self._reconnect_attempt_by_profile[key] = 0
+        self._next_reconnect_by_profile[key] = time.monotonic() + 5.0
+        if profile_id is not None:
+            self._station_status[profile_id] = "UNKNOWN"
+        self._model_for(profile_id).mark_diagnostics_stale(reason)
+        self._sync_active_session_flags()
+        self._append_event(reason + " Автоматическое восстановление начнётся через 5 с.", profile_id)
+        self.viewChanged.emit()
 
-    def _start_worker(self, operation) -> None:
-        self._busy = True
+    def _start_worker(self, profile_id: str | None, operation, is_reconnect: bool = False) -> None:
+        key = self._session_key(profile_id)
+        if key in self._busy_profiles or self._closing:
+            return
+        manager = self._manager_for(profile_id)
+        model = self._model_for(profile_id)
+        self._busy_profiles.add(key)
+        self._sync_active_session_flags()
         self.viewChanged.emit()
 
         def run() -> None:
@@ -671,64 +820,100 @@ class QmlOperatorBridge(QObject):
                     return
                 result = operation()
                 if self._closing:
-                    self.connection_manager.disconnect_from_station()
+                    manager.disconnect_from_station()
                     return
                 if isinstance(result, tuple) and len(result) == 2 and isinstance(result[1], str):
                     payload, message = result
                 else:
                     payload, message = result, "Диагностический снимок обновлён."
-                self._operationFinished.emit(True, message, payload)
+                self._operationFinished.emit(key, True, message, payload, is_reconnect, False)
             except Exception as exc:
+                status_getter = getattr(manager, "get_connection_status", None)
+                manager_status = status_getter() if callable(status_getter) else ("CONNECTED" if manager.is_connected else "DISCONNECTED")
                 unexpected_loss = (
-                    not self._reconnect_pending
-                    and self.connection_manager.profile is not None
-                    and (
-                        self.model.connection_state == "CONNECTED"
-                        or self.connection_manager.get_connection_status() in {"CONNECTED", "DEGRADED"}
-                    )
+                    not self._reconnect_pending_by_profile.get(key, False)
+                    and getattr(manager, "profile", None) is not None
+                    and (model.connection_state == "CONNECTED" or manager_status in {"CONNECTED", "DEGRADED"})
                 )
-                self.connection_manager.handle_connection_loss()
-                if unexpected_loss:
-                    self._reconnect_pending = True
-                    self._reconnect_attempt = 0
-                    self._next_reconnect_at = time.monotonic() + 5.0
-                self._operationFinished.emit(False, str(exc), None)
+                try:
+                    manager.handle_connection_loss()
+                except Exception:
+                    pass
+                self._operationFinished.emit(key, False, str(exc), None, is_reconnect, unexpected_loss)
 
-        self._worker_thread = threading.Thread(target=run, name="dockstation-qml-worker", daemon=True)
-        self._worker_thread.start()
+        worker = threading.Thread(target=run, name=f"dockstation-qml-worker-{key}", daemon=True)
+        self._worker_threads[key] = worker
+        worker.start()
 
-    @Slot(bool, str, object)
-    def _on_operation_finished(self, success: bool, message: str, payload: object) -> None:
-        self._busy = False
-        if self._selected_profile_id is not None:
-            self._station_status[self._selected_profile_id] = (
+    @Slot(str, bool, str, object, bool, bool)
+    def _on_operation_finished(self, *args) -> None:
+        if len(args) == 3:
+            success, message, payload = args
+            profile_id = self._selected_profile_id
+            is_reconnect = self._reconnect_pending
+            unexpected_loss = False
+        else:
+            key, success, message, payload, is_reconnect, unexpected_loss = args
+            profile_id = None if key == "__default__" else key
+        key = self._session_key(profile_id)
+        if len(args) == 3 and self._reconnect_pending:
+            self._reconnect_pending_by_profile[key] = True
+            self._reconnect_attempt_by_profile.setdefault(key, self._reconnect_attempt)
+            self._next_reconnect_by_profile.setdefault(key, self._next_reconnect_at)
+        self._busy_profiles.discard(key)
+        self._worker_threads.pop(key, None)
+        manager = self._manager_for(profile_id)
+        model = self._model_for(profile_id)
+
+        if profile_id is not None:
+            self._station_status[profile_id] = (
                 "CONNECTED" if success and isinstance(payload, dict)
                 else "DISCONNECTED" if success and payload is None
-                else "UNKNOWN"
+                else "UNKNOWN" if unexpected_loss or is_reconnect or model.snapshot is not None
+                else "DISCONNECTED"
             )
         if success:
             if isinstance(payload, dict):
-                self._reconnect_pending = False
-                self._reconnect_attempt = 0
-                self.model.apply_diagnostics(payload)
-                self._append_event(message)
+                self._reconnect_pending_by_profile[key] = False
+                self._reconnect_attempt_by_profile[key] = 0
+                self._next_reconnect_by_profile[key] = 0.0
+                model.apply_diagnostics(payload)
+                if message != "Диагностический снимок обновлён.":
+                    self._append_event(message, profile_id)
             else:
-                self.model.clear_connection_state()
-                self._append_event(message)
+                self._reconnect_pending_by_profile[key] = False
+                self._reconnect_attempt_by_profile[key] = 0
+                model.clear_connection_state()
+                self._append_event(message, profile_id)
         else:
-            self.model.mark_diagnostics_stale(message)
-            self._append_event("Ошибка подключения/обмена: " + message)
-            if self._reconnect_pending:
+            model.mark_diagnostics_stale(message)
+            self._append_event("Ошибка подключения/обмена: " + message, profile_id)
+            if unexpected_loss:
+                self._reconnect_pending_by_profile[key] = getattr(manager, "profile", None) is not None
+                self._reconnect_attempt_by_profile[key] = 0
+                self._next_reconnect_by_profile[key] = time.monotonic() + 5.0
+                self._append_event("Автоматическое восстановление начнётся через 5 с.", profile_id)
+            elif is_reconnect and self._reconnect_pending_by_profile.get(key, False):
                 delays = (5.0, 10.0, 20.0, 30.0)
-                delay = delays[min(self._reconnect_attempt, len(delays) - 1)]
-                self._reconnect_attempt += 1
-                self._next_reconnect_at = time.monotonic() + delay
-                self._append_event(f"Повторная попытка подключения через {int(delay)} с.")
+                attempt = self._reconnect_attempt_by_profile.get(key, 0)
+                delay = delays[min(attempt, len(delays) - 1)]
+                self._reconnect_attempt_by_profile[key] = attempt + 1
+                self._next_reconnect_by_profile[key] = time.monotonic() + delay
+                self._append_event(f"Повторная попытка подключения через {int(delay)} с.", profile_id)
+        self._sync_active_session_flags()
         self.viewChanged.emit()
 
-    def _append_event(self, message: str) -> None:
-        self._notice = message
-        self.model.append_client_event(message)
+    def _append_event(self, message: str, profile_id: str | None = None) -> None:
+        target_id = profile_id if profile_id is not None else self._selected_profile_id
+        model = self._model_for(target_id)
+        alias = next((item.alias for item in self._registry.profiles if item.profile_id == target_id), None)
+        tagged_message = f"[{alias}] {message}" if alias else message
+        self._notice = tagged_message
+        model.append_client_event(tagged_message)
+        if model.client_events:
+            self._all_client_events.append(model.client_events[-1])
+            if len(self._all_client_events) > 500:
+                del self._all_client_events[: len(self._all_client_events) - 500]
         self.viewChanged.emit()
 
     def _network_section(self, name: str) -> dict[str, Any] | None:

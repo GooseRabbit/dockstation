@@ -11,6 +11,10 @@ from dockstation_operator.config.station_registry import (
     add_profile,
     load_registry,
     remove_profile,
+    move_profile,
+    allocate_local_port,
+    repair_duplicate_local_ports,
+    StationProfile,
     rename_profile,
     save_registry,
     select_profile,
@@ -92,3 +96,39 @@ def test_registry_select_and_remove_unknown_profiles_raise():
         rename_profile(registry, "missing", "Дом")
     with pytest.raises(KeyError):
         remove_profile(registry, "missing")
+
+
+
+def test_registry_moves_profiles_without_changing_selection_or_connection_details():
+    registry = add_profile(StationRegistry(), "Дом", profile("192.0.2.10", 18080), "home")
+    registry = add_profile(registry, "Склад", profile("192.0.2.11", 18081), "warehouse")
+    registry = add_profile(registry, "Антенна", profile("192.0.2.12", 18082), "antenna")
+    registry = select_profile(registry, "warehouse")
+
+    moved = move_profile(registry, "antenna", -1)
+
+    assert [item.profile_id for item in moved.profiles] == ["home", "antenna", "warehouse"]
+    assert moved.selected_profile_id == "warehouse"
+    assert moved.profiles[1].connection.host == "192.0.2.12"
+
+
+def test_registry_allocates_unique_available_loopback_ports():
+    registry = add_profile(StationRegistry(), "Дом", profile("192.0.2.10", 18080))
+    registry = add_profile(registry, "Склад", profile("192.0.2.11", 18081))
+    allocated = allocate_local_port(registry)
+
+    assert allocated not in {18080, 18081}
+    assert 1024 <= allocated <= 65535
+
+
+def test_registry_repairs_duplicate_saved_ports_without_reordering_profiles():
+    registry = StationRegistry((
+        StationProfile("home", "Дом", profile("192.0.2.10", 18080)),
+        StationProfile("warehouse", "Склад", profile("192.0.2.11", 18080)),
+    ), "warehouse")
+
+    repaired = repair_duplicate_local_ports(registry)
+
+    assert [item.alias for item in repaired.profiles] == ["Дом", "Склад"]
+    assert repaired.selected_profile_id == "warehouse"
+    assert repaired.profiles[0].connection.local_port != repaired.profiles[1].connection.local_port
