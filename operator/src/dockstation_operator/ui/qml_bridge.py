@@ -13,6 +13,7 @@ from ..config.settings import (
     validate_profile,
 )
 from ..config.station_registry import (
+    StationProfile,
     StationRegistry,
     add_profile,
     load_registry,
@@ -403,7 +404,7 @@ class QmlOperatorBridge(QObject):
                     )
                 self._registry = StationRegistry(
                     profiles=tuple(
-                        type(item)(item.profile_id, item.alias, profile)
+                        StationProfile(item.profile_id, item.alias, profile)
                         if item.profile_id == self._selected_profile_id else item
                         for item in self._registry.profiles
                     ),
