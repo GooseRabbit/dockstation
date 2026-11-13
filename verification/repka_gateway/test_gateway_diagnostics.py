@@ -223,6 +223,64 @@ def test_ssh_no_unit_is_failure():
     assert result["status"] == "FAIL"
 
 
+def test_read_system_resources_collects_linux_resource_metrics(tmp_path: Path):
+    meminfo = tmp_path / "meminfo"
+    meminfo.write_text(
+        "MemTotal:       1000 kB\nMemAvailable:    250 kB\n",
+        encoding="ascii",
+    )
+    loadavg = tmp_path / "loadavg"
+    loadavg.write_text("0.25 0.50 0.75 2/100 12345\n", encoding="ascii")
+    thermal = tmp_path / "thermal"
+    zone = thermal / "thermal_zone0"
+    zone.mkdir(parents=True)
+    (zone / "type").write_text("cpu-thermal\n", encoding="utf-8")
+    (zone / "temp").write_text("42500\n", encoding="ascii")
+
+    statvfs_result = type("StatVfs", (), {
+        "f_frsize": 4096, "f_bsize": 4096, "f_blocks": 1000,
+        "f_bfree": 400, "f_bavail": 350,
+    })()
+    with patch.object(diagnostics.os, "statvfs", return_value=statvfs_result):
+        result = diagnostics.read_system_resources(
+            meminfo_path=meminfo,
+            loadavg_path=loadavg,
+            thermal_path=thermal,
+        )
+
+    assert result["memory"] == {
+        "status": "PASS", "message": "Read from /proc/meminfo",
+        "total_bytes": 1024000, "available_bytes": 256000,
+        "used_bytes": 768000, "used_percent": 75.0,
+    }
+    assert result["storage"]["status"] == "PASS"
+    assert result["storage"]["used_percent"] == 60.0
+    assert result["cpu_temperature"]["status"] == "PASS"
+    assert result["cpu_temperature"]["celsius"] == 42.5
+    assert result["cpu_temperature"]["sensor_type"] == "cpu-thermal"
+    assert result["cpu_load"]["status"] == "PASS"
+    assert result["cpu_load"]["one_minute"] == 0.25
+    assert result["cpu_load"]["fifteen_minutes"] == 0.75
+
+
+def test_read_system_resources_does_not_mislabel_unknown_thermal_zone(tmp_path: Path):
+    thermal = tmp_path / "thermal"
+    zone = thermal / "thermal_zone0"
+    zone.mkdir(parents=True)
+    (zone / "type").write_text("gpu-thermal\n", encoding="utf-8")
+    (zone / "temp").write_text("51000\n", encoding="ascii")
+    result = diagnostics.read_system_resources(
+        meminfo_path=tmp_path / "missing-meminfo",
+        loadavg_path=tmp_path / "missing-loadavg",
+        thermal_path=thermal,
+    )
+    assert result["cpu_temperature"]["status"] == "UNAVAILABLE"
+    assert result["cpu_temperature"]["celsius"] is None
+    assert "CPU/SoC/package" in result["cpu_temperature"]["message"]
+    assert result["memory"]["status"] == "UNAVAILABLE"
+    assert result["cpu_load"]["status"] == "UNAVAILABLE"
+
+
 def test_collect_diagnostics_returns_contract_and_explicit_scope():
     with (
         patch.object(diagnostics, "read_platform_info", return_value={
@@ -240,6 +298,7 @@ def test_collect_diagnostics_returns_contract_and_explicit_scope():
         result = diagnostics.collect_diagnostics()
     assert result["schema_version"] == "1.0"
     assert result["source"] == "LINUX_HOST"
+    assert set(result["platform"]["resources"]) == {"memory", "storage", "cpu_temperature", "cpu_load"}
     assert result["summary"]["status"] == "WARN"
     assert result["summary"]["exit_code"] == 1
     assert result["scope"]["hardware_controller_connected"] is False
