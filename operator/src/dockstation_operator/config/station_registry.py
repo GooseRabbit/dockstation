@@ -94,7 +94,10 @@ def validate_registry(registry: StationRegistry) -> list[str]:
                     errors.append(prefix + "некорректный порт подключения.")
         else:
             errors.extend(prefix + error for error in validate_profile(item.connection, require_files=False))
-    if registry.selected_profile_id is not None and registry.selected_profile_id not in ids:
+    if registry.selected_profile_id is not None and (
+        not isinstance(registry.selected_profile_id, str)
+        or registry.selected_profile_id not in ids
+    ):
         errors.append("Выбранный профиль отсутствует в реестре.")
     return errors
 
@@ -106,7 +109,10 @@ def load_registry(path: Path | None = None) -> StationRegistry:
         payload: Any = json.loads(target.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError, UnicodeError):
         return StationRegistry()
-    if not isinstance(payload, dict) or payload.get("schema_version") != REGISTRY_SCHEMA_VERSION:
+    if not isinstance(payload, dict):
+        return StationRegistry()
+    schema_version = payload.get("schema_version")
+    if isinstance(schema_version, bool) or schema_version != REGISTRY_SCHEMA_VERSION:
         return StationRegistry()
     records = payload.get("profiles")
     selected = payload.get("selected_profile_id")
