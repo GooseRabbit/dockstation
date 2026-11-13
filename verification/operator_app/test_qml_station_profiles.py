@@ -111,6 +111,6 @@ def test_qml_bridge_schedules_read_only_reconnect_after_unexpected_loss(
         assert bridge._reconnect_attempt == 0
         assert bridge._next_reconnect_at == 105.0
         assert bridge.model.stale is True
-        assert "устаревшими" in bridge.freshnessText.lower()
+        assert bridge.connectionState == "СВЯЗЬ НАРУШЕНА · ДАННЫЕ УСТАРЕЛИ"
     finally:
         bridge.shutdown()
