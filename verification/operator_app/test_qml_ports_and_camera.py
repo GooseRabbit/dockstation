@@ -57,6 +57,7 @@ def test_qml_uses_port_placeholders_and_a_16_by_9_fullscreen_camera_view():
         assert local_field is not None and local_field.property("placeholderText") == "18080"
         assert ssh_field.property("verticalAlignment") == Qt.AlignVCenter
         assert local_field.property("verticalAlignment") == Qt.AlignVCenter
+        assert root.findChild(QObject, "stations.local-profile-list") is not None
 
         root.setProperty("currentTab", 5)
         app.processEvents()
