@@ -134,5 +134,8 @@ def test_qml_bridge_schedules_read_only_reconnect_after_unexpected_loss(
         assert snapshot["source"] == "LINUX_HOST"
         assert "восстановлена" in message
         assert manager.reconnect_timeout == 5.0
+
+        bridge.disconnectFromStation()
+        assert bridge.reconnecting is False
     finally:
         bridge.shutdown()
