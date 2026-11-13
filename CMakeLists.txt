@@ -126,6 +126,15 @@ if(BUILD_TESTING)
     dockstation_apply_compile_policy(test_runtime_config_file)
     add_test(NAME runtime_config_file COMMAND test_runtime_config_file)
 
+    add_executable(test_controller_protocol
+        verification/repka_gateway/test_controller_protocol.cpp
+    )
+    target_link_libraries(test_controller_protocol
+        PRIVATE dockstation_linux_runtime
+    )
+    dockstation_apply_compile_policy(test_controller_protocol)
+    add_test(NAME controller_protocol COMMAND test_controller_protocol)
+
     if(DOCKSTATION_ENABLE_SANITIZERS)
         if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
             foreach(target_name
@@ -138,7 +147,8 @@ if(BUILD_TESTING)
                     test_logger
                     test_runtime_config
                     test_command_line
-                    test_runtime_config_file)
+                    test_runtime_config_file
+                    test_controller_protocol)
                 target_compile_options(${target_name} PRIVATE
                     -fsanitize=address,undefined
                     -fno-omit-frame-pointer
@@ -169,6 +179,9 @@ if(BUILD_TESTING)
                 -fsanitize=address,undefined
             )
             target_link_options(test_runtime_config_file PRIVATE
+                -fsanitize=address,undefined
+            )
+            target_link_options(test_controller_protocol PRIVATE
                 -fsanitize=address,undefined
             )
         else()
