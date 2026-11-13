@@ -353,8 +353,8 @@ class QmlOperatorBridge(QObject):
         return section if isinstance(section, dict) else None
 
     def _profile_with_port_drafts(self) -> ConnectionProfile:
-        ssh_port = self._parse_int(self._ssh_port_text, 22) if self._ssh_port_text.strip() else 22
-        local_port = self._parse_int(self._local_port_text, 18080) if self._local_port_text.strip() else 18080
+        ssh_port = self._parse_int(self._ssh_port_text, -1) if self._ssh_port_text.strip() else 22
+        local_port = self._parse_int(self._local_port_text, -1) if self._local_port_text.strip() else 18080
         return self._replace_profile(ssh_port=ssh_port, local_port=local_port)
 
     def _replace_profile(self, **changes) -> ConnectionProfile:
@@ -375,7 +375,7 @@ class QmlOperatorBridge(QObject):
         try:
             return int(value.strip())
         except (AttributeError, ValueError):
-            return -1
+            return fallback
 
     @staticmethod
     def _format_uptime(seconds: object) -> str:
