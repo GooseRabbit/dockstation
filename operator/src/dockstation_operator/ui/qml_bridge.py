@@ -613,8 +613,11 @@ class QmlOperatorBridge(QObject):
             except Exception as exc:
                 unexpected_loss = (
                     not self._reconnect_pending
-                    and self.model.connection_state == "CONNECTED"
                     and self.connection_manager.profile is not None
+                    and (
+                        self.model.connection_state == "CONNECTED"
+                        or self.connection_manager.get_connection_status() in {"CONNECTED", "DEGRADED"}
+                    )
                 )
                 self.connection_manager.handle_connection_loss()
                 if unexpected_loss:
