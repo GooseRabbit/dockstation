@@ -1,4 +1,5 @@
 import QtQuick
+import QtQml.Models
 import QtQuick.Controls
 import QtQuick.Window
 import QtQuick.Layouts
@@ -39,6 +40,109 @@ ApplicationWindow {
 
     function sectionTitle(text) {
         return text
+    }
+
+    readonly property int stationProfileRowHeight: 46
+    readonly property int stationProfileRowSpacing: 3
+    property bool stationProfileDragActive: false
+    property int stationProfileDragIndex: -1
+    property real stationProfileDragPointerY: 0
+    property var stationProfileDragData: ({})
+
+    function syncStationProfileDisplay() {
+        if (stationProfileDragActive)
+            return
+
+        var previousContentY = stationProfileList.contentY
+        stationProfileDisplayModel.clear()
+        var profiles = bridge.visibleStationProfiles
+        for (var i = 0; i < profiles.length; ++i) {
+            var profile = profiles[i]
+            stationProfileDisplayModel.append({
+                profile_id: profile.profile_id,
+                alias: profile.alias,
+                selected: profile.selected,
+                status_label: profile.status_label,
+                status_color: profile.status_color,
+                is_dragged: false
+            })
+        }
+
+        Qt.callLater(function() {
+            if (!stationProfileDragActive) {
+                var maxContentY = Math.max(0, stationProfileList.contentHeight - stationProfileList.height)
+                stationProfileList.contentY = Math.min(previousContentY, maxContentY)
+            }
+        })
+    }
+
+    function beginStationProfileDrag(profileId, pointerY) {
+        if (stationProfileDragActive)
+            return
+
+        var foundIndex = -1
+        for (var i = 0; i < stationProfileDisplayModel.count; ++i) {
+            if (stationProfileDisplayModel.get(i).profile_id === profileId) {
+                foundIndex = i
+                break
+            }
+        }
+        if (foundIndex < 0)
+            return
+
+        var profile = stationProfileDisplayModel.get(foundIndex)
+        stationProfileDragData = {
+            profile_id: profile.profile_id,
+            alias: profile.alias,
+            selected: profile.selected,
+            status_label: profile.status_label,
+            status_color: profile.status_color
+        }
+        stationProfileDragIndex = foundIndex
+        stationProfileDragPointerY = pointerY
+        stationProfileDragActive = true
+        stationProfileDisplayModel.setProperty(foundIndex, "is_dragged", true)
+    }
+
+    function updateStationProfileDrag(pointerY) {
+        if (!stationProfileDragActive || stationProfileDisplayModel.count < 2)
+            return
+
+        stationProfileDragPointerY = pointerY
+        var viewportPoint = stationProfileList.mapFromItem(root, 0, pointerY)
+        var contentY = stationProfileList.contentY + viewportPoint.y
+        var stride = stationProfileRowHeight + stationProfileRowSpacing
+
+        // Move the empty slot only after the pointer crosses a row's midpoint.
+        var targetIndex = Math.floor((contentY - stationProfileRowHeight / 2) / stride)
+        targetIndex = Math.max(0, Math.min(stationProfileDisplayModel.count - 1, targetIndex))
+        if (targetIndex === stationProfileDragIndex)
+            return
+
+        stationProfileDisplayModel.move(stationProfileDragIndex, targetIndex, 1)
+        stationProfileDragIndex = targetIndex
+    }
+
+    function finishStationProfileDrag(commitOrder) {
+        if (!stationProfileDragActive)
+            return true
+
+        var orderedProfileIds = []
+        for (var i = 0; i < stationProfileDisplayModel.count; ++i)
+            orderedProfileIds.push(stationProfileDisplayModel.get(i).profile_id)
+
+        var saved = true
+        if (commitOrder)
+            saved = bridge.reorderStationProfiles(orderedProfileIds)
+
+        if (stationProfileDragIndex >= 0 && stationProfileDragIndex < stationProfileDisplayModel.count)
+            stationProfileDisplayModel.setProperty(stationProfileDragIndex, "is_dragged", false)
+
+        stationProfileDragActive = false
+        stationProfileDragIndex = -1
+        stationProfileDragData = ({})
+        syncStationProfileDisplay()
+        return saved
     }
 
     component Panel: Rectangle {
@@ -231,8 +335,91 @@ ApplicationWindow {
         interval: 5000
         running: true
         repeat: true
+        onTriggered: bridge.poll()
+    }
+
+    ListModel {
+        id: stationProfileDisplayModel
+    }
+
+    Connections {
+        target: bridge
+        function onViewChanged() {
+            root.syncStationProfileDisplay()
+        }
+    }
+
+    Timer {
+        interval: 35
+        repeat: true
+        running: root.stationProfileDragActive && bridge.stationProfilesExpanded
         onTriggered: {
-            bridge.poll()
+            var pointer = stationProfileList.mapFromItem(root, 0, root.stationProfileDragPointerY)
+            if (pointer.y < 26 && stationProfileList.contentY > 0) {
+                stationProfileList.contentY = Math.max(0, stationProfileList.contentY - 8)
+            } else if (pointer.y > stationProfileList.height - 26
+                       && stationProfileList.contentY < stationProfileList.contentHeight - stationProfileList.height) {
+                stationProfileList.contentY = Math.min(
+                    stationProfileList.contentHeight - stationProfileList.height,
+                    stationProfileList.contentY + 8
+                )
+            }
+            root.updateStationProfileDrag(root.stationProfileDragPointerY)
+        }
+    }
+
+    Component.onCompleted: syncStationProfileDisplay()
+
+    Rectangle {
+        objectName: "stations.profile-drag-ghost"
+        visible: root.stationProfileDragActive
+        x: stationProfileList.mapToItem(root, 0, 0).x
+        y: root.stationProfileDragPointerY - height / 2
+        width: Math.max(40, stationProfileList.width - stationProfileList.rightMargin)
+        height: root.stationProfileRowHeight
+        radius: 7
+        color: "#23423F"
+        border.width: 1
+        border.color: root.accent
+        z: 1000
+
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: 10
+            anchors.rightMargin: 10
+            spacing: 6
+            Text {
+                text: root.stationProfileDragData.alias || ""
+                color: root.primaryText
+                font.pixelSize: 11
+                elide: Text.ElideRight
+                Layout.fillWidth: true
+            }
+            Rectangle {
+                width: 8
+                height: 8
+                radius: 4
+                color: root.stationProfileDragData.status_color === "success" ? root.success
+                     : root.stationProfileDragData.status_color === "danger" ? root.danger : root.warning
+            }
+            Text {
+                text: root.stationProfileDragData.status_label || ""
+                color: root.stationProfileDragData.status_color === "success" ? root.success
+                     : root.stationProfileDragData.status_color === "danger" ? root.danger : root.warning
+                font.pixelSize: 9
+            }
+            Column {
+                spacing: 3
+                Repeater {
+                    model: 3
+                    delegate: Rectangle {
+                        width: 13
+                        height: 2
+                        radius: 1
+                        color: root.accent
+                    }
+                }
+            }
         }
     }
 
@@ -308,144 +495,210 @@ ApplicationWindow {
                     anchors.leftMargin: 12
                     anchors.rightMargin: 12
                     spacing: 6
-                    RowLayout {
+                    Text {
                         Layout.fillWidth: true
-                        spacing: 4
-                        Text {
-                            Layout.fillWidth: true
-                            text: "ЛОКАЛЬНЫЕ ПРОФИЛИ"
-                            color: root.muted
-                            font.pixelSize: 10
-                            font.bold: true
-                            horizontalAlignment: Text.AlignHCenter
-                        }
-                        Button {
-                            objectName: "stations.expand-list-button"
-                            visible: bridge.hasMoreStationProfiles
-                            Layout.preferredWidth: 24
-                            Layout.preferredHeight: 22
-                            text: bridge.stationProfilesExpanded ? "⌃" : "⌄"
-                            ToolTip.visible: hovered
-                            ToolTip.text: bridge.stationProfilesExpanded
-                                          ? "Свернуть список станций"
-                                          : "Показать все станции"
-                            onClicked: bridge.toggleStationProfilesExpanded()
-                            background: Rectangle {
-                                radius: 5
-                                color: parent.hovered ? root.elevated : "transparent"
-                                border.color: parent.hovered ? root.borderColor : "transparent"
-                            }
-                            contentItem: Text {
-                                text: parent.text
-                                color: root.secondaryText
-                                font.pixelSize: 16
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                            }
-                        }
+                        text: "ЛОКАЛЬНЫЕ ПРОФИЛИ"
+                        color: root.muted
+                        font.pixelSize: 10
+                        font.bold: true
+                        horizontalAlignment: Text.AlignHCenter
                     }
-                    ScrollView {
+
+                    ListView {
+                        id: stationProfileList
                         objectName: "stations.local-profile-list"
                         Layout.fillWidth: true
                         Layout.preferredHeight: Math.min(
-                            bridge.stationProfilesExpanded ? 300 : 150,
-                            stationProfileItems.implicitHeight
+                            bridge.stationProfilesExpanded ? 300 : 144,
+                            contentHeight
                         )
+                        Layout.minimumHeight: 0
                         clip: true
-                        ScrollBar.vertical.policy: ScrollBar.AsNeeded
-                        ColumnLayout {
-                            id: stationProfileItems
-                            width: parent.width
-                            spacing: 3
-                            Repeater {
-                                model: bridge.visibleStationProfiles
-                                delegate: RowLayout {
-                                    required property var modelData
-                                    Layout.fillWidth: true
-                                    Layout.preferredHeight: 46
-                                    spacing: 2
-                                    Button {
+                        spacing: root.stationProfileRowSpacing
+                        rightMargin: 5
+                        contentWidth: width
+                        boundsBehavior: Flickable.StopAtBounds
+                        flickableDirection: Flickable.VerticalFlick
+                        interactive: contentHeight > height && !root.stationProfileDragActive
+                        model: stationProfileDisplayModel
+                        moveDisplaced: Transition {
+                            NumberAnimation {
+                                properties: "y"
+                                duration: 110
+                                easing.type: Easing.OutCubic
+                            }
+                        }
+
+                        delegate: Item {
+                            id: stationProfileDelegate
+                            required property string profile_id
+                            required property string alias
+                            required property bool selected
+                            required property string status_label
+                            required property string status_color
+                            required property bool is_dragged
+
+                            objectName: "stations.profile-row." + profile_id
+                            width: stationProfileList.width - stationProfileList.rightMargin
+                            height: root.stationProfileRowHeight
+
+                            Rectangle {
+                                objectName: "stations.profile-placeholder." + stationProfileDelegate.profile_id
+                                anchors.fill: parent
+                                visible: stationProfileDelegate.is_dragged
+                                radius: 7
+                                color: "#1B2A34"
+                                border.width: 1
+                                border.color: root.accent
+                                opacity: 0.58
+                            }
+
+                            Button {
+                                objectName: "stations.profile-select-button." + stationProfileDelegate.profile_id
+                                anchors.left: parent.left
+                                anchors.right: gripArea.left
+                                anchors.rightMargin: 2
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                visible: !stationProfileDelegate.is_dragged
+                                onClicked: bridge.selectStationProfile(stationProfileDelegate.profile_id)
+                                background: Rectangle {
+                                    radius: 7
+                                    color: stationProfileDelegate.selected ? "#23423F" : "transparent"
+                                    border.color: stationProfileDelegate.selected ? root.accent : "transparent"
+                                }
+                                contentItem: RowLayout {
+                                    spacing: 6
+                                    Text {
+                                        text: stationProfileDelegate.alias
+                                        color: stationProfileDelegate.selected ? root.primaryText : root.secondaryText
+                                        font.pixelSize: 11
+                                        elide: Text.ElideRight
                                         Layout.fillWidth: true
-                                        Layout.fillHeight: true
-                                        onClicked: bridge.selectStationProfile(modelData.profile_id)
-                                        background: Rectangle {
-                                            radius: 7
-                                            color: modelData.selected ? "#23423F" : "transparent"
-                                            border.color: modelData.selected ? root.accent : "transparent"
-                                        }
-                                        contentItem: RowLayout {
-                                            spacing: 6
-                                            Text {
-                                                text: modelData.alias
-                                                color: modelData.selected ? root.primaryText : root.secondaryText
-                                                font.pixelSize: 11
-                                                elide: Text.ElideRight
-                                                Layout.fillWidth: true
-                                            }
-                                            Rectangle {
-                                                width: 8
-                                                height: 8
-                                                radius: 4
-                                                color: modelData.status_color === "success" ? root.success
-                                                     : modelData.status_color === "danger" ? root.danger : root.warning
-                                            }
-                                            Text {
-                                                text: modelData.status_label
-                                                color: modelData.status_color === "success" ? root.success
-                                                     : modelData.status_color === "danger" ? root.danger : root.warning
-                                                font.pixelSize: 9
-                                            }
-                                        }
                                     }
-                                    ColumnLayout {
-                                        Layout.preferredWidth: 22
-                                        Layout.fillHeight: true
-                                        spacing: 0
-                                        Button {
-                                            Layout.fillWidth: true
-                                            Layout.fillHeight: true
-                                            text: "↑"
-                                            font.pixelSize: 10
-                                            enabled: modelData.can_move_up
-                                            onClicked: bridge.moveStationProfile(modelData.profile_id, -1)
-                                            background: Rectangle {
-                                                radius: 4
-                                                color: parent.enabled ? root.elevated : "transparent"
-                                                border.color: root.borderColor
-                                            }
-                                            contentItem: Text {
-                                                text: parent.text
-                                                color: parent.enabled ? root.secondaryText : root.muted
-                                                font.pixelSize: 10
-                                                horizontalAlignment: Text.AlignHCenter
-                                                verticalAlignment: Text.AlignVCenter
-                                            }
-                                        }
-                                        Button {
-                                            Layout.fillWidth: true
-                                            Layout.fillHeight: true
-                                            text: "↓"
-                                            font.pixelSize: 10
-                                            enabled: modelData.can_move_down
-                                            onClicked: bridge.moveStationProfile(modelData.profile_id, 1)
-                                            background: Rectangle {
-                                                radius: 4
-                                                color: parent.enabled ? root.elevated : "transparent"
-                                                border.color: root.borderColor
-                                            }
-                                            contentItem: Text {
-                                                text: parent.text
-                                                color: parent.enabled ? root.secondaryText : root.muted
-                                                font.pixelSize: 10
-                                                horizontalAlignment: Text.AlignHCenter
-                                                verticalAlignment: Text.AlignVCenter
-                                            }
+                                    Rectangle {
+                                        width: 8
+                                        height: 8
+                                        radius: 4
+                                        color: stationProfileDelegate.status_color === "success" ? root.success
+                                             : stationProfileDelegate.status_color === "danger" ? root.danger : root.warning
+                                    }
+                                    Text {
+                                        text: stationProfileDelegate.status_label
+                                        color: stationProfileDelegate.status_color === "success" ? root.success
+                                             : stationProfileDelegate.status_color === "danger" ? root.danger : root.warning
+                                        font.pixelSize: 9
+                                    }
+                                }
+                            }
+
+                            Item {
+                                id: gripArea
+                                anchors.right: parent.right
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                width: 24
+                                Column {
+                                    anchors.centerIn: parent
+                                    spacing: 3
+                                    opacity: stationProfileDelegate.is_dragged ? 0 : 1
+                                    Repeater {
+                                        model: 3
+                                        delegate: Rectangle {
+                                            width: 13
+                                            height: 2
+                                            radius: 1
+                                            color: gripMouse.pressed || gripMouse.containsMouse
+                                                   ? root.accent : root.muted
                                         }
                                     }
                                 }
                             }
+
+                            MouseArea {
+                                id: gripMouse
+                                objectName: "stations.profile-drag-handle." + stationProfileDelegate.profile_id
+                                anchors.fill: gripArea
+                                z: 3
+                                acceptedButtons: Qt.LeftButton
+                                preventStealing: true
+                                hoverEnabled: true
+                                cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+
+                                onPressed: function(mouse) {
+                                    var point = mapToItem(root, mouse.x, mouse.y)
+                                    root.beginStationProfileDrag(stationProfileDelegate.profile_id, point.y)
+                                }
+                                onPositionChanged: function(mouse) {
+                                    if (pressed) {
+                                        var point = mapToItem(root, mouse.x, mouse.y)
+                                        root.updateStationProfileDrag(point.y)
+                                    }
+                                }
+                                onReleased: root.finishStationProfileDrag(true)
+                                onCanceled: root.finishStationProfileDrag(false)
+                            }
+                        }
+
+                        ScrollBar.vertical: ScrollBar {
+                            id: stationProfileVerticalScrollBar
+                            objectName: "stations.profile-vertical-scrollbar"
+                            width: 4
+                            policy: stationProfileList.contentHeight > stationProfileList.height
+                                    ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
+                            z: 20
+                            background: Rectangle {
+                                radius: 2
+                                color: "transparent"
+                            }
+                            contentItem: Rectangle {
+                                implicitWidth: 3
+                                radius: 2
+                                color: stationProfileVerticalScrollBar.pressed ? root.accent
+                                     : stationProfileVerticalScrollBar.hovered ? "#718693" : "#52616D"
+                            }
+                        }
+
+                        ScrollBar.horizontal: ScrollBar {
+                            objectName: "stations.profile-horizontal-scrollbar"
+                            policy: ScrollBar.AlwaysOff
+                            width: 0
+                            height: 0
                         }
                     }
+
+                    Button {
+                        objectName: "stations.expand-list-button"
+                        visible: bridge.hasMoreStationProfiles
+                        enabled: !root.stationProfileDragActive
+                        Layout.alignment: Qt.AlignHCenter
+                        Layout.preferredWidth: 28
+                        Layout.preferredHeight: 20
+                        text: "›"
+                        ToolTip.visible: hovered
+                        ToolTip.text: bridge.stationProfilesExpanded
+                                      ? "Свернуть список станций"
+                                      : "Показать все станции"
+                        onClicked: {
+                            bridge.toggleStationProfilesExpanded()
+                            if (!bridge.stationProfilesExpanded)
+                                stationProfileList.positionViewAtBeginning()
+                        }
+                        background: Rectangle {
+                            radius: 5
+                            color: parent.hovered ? root.elevated : "transparent"
+                            border.color: parent.hovered ? root.borderColor : "transparent"
+                        }
+                        contentItem: Text {
+                            text: "›"
+                            rotation: bridge.stationProfilesExpanded ? -90 : 90
+                            color: root.secondaryText
+                            font.pixelSize: 20
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                    }
+
                     ActionButton {
                         Layout.fillWidth: true
                         text: "+ Добавить профиль"

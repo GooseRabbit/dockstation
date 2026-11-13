@@ -564,6 +564,55 @@ class QmlOperatorBridge(QObject):
             return
         self.viewChanged.emit()
 
+    @Slot("QVariantList", result=bool)
+    def reorderStationProfiles(self, profile_ids: list[str]) -> bool:
+        """Persist a drag-reordered visible profile sequence without changing sessions."""
+        if self._closing or not isinstance(profile_ids, (list, tuple)):
+            return False
+
+        requested_ids = list(profile_ids)
+        if any(not isinstance(profile_id, str) or not profile_id for profile_id in requested_ids):
+            return False
+
+        current_profiles = self._registry.profiles
+        visible_profiles = (
+            current_profiles
+            if self._station_profiles_expanded
+            else current_profiles[:3]
+        )
+        expected_visible_ids = [item.profile_id for item in visible_profiles]
+        if (
+            len(requested_ids) != len(expected_visible_ids)
+            or len(set(requested_ids)) != len(requested_ids)
+            or set(requested_ids) != set(expected_visible_ids)
+        ):
+            self._append_event("Изменение порядка станций отменено: список профилей изменился.")
+            return False
+
+        hidden_ids = (
+            []
+            if self._station_profiles_expanded
+            else [item.profile_id for item in current_profiles[3:]]
+        )
+        ordered_ids = requested_ids + hidden_ids
+        profiles_by_id = {item.profile_id: item for item in current_profiles}
+        updated = StationRegistry(
+            profiles=tuple(profiles_by_id[profile_id] for profile_id in ordered_ids),
+            selected_profile_id=self._registry.selected_profile_id,
+        )
+        if updated == self._registry:
+            return True
+
+        try:
+            save_registry(updated)
+        except (OSError, ValueError) as exc:
+            self._append_event(f"Не удалось сохранить новый порядок станций: {exc}")
+            return False
+
+        self._registry = updated
+        self.viewChanged.emit()
+        return True
+
     @Slot()
     def removeSelectedStation(self) -> None:
         if self._closing or self._selected_profile_id is None:

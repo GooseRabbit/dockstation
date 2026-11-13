@@ -1,7 +1,16 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Basic")
+
+from PySide6.QtCore import QObject, QUrl
+from PySide6.QtGui import QGuiApplication
+from PySide6.QtQml import QQmlApplicationEngine
+
+import dockstation_operator
 from dockstation_operator.config.settings import ConnectionProfile
 from dockstation_operator.config import station_registry
 from dockstation_operator.ui import qml_bridge
@@ -338,6 +347,107 @@ def test_station_list_collapses_after_three_profiles_and_can_be_reordered(
     finally:
         bridge.shutdown()
 
+
+
+
+def test_qml_profile_sidebar_has_compact_drag_handles_and_overlay_scrolling(
+    tmp_path: Path, monkeypatch
+):
+    registry_file = tmp_path / "stations.json"
+    monkeypatch.setattr(station_registry, "station_registry_path", lambda: registry_file)
+    monkeypatch.setattr(qml_bridge, "station_registry_path", lambda: registry_file)
+    monkeypatch.setattr(qml_bridge, "load_profile", lambda: ConnectionProfile())
+
+    bridge = qml_bridge.QmlOperatorBridge(connection_manager=InertConnectionManager())
+    for alias in (
+        "Дом", "Склад", "Антенна", "Мастерская",
+        "Резерв", "Сервисная", "Запасная", "Испытательная",
+    ):
+        bridge.addStationProfile(alias)
+
+    app = QGuiApplication.instance() or QGuiApplication([])
+    engine = QQmlApplicationEngine()
+    engine.rootContext().setContextProperty("bridge", bridge)
+    qml_path = Path(dockstation_operator.__file__).parent / "ui" / "qml" / "Main.qml"
+    engine.load(QUrl.fromLocalFile(str(qml_path)))
+
+    try:
+        app.processEvents()
+        roots = engine.rootObjects()
+        assert roots
+        root = roots[0]
+        profile_list = root.findChild(QObject, "stations.local-profile-list")
+        expand_button = root.findChild(QObject, "stations.expand-list-button")
+        vertical_scrollbar = root.findChild(QObject, "stations.profile-vertical-scrollbar")
+        horizontal_scrollbar = root.findChild(QObject, "stations.profile-horizontal-scrollbar")
+        assert profile_list is not None
+        assert expand_button is not None and expand_button.property("visible") is True
+        assert vertical_scrollbar is not None
+        assert horizontal_scrollbar is not None
+        first_profile_id = bridge.stationProfiles[0]["profile_id"]
+        drag_handle = root.findChild(QObject, "stations.profile-drag-handle." + first_profile_id)
+        assert drag_handle is not None
+        assert profile_list.property("count") == 3
+        collapsed_width = profile_list.property("width")
+
+        bridge.toggleStationProfilesExpanded()
+        app.processEvents()
+        assert profile_list.property("count") == 8
+        assert profile_list.property("width") == collapsed_width
+        assert profile_list.property("contentHeight") > profile_list.property("height")
+        assert horizontal_scrollbar.property("visible") is False
+        row = root.findChild(QObject, "stations.profile-row." + first_profile_id)
+        assert row is not None
+        assert row.property("width") == collapsed_width - 5
+        qml_source = qml_path.read_text(encoding="utf-8")
+        assert "stationProfileDisplayModel.move(stationProfileDragIndex, targetIndex, 1)" in qml_source
+        assert "stationProfileDragPointerY" in qml_source
+    finally:
+        bridge.shutdown()
+        for root_object in engine.rootObjects():
+            root_object.close()
+        engine.deleteLater()
+        app.processEvents()
+
+
+def test_qml_bridge_reorders_visible_profiles_and_preserves_hidden_profiles(
+    tmp_path: Path, monkeypatch
+):
+    registry_file = tmp_path / "stations.json"
+    monkeypatch.setattr(station_registry, "station_registry_path", lambda: registry_file)
+    monkeypatch.setattr(qml_bridge, "station_registry_path", lambda: registry_file)
+    monkeypatch.setattr(qml_bridge, "load_profile", lambda: ConnectionProfile())
+
+    bridge = qml_bridge.QmlOperatorBridge(connection_manager=InertConnectionManager())
+    try:
+        for alias in ("Дом", "Склад", "Антенна", "Мастерская", "Резерв"):
+            bridge.addStationProfile(alias)
+
+        original = [item["profile_id"] for item in bridge.stationProfiles]
+        selected_id = bridge.selectedProfileId
+        collapsed_order = [original[2], original[0], original[1]]
+
+        assert bridge.stationProfilesExpanded is False
+        assert bridge.reorderStationProfiles(collapsed_order) is True
+        assert [item["profile_id"] for item in bridge.stationProfiles] == [
+            original[2], original[0], original[1], original[3], original[4]
+        ]
+        assert bridge.selectedProfileId == selected_id
+        assert [item.profile_id for item in station_registry.load_registry().profiles] == [
+            original[2], original[0], original[1], original[3], original[4]
+        ]
+
+        bridge.toggleStationProfilesExpanded()
+        expanded_order = [original[4], original[3], original[2], original[0], original[1]]
+        assert bridge.reorderStationProfiles(expanded_order) is True
+        assert [item["profile_id"] for item in bridge.stationProfiles] == expanded_order
+        assert bridge.selectedProfileId == selected_id
+
+        before_invalid_change = [item["profile_id"] for item in bridge.stationProfiles]
+        assert bridge.reorderStationProfiles([original[4], original[4]]) is False
+        assert [item["profile_id"] for item in bridge.stationProfiles] == before_invalid_change
+    finally:
+        bridge.shutdown()
 
 
 def test_connecting_first_unsaved_profile_uses_its_new_session_manager(
