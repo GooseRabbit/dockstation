@@ -56,3 +56,24 @@ def test_qml_bridge_manages_multiple_local_profiles_and_personal_aliases(
         assert bridge.selectedProfileId == second_id
     finally:
         bridge.shutdown()
+
+
+def test_existing_empty_registry_does_not_resurrect_legacy_single_profile(
+    tmp_path: Path, monkeypatch
+):
+    registry_file = tmp_path / "stations.json"
+    station_registry.save_registry(station_registry.StationRegistry(), registry_file)
+    monkeypatch.setattr(station_registry, "station_registry_path", lambda: registry_file)
+    monkeypatch.setattr(qml_bridge, "station_registry_path", lambda: registry_file)
+    monkeypatch.setattr(
+        qml_bridge,
+        "load_profile",
+        lambda: ConnectionProfile(host="192.0.2.99", username="operator"),
+    )
+
+    bridge = qml_bridge.QmlOperatorBridge(connection_manager=InertConnectionManager())
+    try:
+        assert bridge.stationProfiles == []
+        assert bridge.selectedProfileId == ""
+    finally:
+        bridge.shutdown()
