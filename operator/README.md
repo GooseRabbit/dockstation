@@ -75,8 +75,10 @@ python -m pip install -e ".[qml]"
 dockstation-operator-qml
 ```
 
-`dockstation-operator` устанавливается как Windows GUI entry point и открывает
-окно без отдельного консольного окна.
+`dockstation-operator-qml` — запускаемый выше актуальный QML-вариант. Он
+устанавливается как Windows GUI entry point и открывает окно без отдельного
+консольного окна. Команда `dockstation-operator` сохраняет прежний Tkinter
+интерфейс для обратной совместимости.
 
 В приложении укажи:
 
