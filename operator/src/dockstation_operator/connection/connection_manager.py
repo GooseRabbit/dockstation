@@ -90,8 +90,8 @@ class ConnectionManager:
 
     def handle_connection_loss(self) -> None:
         self._connected = False
-        # A lost transport is not silently restarted; close the owned tunnel
-        # and require an explicit operator reconnect.
+        # Close the owned tunnel. Recovery policy belongs to the Operator
+        # bridge; this manager never retries or replays station operations itself.
         self.tunnel.stop()
 
     def disconnect_from_station(self) -> None:
