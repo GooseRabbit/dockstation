@@ -10,6 +10,7 @@ from PySide6.QtCore import QObject, Property, Signal, Slot
 from ..config.settings import (
     ConnectionProfile,
     load_profile,
+    save_profile,
     validate_profile,
 )
 from ..config.station_registry import (
@@ -287,7 +288,10 @@ class QmlOperatorBridge(QObject):
         except KeyError:
             self._append_event("Локальный профиль не найден.")
             return
+        previous_id = self._selected_profile_id
         self.connection_manager.disconnect_from_station()
+        if previous_id is not None and self._station_status.get(previous_id) == "CONNECTED":
+            self._station_status[previous_id] = "DISCONNECTED"
         self._registry = updated
         self._selected_profile_id = profile_id
         selected = next(item for item in self._registry.profiles if item.profile_id == profile_id)
