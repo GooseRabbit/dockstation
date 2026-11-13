@@ -465,6 +465,8 @@ class QmlOperatorBridge(QObject):
         if self._busy or self._closing:
             return
         if not self.connection_manager.is_connected:
+            if self._selected_profile_id is not None:
+                self._station_status[self._selected_profile_id] = "UNKNOWN"
             self.model.mark_diagnostics_stale("Нет активного SSH/API-подключения.")
             self._append_event("Обновление пропущено: нет активного подключения.")
             return
