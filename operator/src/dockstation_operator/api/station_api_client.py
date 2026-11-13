@@ -279,28 +279,29 @@ class StationApiClient:
             if maximum is not None and value > maximum:
                 raise ApiClientError(f"Поле {field} выходит за допустимый диапазон.")
 
-        for key in ("total_bytes", "available_bytes", "used_bytes"):
-            validate_optional_number(memory.get(key), f"platform.resources.memory.{key}", integer=True)
-        validate_optional_number(memory.get("used_percent"), "platform.resources.memory.used_percent", maximum=100)
-        for key in ("total_bytes", "free_bytes", "available_bytes", "used_bytes"):
-            validate_optional_number(storage.get(key), f"platform.resources.storage.{key}", integer=True)
-        validate_optional_number(storage.get("used_percent"), "platform.resources.storage.used_percent", maximum=100)
-        _require_string(storage.get("path"), "platform.resources.storage.path")
-        validate_optional_number(cpu_temperature.get("celsius"), "platform.resources.cpu_temperature.celsius")
-        _require_string(cpu_temperature.get("sensor_type"), "platform.resources.cpu_temperature.sensor_type", nullable=True)
-        for key in ("one_minute", "five_minutes", "fifteen_minutes"):
-            validate_optional_number(cpu_load.get(key), f"platform.resources.cpu_load.{key}")
-        for key in ("runnable_tasks", "total_tasks"):
-            validate_optional_number(cpu_load.get(key), f"platform.resources.cpu_load.{key}", integer=True)
+        if resources:
+            for key in ("total_bytes", "available_bytes", "used_bytes"):
+                validate_optional_number(memory.get(key), f"platform.resources.memory.{key}", integer=True)
+            validate_optional_number(memory.get("used_percent"), "platform.resources.memory.used_percent", maximum=100)
+            for key in ("total_bytes", "free_bytes", "available_bytes", "used_bytes"):
+                validate_optional_number(storage.get(key), f"platform.resources.storage.{key}", integer=True)
+            validate_optional_number(storage.get("used_percent"), "platform.resources.storage.used_percent", maximum=100)
+            _require_string(storage.get("path"), "platform.resources.storage.path")
+            validate_optional_number(cpu_temperature.get("celsius"), "platform.resources.cpu_temperature.celsius")
+            _require_string(cpu_temperature.get("sensor_type"), "platform.resources.cpu_temperature.sensor_type", nullable=True)
+            for key in ("one_minute", "five_minutes", "fifteen_minutes"):
+                validate_optional_number(cpu_load.get(key), f"platform.resources.cpu_load.{key}")
+            for key in ("runnable_tasks", "total_tasks"):
+                validate_optional_number(cpu_load.get(key), f"platform.resources.cpu_load.{key}", integer=True)
 
-        if memory.get("status") == "PASS" and any(memory.get(key) is None for key in ("total_bytes", "available_bytes", "used_bytes", "used_percent")):
-            raise ApiClientError("Успешная диагностика RAM должна содержать все значения.")
-        if storage.get("status") == "PASS" and any(storage.get(key) is None for key in ("total_bytes", "free_bytes", "available_bytes", "used_bytes", "used_percent")):
-            raise ApiClientError("Успешная диагностика файловой системы должна содержать все значения.")
-        if cpu_temperature.get("status") == "PASS" and (cpu_temperature.get("celsius") is None or not cpu_temperature.get("sensor_type")):
-            raise ApiClientError("Успешная диагностика температуры CPU должна содержать значение и тип датчика.")
-        if cpu_load.get("status") == "PASS" and any(cpu_load.get(key) is None for key in ("one_minute", "five_minutes", "fifteen_minutes", "runnable_tasks", "total_tasks")):
-            raise ApiClientError("Успешная диагностика load average должна содержать все значения.")
+            if memory.get("status") == "PASS" and any(memory.get(key) is None for key in ("total_bytes", "available_bytes", "used_bytes", "used_percent")):
+                raise ApiClientError("Успешная диагностика RAM должна содержать все значения.")
+            if storage.get("status") == "PASS" and any(storage.get(key) is None for key in ("total_bytes", "free_bytes", "available_bytes", "used_bytes", "used_percent")):
+                raise ApiClientError("Успешная диагностика файловой системы должна содержать все значения.")
+            if cpu_temperature.get("status") == "PASS" and (cpu_temperature.get("celsius") is None or not cpu_temperature.get("sensor_type")):
+                raise ApiClientError("Успешная диагностика температуры CPU должна содержать значение и тип датчика.")
+            if cpu_load.get("status") == "PASS" and any(cpu_load.get(key) is None for key in ("one_minute", "five_minutes", "fifteen_minutes", "runnable_tasks", "total_tasks")):
+                raise ApiClientError("Успешная диагностика load average должна содержать все значения.")
 
         network = _require_object(payload.get("network"), "network")
         interfaces = _require_object(network.get("interfaces"), "network.interfaces")
