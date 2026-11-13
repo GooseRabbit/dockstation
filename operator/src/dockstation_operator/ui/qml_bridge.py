@@ -445,6 +445,8 @@ class QmlOperatorBridge(QObject):
             return
         if self.connection_manager.get_connection_status() == "DEGRADED" and self.model.connection_state == "CONNECTED":
             self.connection_manager.handle_connection_loss()
+            if self._selected_profile_id is not None:
+                self._station_status[self._selected_profile_id] = "UNKNOWN"
             self.model.mark_diagnostics_stale("SSH-туннель неожиданно завершился.")
             self._append_event("SSH-туннель завершился; диагностические данные помечены как устаревшие.")
             return
@@ -509,8 +511,8 @@ class QmlOperatorBridge(QObject):
         if self._selected_profile_id is not None:
             self._station_status[self._selected_profile_id] = (
                 "CONNECTED" if success and isinstance(payload, dict)
-                else "DISCONNECTED" if not success or payload is None
-                else self._station_status.get(self._selected_profile_id, "UNKNOWN")
+                else "DISCONNECTED" if success and payload is None
+                else "UNKNOWN"
             )
         if success:
             if isinstance(payload, dict):
