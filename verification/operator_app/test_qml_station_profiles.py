@@ -162,3 +162,33 @@ def test_qml_bridge_uses_bounded_reconnect_backoff(tmp_path: Path, monkeypatch):
             assert bridge.reconnecting is True
     finally:
         bridge.shutdown()
+
+
+
+def test_saving_profile_while_disconnected_updates_automatic_reconnect_target(
+    tmp_path: Path, monkeypatch
+):
+    registry_file = tmp_path / "stations.json"
+    monkeypatch.setattr(station_registry, "station_registry_path", lambda: registry_file)
+    monkeypatch.setattr(qml_bridge, "station_registry_path", lambda: registry_file)
+    monkeypatch.setattr(qml_bridge, "load_profile", lambda: ConnectionProfile())
+
+    class DisconnectedConnectionManager(InertConnectionManager):
+        def __init__(self):
+            self.profile = ConnectionProfile(
+                host="192.0.2.10", username="operator"
+            )
+
+    manager = DisconnectedConnectionManager()
+    bridge = qml_bridge.QmlOperatorBridge(connection_manager=manager)
+    try:
+        bridge._reconnect_pending = True
+        bridge.setHost("192.0.2.20")
+        bridge.setUsername("operator")
+        assert bridge.saveProfile() is True
+
+        assert bridge.reconnecting is True
+        assert manager.profile == bridge._profile
+        assert manager.profile.host == "192.0.2.20"
+    finally:
+        bridge.shutdown()
