@@ -32,7 +32,7 @@ def test_qml_bridge_manages_multiple_local_profiles_and_personal_aliases(
         bridge.setHost("192.0.2.10")
         bridge.setUsername("operator")
         bridge.setStationAlias("Дом · основная")
-        bridge.saveProfile()
+        assert bridge.saveProfile() is True
 
         bridge.addStationProfile("Склад")
         second_id = bridge.selectedProfileId
