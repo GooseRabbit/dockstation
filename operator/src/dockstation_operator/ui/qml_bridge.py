@@ -256,8 +256,8 @@ class QmlOperatorBridge(QObject):
             previous_id = self._selected_profile_id
             if self.connection_manager.is_connected:
                 self.connection_manager.disconnect_from_station()
-                if previous_id is not None:
-                    self._station_status[previous_id] = "DISCONNECTED"
+            if previous_id is not None and self._station_status.get(previous_id) == "CONNECTED":
+                self._station_status[previous_id] = "DISCONNECTED"
             self._registry = updated_registry
             self._selected_profile_id = self._registry.selected_profile_id
             self._profile = new_profile
