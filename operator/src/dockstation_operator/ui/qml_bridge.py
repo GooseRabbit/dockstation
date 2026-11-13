@@ -44,10 +44,12 @@ class QmlOperatorBridge(QObject):
         # Migrate the old single-profile settings exactly once. An existing but
         # empty or damaged registry must not resurrect a profile the user removed.
         if not registry_path.exists() and legacy_profile.host and legacy_profile.username:
-            self._registry = add_profile(self._registry, legacy_profile.host, legacy_profile)
             try:
-                save_registry(self._registry, registry_path)
+                migrated_registry = add_profile(self._registry, legacy_profile.host, legacy_profile)
+                save_registry(migrated_registry, registry_path)
+                self._registry = migrated_registry
             except (OSError, ValueError):
+                # Keep the GUI available; the user can correct the profile manually.
                 pass
         self._selected_profile_id = self._registry.selected_profile_id
         selected = next(
