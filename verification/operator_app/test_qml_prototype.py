@@ -29,9 +29,9 @@ def test_qml_prototype_loads_with_the_six_approved_tabs():
         roots = engine.rootObjects()
         assert roots, "QML engine did not create the application window."
         navigation = roots[0].property("navigation")
-    if hasattr(navigation, "toVariant"):
-        navigation = navigation.toVariant()
-    labels = [item["label"] for item in navigation]
+        if hasattr(navigation, "toVariant"):
+            navigation = navigation.toVariant()
+        labels = [item["label"] for item in navigation]
         assert labels == [
             "Подключение",
             "Климат",
