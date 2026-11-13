@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -215,3 +216,32 @@ def test_connection_manager_recovers_after_gateway_restart_and_reads_fresh_snaps
             restarted_server.server_close()
         if restarted_thread is not None:
             restarted_thread.join(timeout=2.0)
+
+
+
+def test_connection_manager_allows_slow_diagnostics_beyond_health_timeout():
+    payload = diagnostics_payload()
+
+    def slow_diagnostics():
+        time.sleep(2.2)
+        return payload
+
+    server = create_server(port=0, diagnostics_provider=slow_diagnostics)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    manager = ConnectionManager(tunnel=FakeTunnel())
+    profile = ConnectionProfile(
+        host="repka-vm.local",
+        username="operator",
+        local_port=server.server_address[1],
+    )
+    try:
+        connected = manager.connect_to_station(profile, timeout_seconds=2.0)
+        assert connected.connected is True
+        received = manager.get_system_diagnostics()
+        assert received["source"] == "LINUX_HOST"
+    finally:
+        manager.disconnect_from_station()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2.0)

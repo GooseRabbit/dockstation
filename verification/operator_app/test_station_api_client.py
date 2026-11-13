@@ -290,3 +290,42 @@ def test_test_adapter_response_rejects_untrusted_or_physical_claims(invalid_fiel
     payload[invalid_field] = invalid_value
     with pytest.raises(ApiClientError):
         StationApiClient.validate_test_adapter_response(payload, "request-1")
+
+
+
+def test_diagnostics_request_uses_separate_extended_timeout():
+    client = StationApiClient(
+        "http://127.0.0.1:18080",
+        timeout_seconds=2.0,
+        diagnostics_timeout_seconds=45.0,
+    )
+    response = FakeResponse(json.dumps(valid_diagnostics()).encode("utf-8"))
+    with patch.object(client._opener, "open", return_value=response) as open_url:
+        payload = client.get_system_diagnostics()
+
+    assert payload["source"] == "LINUX_HOST"
+    assert open_url.call_args.kwargs["timeout"] == 45.0
+
+
+def test_health_request_keeps_short_timeout_when_diagnostics_timeout_is_extended():
+    client = StationApiClient(
+        "http://127.0.0.1:18080",
+        timeout_seconds=2.0,
+        diagnostics_timeout_seconds=45.0,
+    )
+    health = {
+        "api_version": "1",
+        "service": "dockstation-gateway",
+        "status": "PASS",
+        "read_only": True,
+    }
+    response = FakeResponse(json.dumps(health).encode("utf-8"))
+    with patch.object(client._opener, "open", return_value=response) as open_url:
+        client.get_health()
+
+    assert open_url.call_args.kwargs["timeout"] == 2.0
+
+
+def test_client_rejects_invalid_diagnostics_timeout():
+    with pytest.raises(ValueError, match="Тайм-аут диагностики"):
+        StationApiClient("http://127.0.0.1:18080", diagnostics_timeout_seconds=0)

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import threading
+from http import HTTPStatus
+from types import SimpleNamespace
 import urllib.error
 import urllib.request
 
@@ -233,3 +235,27 @@ def test_test_adapter_route_rejects_oversized_body(running_test_adapter_server):
     with pytest.raises(urllib.error.HTTPError) as error:
         _post_json(running_test_adapter_server, b"x" * 4097)
     assert error.value.code == 413
+
+
+
+@pytest.mark.parametrize(
+    "disconnect_error",
+    [BrokenPipeError, ConnectionResetError, ConnectionAbortedError, TimeoutError],
+)
+def test_response_writer_treats_client_disconnect_as_normal(disconnect_error):
+    class DisconnectedWriter:
+        def write(self, _body):
+            raise disconnect_error("client closed the response socket")
+
+    handler = SimpleNamespace(
+        command="GET",
+        wfile=DisconnectedWriter(),
+        close_connection=False,
+        send_response=lambda _status: None,
+        send_header=lambda *_args: None,
+        end_headers=lambda: None,
+    )
+
+    _GatewayRequestHandler._send_json(handler, HTTPStatus.OK, {"status": "PASS"})
+
+    assert handler.close_connection is True
