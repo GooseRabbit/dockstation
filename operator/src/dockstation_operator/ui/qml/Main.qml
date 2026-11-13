@@ -75,7 +75,9 @@ ApplicationWindow {
         color: "#0B1117"
         title: "DockStation Operator — камера"
         CameraPreviewSurface {
-            anchors.fill: parent
+            width: Math.min(parent.width, parent.height * 16 / 9)
+            height: width * 9 / 16
+            anchors.centerIn: parent
             radius: 0
             border.width: 0
         }
@@ -812,7 +814,7 @@ ApplicationWindow {
                                 CameraPreviewSurface {
                                     objectName: "camera.preview"
                                     Layout.fillWidth: true
-                                    Layout.preferredHeight: Math.min(width * 9 / 16, 600)
+                                    Layout.preferredHeight: width * 9 / 16
                                     Layout.minimumHeight: 180
                                 }
                                 RowLayout {
