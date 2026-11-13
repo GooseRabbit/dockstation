@@ -192,3 +192,31 @@ def test_saving_profile_while_disconnected_updates_automatic_reconnect_target(
         assert manager.profile.host == "192.0.2.20"
     finally:
         bridge.shutdown()
+
+
+
+def test_selecting_another_profile_cancels_pending_automatic_reconnect(
+    tmp_path: Path, monkeypatch
+):
+    registry_file = tmp_path / "stations.json"
+    monkeypatch.setattr(station_registry, "station_registry_path", lambda: registry_file)
+    monkeypatch.setattr(qml_bridge, "station_registry_path", lambda: registry_file)
+    monkeypatch.setattr(qml_bridge, "load_profile", lambda: ConnectionProfile())
+
+    bridge = qml_bridge.QmlOperatorBridge(connection_manager=InertConnectionManager())
+    try:
+        bridge.addStationProfile("Станция A")
+        first_id = bridge.selectedProfileId
+        bridge.addStationProfile("Станция B")
+        second_id = bridge.selectedProfileId
+        assert first_id and second_id and first_id != second_id
+
+        bridge.selectStationProfile(first_id)
+        bridge._reconnect_pending = True
+        bridge.selectStationProfile(second_id)
+
+        assert bridge.selectedProfileId == second_id
+        assert bridge.reconnecting is False
+        assert bridge._reconnect_attempt == 0
+    finally:
+        bridge.shutdown()
