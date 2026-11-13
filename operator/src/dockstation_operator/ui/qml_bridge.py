@@ -251,14 +251,20 @@ class QmlOperatorBridge(QObject):
             return
         try:
             new_profile = ConnectionProfile()
-            self._registry = add_profile(self._registry, alias, new_profile)
+            updated_registry = add_profile(self._registry, alias, new_profile)
+            save_registry(updated_registry)
+            previous_id = self._selected_profile_id
+            if self.connection_manager.is_connected:
+                self.connection_manager.disconnect_from_station()
+                if previous_id is not None:
+                    self._station_status[previous_id] = "DISCONNECTED"
+            self._registry = updated_registry
             self._selected_profile_id = self._registry.selected_profile_id
             self._profile = new_profile
             self._station_alias_draft = alias.strip()
             self._ssh_port_text = ""
             self._local_port_text = ""
             self.model = DiagnosticsModel()
-            save_registry(self._registry)
         except (OSError, ValueError) as exc:
             self._append_event(f"Не удалось добавить локальный профиль: {exc}")
             return
