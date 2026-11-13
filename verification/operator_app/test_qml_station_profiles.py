@@ -103,7 +103,7 @@ def test_qml_bridge_schedules_read_only_reconnect_after_unexpected_loss(
 
         def reconnect_connection(self, timeout_seconds):
             self.reconnect_timeout = timeout_seconds
-            return qml_bridge.ConnectionResult(True, "reconnected")
+            return type("ConnectionResult", (), {"connected": True, "message": "reconnected"})()
 
         def get_system_diagnostics(self):
             return {"schema_version": "1.0", "source": "LINUX_HOST"}
