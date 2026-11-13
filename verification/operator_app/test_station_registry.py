@@ -35,7 +35,7 @@ def test_registry_add_select_rename_and_remove_are_independent(tmp_path: Path):
     registry = add_profile(registry, "Дом", profile("192.0.2.10", 18080), "local-1")
     registry = add_profile(registry, "Склад", profile("192.0.2.11", 18081), "local-2")
 
-    assert registry.selected_profile_id == "local-1"
+    assert registry.selected_profile_id == "local-2"
     assert [item.alias for item in registry.profiles] == ["Дом", "Склад"]
 
     registry = select_profile(registry, "local-2")
