@@ -298,6 +298,57 @@ ApplicationWindow {
                     anchors.leftMargin: 12
                     anchors.rightMargin: 12
                     spacing: 6
+                    Text {
+                        Layout.fillWidth: true
+                        text: "ЛОКАЛЬНЫЕ ПРОФИЛИ"
+                        color: root.muted
+                        font.pixelSize: 10
+                        font.bold: true
+                        leftPadding: 8
+                    }
+                    Repeater {
+                        model: bridge.stationProfiles
+                        delegate: Button {
+                            required property var modelData
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 44
+                            onClicked: bridge.selectStationProfile(modelData.profile_id)
+                            background: Rectangle {
+                                radius: 7
+                                color: modelData.selected ? "#23423F" : "transparent"
+                                border.color: modelData.selected ? root.accent : "transparent"
+                            }
+                            contentItem: RowLayout {
+                                spacing: 7
+                                Text {
+                                    text: modelData.alias
+                                    color: modelData.selected ? root.primaryText : root.secondaryText
+                                    font.pixelSize: 11
+                                    elide: Text.ElideRight
+                                    Layout.fillWidth: true
+                                }
+                                Rectangle {
+                                    width: 8
+                                    height: 8
+                                    radius: 4
+                                    color: modelData.status_color === "success" ? root.success
+                                         : modelData.status_color === "danger" ? root.danger : root.warning
+                                }
+                                Text {
+                                    text: modelData.status_label
+                                    color: modelData.status_color === "success" ? root.success
+                                         : modelData.status_color === "danger" ? root.danger : root.warning
+                                    font.pixelSize: 9
+                                }
+                            }
+                        }
+                    }
+                    ActionButton {
+                        Layout.fillWidth: true
+                        text: "+ Добавить профиль"
+                        onClicked: bridge.addStationProfile("Новая станция")
+                    }
+                    Rectangle { Layout.fillWidth: true; height: 1; color: root.borderColor }
                     Repeater {
                         model: root.navigation
                         delegate: ActionButton {
@@ -365,9 +416,10 @@ ApplicationWindow {
                             font.bold: true
                         }
                         Text {
-                            text: "Лабораторное SSH-подключение к Linux Gateway"
+                            text: "Лабораторный SSH-профиль. Локальные имена и подключения хранятся на этом компьютере; это ещё не каталог станций аккаунта."
                             color: root.secondaryText
                             font.pixelSize: 13
+                            wrapMode: Text.WordWrap
                         }
                         Panel {
                             Layout.fillWidth: true
@@ -382,6 +434,14 @@ ApplicationWindow {
                                     columns: 2
                                     columnSpacing: 16
                                     rowSpacing: 10
+                                    Label { text: "Имя профиля"; color: root.secondaryText }
+                                    DarkTextField {
+                                        objectName: "connection.station-alias-field"
+                                        Layout.fillWidth: true
+                                        text: bridge.stationAlias
+                                        placeholderText: "Например, Дом"
+                                        onTextEdited: bridge.setStationAlias(text)
+                                    }
                                     Label { text: "Адрес Linux VM"; color: root.secondaryText }
                                     DarkTextField {
                                         Layout.fillWidth: true
@@ -456,6 +516,11 @@ ApplicationWindow {
                                         text: "Сохранить профиль"
                                         enabled: !bridge.busy
                                         onClicked: bridge.saveProfile()
+                                    }
+                                    ActionButton {
+                                        text: "Удалить профиль"
+                                        enabled: !bridge.busy && bridge.selectedProfileId.length > 0
+                                        onClicked: bridge.removeSelectedStation()
                                     }
                                     Item { Layout.fillWidth: true }
                                 }
