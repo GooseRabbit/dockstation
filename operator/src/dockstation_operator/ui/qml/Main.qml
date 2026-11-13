@@ -125,8 +125,7 @@ ApplicationWindow {
         running: true
         repeat: true
         onTriggered: {
-            if (bridge.connected && !bridge.busy)
-                bridge.refresh()
+            bridge.poll()
         }
     }
 
@@ -292,26 +291,26 @@ ApplicationWindow {
                                         Layout.fillWidth: true
                                         text: bridge.host
                                         placeholderText: "192.168.56.10"
-                                        onEditingFinished: bridge.setHost(text)
+                                        onTextEdited: bridge.setHost(text)
                                     }
                                     Label { text: "Linux-пользователь"; color: root.secondaryText }
                                     TextField {
                                         Layout.fillWidth: true
                                         text: bridge.username
                                         placeholderText: "operator"
-                                        onEditingFinished: bridge.setUsername(text)
+                                        onTextEdited: bridge.setUsername(text)
                                     }
                                     Label { text: "SSH-порт"; color: root.secondaryText }
                                     TextField {
                                         Layout.fillWidth: true
                                         text: bridge.sshPort
-                                        onEditingFinished: bridge.setSshPort(text)
+                                        onTextEdited: bridge.setSshPort(text)
                                     }
                                     Label { text: "Локальный порт туннеля"; color: root.secondaryText }
                                     TextField {
                                         Layout.fillWidth: true
                                         text: bridge.localPort
-                                        onEditingFinished: bridge.setLocalPort(text)
+                                        onTextEdited: bridge.setLocalPort(text)
                                     }
                                     Label { text: "Приватный SSH-ключ"; color: root.secondaryText }
                                     RowLayout {
@@ -320,7 +319,7 @@ ApplicationWindow {
                                             Layout.fillWidth: true
                                             text: bridge.privateKeyPath
                                             placeholderText: "Путь к приватному ключу"
-                                            onEditingFinished: bridge.setPrivateKeyPath(text)
+                                            onTextEdited: bridge.setPrivateKeyPath(text)
                                         }
                                         Button { text: "Обзор…"; onClicked: privateKeyDialog.open() }
                                     }
@@ -331,23 +330,13 @@ ApplicationWindow {
                                             Layout.fillWidth: true
                                             text: bridge.knownHostsPath
                                             placeholderText: "Путь к known_hosts"
-                                            onEditingFinished: bridge.setKnownHostsPath(text)
+                                            onTextEdited: bridge.setKnownHostsPath(text)
                                         }
                                         Button { text: "Обзор…"; onClicked: knownHostsDialog.open() }
                                     }
                                 }
                                 RowLayout {
                                     Layout.fillWidth: true
-                                    Button {
-                                        text: bridge.busy ? "Выполняется…" : "Подключить"
-                                        enabled: !bridge.busy && !bridge.connected
-                                        highlighted: true
-                                        onClicked: {
-                                            bridge.setHost(hostField.text)
-                                            bridge.connectToStation()
-                                        }
-                                        visible: false
-                                    }
                                     Button {
                                         text: bridge.busy ? "Подключение…" : "Подключить"
                                         enabled: !bridge.busy && !bridge.connected
