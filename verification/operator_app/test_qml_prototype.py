@@ -16,7 +16,7 @@ import dockstation_operator
 from dockstation_operator.ui.qml_bridge import QmlOperatorBridge
 
 
-def test_qml_prototype_loads_with_the_six_approved_tabs():
+def test_qml_prototype_loads_with_the_seven_approved_tabs():
     app = QGuiApplication.instance() or QGuiApplication([])
     engine = QQmlApplicationEngine()
     bridge = QmlOperatorBridge()
@@ -66,6 +66,14 @@ def test_qml_prototype_loads_with_the_six_approved_tabs():
         roots[0].setProperty("currentTab", 6)
         app.processEvents()
         assert roots[0].findChild(QObject, "page.system") is not None
+        for panel_name in (
+            "system.cpu-temperature",
+            "system.memory",
+            "system.storage",
+            "system.load-average",
+            "system.platform-info",
+        ):
+            assert roots[0].findChild(QObject, panel_name) is not None, panel_name
         assert bridge.freshnessText == "Данные ещё не получены"
     finally:
         bridge.shutdown()
