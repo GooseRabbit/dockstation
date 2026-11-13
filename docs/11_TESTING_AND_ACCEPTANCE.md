@@ -1,7 +1,7 @@
 # Испытания и приёмка
 
 **Статус:** предварительный план.  
-**Редакция:** 2.1.
+**Редакция:** 2.2.
 **Дата актуализации:** 2026-11-12.
 
 ## 1. Назначение
@@ -558,3 +558,20 @@ Workflow `.github/workflows/linux-cmake.yml`, прогон [43293944730](https:/
 Host runner использует GCC C++17, `-Wall -Wextra -Wpedantic -Werror`; отдельные контрактные и ConfigurationManager цели дополнительно собираются с `-fno-exceptions -fno-rtti`.
 
 **Границы результата:** не выполнялись ARM64 cross-build, сборка/запуск на Repka Pi 5, ESP32/Arduino build, Windows GUI runtime, реальный VM SSH reconnect, физические датчики/приводы, накопитель, сеть и сервер. Эти проверки остаются НЕ ПРОВЕРЕНО.
+
+## 15. Проверка первого QML-прототипа Operator (2026-11-13)
+
+Workflow `.github/workflows/linux-cmake.yml`, прогон [43378417832](https://github.com/GooseRabbit/dockstation/actions/runs/43378417832), завершился со статусом SUCCESS на Ubuntu 24.04 x86_64.
+
+| Проверка | Результат |
+|---|---:|
+| CMake configure/build Linux runtime и Bootstrap | PASS |
+| CTest с ASan/UBSan | 8/8 PASS |
+| Host unit/contract программы StationStateManager и ConfigurationManager | 31/31 PASS |
+| Python compileall | PASS |
+| Python pytest: Operator, Gateway, integration и QML smoke test | 93 PASS |
+| QML ApplicationWindow загружается через PySide6 QQmlApplicationEngine в offscreen режиме и содержит шесть согласованных вкладок | PASS |
+| Синтаксис shell-скриптов | PASS |
+| Shell-сценарии сетевой диагностики | PASS |
+
+**Границы результата:** проверена загрузка QML и структура навигации на Linux offscreen runner. Не проверялись Windows GUI runtime/рендеринг, ручное взаимодействие с интерфейсом на Windows, реальное SSH-подключение из QML, восстановление VM-соединения, физические датчики/приводы, камера, SSD и серверная передача. Эти проверки остаются НЕ ПРОВЕРЕНО.
