@@ -33,7 +33,8 @@ ApplicationWindow {
         { label: "Датчики", symbol: "⌁" },
         { label: "Сеть", symbol: "⌘" },
         { label: "Логи", symbol: "≡" },
-        { label: "Камера", symbol: "▣" }
+        { label: "Камера", symbol: "▣" },
+        { label: "Система", symbol: "⌁" }
     ]
 
     function sectionTitle(text) {
@@ -917,6 +918,94 @@ ApplicationWindow {
                             wrapMode: Text.WordWrap
                             font.pixelSize: 11
                         }
+                    }
+                }
+
+                // 7. Linux host system monitoring. Unsupported API fields stay unavailable.
+                PageScrollView {
+                    objectName: "page.system"
+                    ColumnLayout {
+                        width: parent.width
+                        spacing: 20
+                        Text { text: "Система"; color: root.primaryText; font.pixelSize: 24; font.bold: true }
+                        Text {
+                            text: "Мониторинг бортового компьютера Linux Gateway — отдельно от климатических датчиков станции."
+                            color: root.secondaryText
+                            wrapMode: Text.WordWrap
+                        }
+                        GridLayout {
+                            Layout.fillWidth: true
+                            columns: width >= 900 ? 4 : 2
+                            rowSpacing: 16
+                            columnSpacing: 16
+                            Panel {
+                                Layout.fillWidth: true
+                                implicitHeight: 190
+                                ColumnLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: 14
+                                    spacing: 8
+                                    Text { text: "Температура CPU / SoC"; color: root.primaryText; font.pixelSize: 14; font.bold: true; wrapMode: Text.WordWrap }
+                                    Text { text: "— °C"; color: root.muted; font.pixelSize: 30; font.bold: true }
+                                    Text { text: "Gateway API пока не публикует показатель"; color: root.muted; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                                }
+                            }
+                            Panel {
+                                Layout.fillWidth: true
+                                implicitHeight: 190
+                                ColumnLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: 14
+                                    spacing: 8
+                                    Text { text: "Оперативная память"; color: root.primaryText; font.pixelSize: 14; font.bold: true }
+                                    Text { text: "— %"; color: root.muted; font.pixelSize: 30; font.bold: true }
+                                    Text { text: "Использовано / доступно — пока не передаётся API"; color: root.muted; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                                }
+                            }
+                            Panel {
+                                Layout.fillWidth: true
+                                implicitHeight: 190
+                                ColumnLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: 14
+                                    spacing: 8
+                                    Text { text: "Корневая файловая система"; color: root.primaryText; font.pixelSize: 14; font.bold: true; wrapMode: Text.WordWrap }
+                                    Text { text: "— %"; color: root.muted; font.pixelSize: 30; font.bold: true }
+                                    Text { text: "Заполнение диска / пока не передаётся API"; color: root.muted; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                                }
+                            }
+                            Panel {
+                                Layout.fillWidth: true
+                                implicitHeight: 190
+                                ColumnLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: 14
+                                    spacing: 8
+                                    Text { text: "Средняя системная нагрузка"; color: root.primaryText; font.pixelSize: 14; font.bold: true; wrapMode: Text.WordWrap }
+                                    Text { text: "— / — / —"; color: root.muted; font.pixelSize: 25; font.bold: true }
+                                    Text { text: "Load average за 1 / 5 / 15 минут; это не процент загрузки CPU"; color: root.muted; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                                }
+                            }
+                        }
+                        Panel {
+                            Layout.fillWidth: true
+                            implicitHeight: systemInfo.implicitHeight + 40
+                            ColumnLayout {
+                                id: systemInfo
+                                anchors.fill: parent
+                                anchors.margins: 20
+                                spacing: 10
+                                Text { text: "Сведения о Linux Gateway"; color: root.primaryText; font.pixelSize: 16; font.bold: true }
+                                Text { text: bridge.platformSummary; color: root.secondaryText; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                                Text {
+                                    text: "Время работы, ОС, версия ядра и архитектура берутся из текущего диагностического снимка. Температура CPU/SoC, RAM, файловая система и load average пока не входят в ответ Python Gateway API. Их сборщики в Linux C++-части существуют, но ещё не подключены к этому API."
+                                    color: root.muted
+                                    wrapMode: Text.WordWrap
+                                    Layout.fillWidth: true
+                                }
+                            }
+                        }
+                        Text { text: bridge.freshnessText; color: root.secondaryText; wrapMode: Text.WordWrap }
                     }
                 }
             }
