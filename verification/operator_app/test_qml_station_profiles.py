@@ -82,3 +82,35 @@ def test_existing_empty_registry_does_not_resurrect_legacy_single_profile(
         assert bridge.selectedProfileId == ""
     finally:
         bridge.shutdown()
+
+
+
+def test_qml_bridge_schedules_read_only_reconnect_after_unexpected_loss(
+    tmp_path: Path, monkeypatch
+):
+    registry_file = tmp_path / "stations.json"
+    monkeypatch.setattr(station_registry, "station_registry_path", lambda: registry_file)
+    monkeypatch.setattr(qml_bridge, "station_registry_path", lambda: registry_file)
+    monkeypatch.setattr(qml_bridge, "load_profile", lambda: ConnectionProfile())
+
+    class RecoverableConnectionManager(InertConnectionManager):
+        def __init__(self):
+            self.profile = ConnectionProfile(host="192.0.2.10", username="operator")
+            self.loss_handled = False
+
+        def handle_connection_loss(self):
+            self.loss_handled = True
+
+    manager = RecoverableConnectionManager()
+    monkeypatch.setattr(qml_bridge.time, "monotonic", lambda: 100.0)
+    bridge = qml_bridge.QmlOperatorBridge(connection_manager=manager)
+    try:
+        bridge._schedule_reconnect("SSH-туннель неожиданно завершился.")
+        assert manager.loss_handled is True
+        assert bridge._reconnect_pending is True
+        assert bridge._reconnect_attempt == 0
+        assert bridge._next_reconnect_at == 105.0
+        assert bridge.model.stale is True
+        assert "устаревшими" in bridge.freshnessText.lower()
+    finally:
+        bridge.shutdown()
