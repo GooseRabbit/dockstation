@@ -21,6 +21,9 @@ class InertConnectionManager:
     def get_connection_status(self):
         return "CONNECTED" if self.is_connected else "DISCONNECTED"
 
+    def handle_connection_loss(self):
+        self.is_connected = False
+
 
 def test_qml_bridge_manages_multiple_local_profiles_and_personal_aliases(
     tmp_path: Path, monkeypatch
@@ -131,14 +134,17 @@ def test_qml_bridge_schedules_read_only_reconnect_after_unexpected_loss(
         assert bridge.connectionState == "СВЯЗЬ НАРУШЕНА · ДАННЫЕ УСТАРЕЛИ"
 
         scheduled = []
-        bridge._start_worker = scheduled.append
+        bridge._start_worker = lambda profile_id, operation, is_reconnect=False: scheduled.append(
+            (profile_id, operation, is_reconnect)
+        )
         clock["value"] = 104.9
         bridge.poll()
         assert scheduled == []
         clock["value"] = 105.0
         bridge.poll()
         assert len(scheduled) == 1
-        snapshot, message = scheduled[0]()
+        assert scheduled[0][2] is True
+        snapshot, message = scheduled[0][1]()
         assert snapshot["source"] == "LINUX_HOST"
         assert "восстановлена" in message
         assert manager.reconnect_timeout == 5.0
@@ -203,7 +209,7 @@ def test_saving_profile_while_disconnected_updates_automatic_reconnect_target(
 
 
 
-def test_selecting_another_profile_cancels_pending_automatic_reconnect(
+def test_switching_profile_keeps_other_station_reconnect_pending(
     tmp_path: Path, monkeypatch
 ):
     registry_file = tmp_path / "stations.json"
@@ -220,12 +226,18 @@ def test_selecting_another_profile_cancels_pending_automatic_reconnect(
         assert first_id and second_id and first_id != second_id
 
         bridge.selectStationProfile(first_id)
-        bridge._reconnect_pending = True
+        first_manager = bridge.connection_manager
+        first_manager.profile = ConnectionProfile(host="192.0.2.10", username="operator")
+        bridge._schedule_reconnect("Проверка восстановления первой станции.", first_id)
+        assert bridge.reconnecting is True
+
         bridge.selectStationProfile(second_id)
 
         assert bridge.selectedProfileId == second_id
         assert bridge.reconnecting is False
-        assert bridge._reconnect_attempt == 0
+        assert bridge._reconnect_pending_by_profile[first_id] is True
+        bridge.selectStationProfile(first_id)
+        assert bridge.reconnecting is True
     finally:
         bridge.shutdown()
 
@@ -317,5 +329,46 @@ def test_station_list_collapses_after_three_profiles_and_can_be_reordered(
         bridge.toggleStationProfilesExpanded()
         assert len(bridge.visibleStationProfiles) == 3
         assert bridge.stationProfiles[0]["profile_id"] == first
+    finally:
+        bridge.shutdown()
+
+
+
+def test_connecting_first_unsaved_profile_uses_its_new_session_manager(
+    tmp_path: Path, monkeypatch
+):
+    registry_file = tmp_path / "stations.json"
+    monkeypatch.setattr(station_registry, "station_registry_path", lambda: registry_file)
+    monkeypatch.setattr(qml_bridge, "station_registry_path", lambda: registry_file)
+    monkeypatch.setattr(qml_bridge, "load_profile", lambda: ConnectionProfile())
+
+    class FakeManager(InertConnectionManager):
+        def connect_to_station(self, profile):
+            self.profile = profile
+            self.is_connected = True
+            return type("ConnectionResult", (), {"connected": True, "message": "connected"})()
+
+        def get_system_diagnostics(self):
+            return {"source": "LINUX_HOST", "station_marker": self.profile.host}
+
+    manager = FakeManager()
+    bridge = qml_bridge.QmlOperatorBridge(connection_manager=manager)
+    started = []
+    try:
+        bridge.setStationAlias("Новая")
+        bridge.setHost("192.0.2.40")
+        bridge.setUsername("operator")
+        bridge._profile = bridge._replace_profile(
+            private_key_path="C:/key", known_hosts_path="C:/known_hosts"
+        )
+        monkeypatch.setattr(qml_bridge, "validate_profile", lambda profile, require_files: [])
+        bridge._start_worker = lambda profile_id, operation, is_reconnect=False: started.append(
+            (profile_id, operation)
+        )
+        bridge.connectToStation()
+        assert bridge.selectedProfileId
+        assert started[0][0] == bridge.selectedProfileId
+        snapshot, _ = started[0][1]()
+        assert snapshot["station_marker"] == "192.0.2.40"
     finally:
         bridge.shutdown()

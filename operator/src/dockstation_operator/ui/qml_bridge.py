@@ -93,7 +93,11 @@ class QmlOperatorBridge(QObject):
         self._next_reconnect_at = 0.0
         self._notice = "Ожидание подключения."
         self._logs_action_status = ""
-        self.connection_manager = self._manager_for(self._selected_profile_id)
+        self.connection_manager = (
+            self._manager_for(self._selected_profile_id)
+            if self._selected_profile_id is not None
+            else self._initial_connection_manager
+        )
         self.model = self._model_for(self._selected_profile_id)
         selected = next(
             (item for item in self._registry.profiles if item.profile_id == self._selected_profile_id),
@@ -685,6 +689,8 @@ class QmlOperatorBridge(QObject):
             return
         if not self.saveProfile():
             return
+        profile_id = self._selected_profile_id
+        key = self._session_key(profile_id)
         profile = self._profile
         manager = self._manager_for(profile_id)
         if profile_id is not None:
