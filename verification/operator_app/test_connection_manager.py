@@ -143,27 +143,25 @@ def test_failed_connection_attempt_retains_profile_for_a_later_retry():
                 raise SshTunnelError("temporary SSH failure")
             super().start(profile)
 
+    server = create_server(port=0, diagnostics_provider=diagnostics_payload)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
     manager = ConnectionManager(tunnel=InitiallyFailingTunnel())
-    profile = ConnectionProfile(host="repka-vm.local", username="operator")
+    profile = ConnectionProfile(
+        host="repka-vm.local", username="operator",
+        local_port=server.server_address[1],
+    )
     try:
         first = manager.connect_to_station(profile, timeout_seconds=0.1)
         assert first.connected is False
         assert manager.profile == profile
 
-        # The retry can reuse the retained profile and establish a fresh tunnel.
-        server = create_server(port=0, diagnostics_provider=diagnostics_payload)
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
-        thread.start()
-        profile = ConnectionProfile(
-            host="repka-vm.local", username="operator",
-            local_port=server.server_address[1],
-        )
-        result = manager.connect_to_station(profile, timeout_seconds=2.0)
+        # The retry reuses the exact same profile and establishes a fresh tunnel.
+        result = manager.connect_to_station(manager.profile, timeout_seconds=2.0)
         assert result.connected is True
         assert manager.profile == profile
     finally:
         manager.disconnect_from_station()
-        if "server" in locals():
-            server.shutdown()
-            server.server_close()
-            thread.join(timeout=2.0)
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2.0)
