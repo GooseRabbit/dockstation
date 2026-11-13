@@ -402,7 +402,7 @@ class QmlOperatorBridge(QObject):
             target = save_registry(self._registry)
         except (OSError, ValueError) as exc:
             self._append_event(f"Ошибка сохранения профиля: {exc}")
-            return
+            return False
         self.profileChanged.emit()
         self.viewChanged.emit()
         self._append_event(f"Локальный профиль подключения сохранён: {target}")
