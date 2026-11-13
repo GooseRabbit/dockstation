@@ -29,6 +29,9 @@ class ConnectionManager:
 
     def connect_to_station(self, profile: ConnectionProfile, timeout_seconds: float = 12.0) -> ConnectionResult:
         self.disconnect_from_station()
+        # Keep the requested profile even when the first tunnel attempt fails.
+        # The caller may retry after a transient SSH/Gateway outage.
+        self.profile = profile
         try:
             self.tunnel.start(profile)
         except SshTunnelError as exc:
@@ -52,7 +55,8 @@ class ConnectionManager:
                 time.sleep(0.25)
         self.tunnel.stop()
         self.api_client = None
-        self.profile = None
+        # Retain the selected profile so an explicit or automatic retry can
+        # establish a fresh tunnel without asking the operator to re-enter it.
         self._connected = False
         return ConnectionResult(False, f"Не удалось подтвердить доступность Linux API за {timeout_seconds:g} с. {last_error}")
 
