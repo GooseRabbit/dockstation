@@ -53,8 +53,8 @@ jobs:
           sudo setpriv --reuid=dockstation --regid=dockstation --init-groups --no-new-privs -- /usr/local/bin/dockstation_linux_bootstrap --config-file /etc/dockstation/gateway.conf >"$gateway_log" 2>&1 &
           gateway_pid=$!
           cleanup_gateway() {
-            if [[ -n "${gateway_pid:-}" ]] && kill -0 "$gateway_pid" 2>/dev/null; then
-              kill -TERM "$gateway_pid"
+            if [[ -n "${gateway_pid:-}" ]] && sudo kill -0 "$gateway_pid" 2>/dev/null; then
+              sudo kill -TERM "$gateway_pid"
               wait "$gateway_pid" || true
             fi
           }
@@ -76,7 +76,7 @@ jobs:
           fi
           curl -fsS --max-time 10 http://127.0.0.1:8080/api/v1/system/diagnostics >/dev/null
           ss -ltn | grep -F '127.0.0.1:8080'
-          kill -TERM "$gateway_pid"
+          sudo kill -TERM "$gateway_pid"
           wait "$gateway_pid"
           gateway_pid=""
           grep -Fq 'Локальный read-only API остановлен' "$gateway_log"
