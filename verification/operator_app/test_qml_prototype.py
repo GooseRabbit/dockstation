@@ -63,6 +63,11 @@ def test_qml_prototype_loads_with_the_seven_approved_tabs():
             "Система",
         ]
         assert bridge.connected is False
+        initial_metrics = bridge.systemMetrics
+        assert initial_metrics["cpu_temperature_value"] == "Недоступно"
+        assert initial_metrics["memory_value"] == "Недоступно"
+        assert initial_metrics["storage_value"] == "Недоступно"
+        assert initial_metrics["load_value"] == "Недоступно"
         roots[0].setProperty("currentTab", 6)
         app.processEvents()
         assert roots[0].findChild(QObject, "page.system") is not None
