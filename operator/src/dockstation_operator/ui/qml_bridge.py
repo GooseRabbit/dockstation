@@ -31,6 +31,7 @@ class QmlOperatorBridge(QObject):
         self._profile = load_profile()
         self._busy = False
         self._closing = False
+        self._notice = "Ожидание подключения."
         self._operationFinished.connect(self._on_operation_finished)
 
     @Property(str, notify=profileChanged)
@@ -64,6 +65,10 @@ class QmlOperatorBridge(QObject):
     @Property(bool, notify=viewChanged)
     def connected(self) -> bool:
         return self.connection_manager.is_connected and not self.model.stale
+
+    @Property(str, notify=viewChanged)
+    def noticeText(self) -> str:
+        return self._notice
 
     @Property(str, notify=viewChanged)
     def connectionState(self) -> str:
@@ -327,6 +332,7 @@ class QmlOperatorBridge(QObject):
         self.viewChanged.emit()
 
     def _append_event(self, message: str) -> None:
+        self._notice = message
         self.model.append_client_event(message)
         self.viewChanged.emit()
 
