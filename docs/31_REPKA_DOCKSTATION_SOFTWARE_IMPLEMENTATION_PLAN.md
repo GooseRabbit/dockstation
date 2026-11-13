@@ -246,8 +246,10 @@ Windows-клиент не обращается к GPIO, драйверам и с
 
 Python + PySide6 + QML — выбранный для текущего прототипа технологический вариант; продуктовая архитектура и все целевые сценарии Operator ещё не завершены.
 
-**main.py / application.py:**
-- main(), create_application(), load_application_settings(), initialize_application_services(), show_main_window(), shutdown_application().
+**Точки входа:**
+- `main.py:main()` — сохраняет прежний Tkinter entry point.
+- `qml_app.py:main()` — запускает текущий QML-вариант через PySide6 и `QmlOperatorBridge`.
+- Отдельного `application.py` в текущей реализации нет; жизненный цикл QML-прототипа пока сосредоточен в `qml_app.py`.
 
 **`qml_app.py`:**
 - `main()` — создаёт `QGuiApplication`, `QQmlApplicationEngine`, регистрирует `QmlOperatorBridge` и загружает `ui/qml/Main.qml`.
