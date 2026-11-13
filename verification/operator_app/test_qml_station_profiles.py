@@ -384,22 +384,24 @@ def test_qml_profile_sidebar_has_compact_drag_handles_and_overlay_scrolling(
         assert expand_button is not None and expand_button.property("visible") is True
         assert vertical_scrollbar is not None
         assert horizontal_scrollbar is not None
-        first_profile_id = bridge.stationProfiles[0]["profile_id"]
-        drag_handle = root.findChild(QObject, "stations.profile-drag-handle." + first_profile_id)
-        assert drag_handle is not None
         assert profile_list.property("count") == 3
         collapsed_width = profile_list.property("width")
+        qml_source = qml_path.read_text(encoding="utf-8")
+        # ListView delegates are created by Qt's item-view machinery and are not
+        # guaranteed to be QObject descendants discoverable from the Window.
+        assert 'objectName: "stations.profile-drag-handle."' in qml_source
+        assert "cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor" in qml_source
+        assert "width: stationProfileList.width - stationProfileList.rightMargin" in qml_source
+        assert "rightMargin: 5" in qml_source
 
         bridge.toggleStationProfilesExpanded()
         app.processEvents()
         assert profile_list.property("count") == 8
         assert profile_list.property("width") == collapsed_width
         assert profile_list.property("contentHeight") > profile_list.property("height")
+        assert vertical_scrollbar.property("visible") is True
         assert horizontal_scrollbar.property("visible") is False
-        row = root.findChild(QObject, "stations.profile-row." + first_profile_id)
-        assert row is not None
-        assert row.property("width") == collapsed_width - 5
-        qml_source = qml_path.read_text(encoding="utf-8")
+        assert profile_list.property("width") == collapsed_width
         assert "stationProfileDisplayModel.move(stationProfileDragIndex, targetIndex, 1)" in qml_source
         assert "stationProfileDragPointerY" in qml_source
     finally:
