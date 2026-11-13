@@ -109,6 +109,12 @@ def test_validate_diagnostics_response_accepts_gateway_contract():
     StationApiClient.validate_diagnostics_response(valid_diagnostics())
 
 
+def test_validate_diagnostics_response_accepts_older_snapshot_without_resources():
+    payload = valid_diagnostics()
+    del payload["platform"]["resources"]
+    StationApiClient.validate_diagnostics_response(payload)
+
+
 def test_validate_diagnostics_response_rejects_invalid_system_resource_values():
     payload = valid_diagnostics()
     payload["platform"]["resources"]["memory"]["used_percent"] = 101
