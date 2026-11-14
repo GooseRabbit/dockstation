@@ -307,6 +307,19 @@ int main() {
                ControllerLinkSessionStatus::SequenceNotIncreasing,
            "rejects zero peer sequence on handshake");
 
+    ControllerLinkSession wrap_session(valid_config());
+    const auto near_wrap = std::numeric_limits<std::uint64_t>::max() - 100U;
+    static_cast<void>(wrap_session.start(near_wrap, "time"));
+    expect(wrap_session.handle_message(
+               make_message(ControllerMessageType::HelloAck), near_wrap + 50U).status ==
+               ControllerLinkSessionStatus::Success,
+           "establishes a session near the monotonic clock counter boundary");
+    expect(!wrap_session.poll(948U, "time").has_outbound_message,
+           "does not send heartbeat one millisecond before a wrapped deadline");
+    expect(wrap_session.poll(949U, "time").event ==
+               ControllerLinkSessionEvent::HeartbeatDue,
+           "sends heartbeat at the exact deadline after monotonic counter wrap");
+
     std::string_view too_long_identifier(
         "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
         "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
