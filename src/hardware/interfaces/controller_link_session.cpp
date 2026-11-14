@@ -96,7 +96,7 @@ ControllerLinkSessionResult ControllerLinkSession::start(
     }
 
     state_ = ControllerLinkSessionState::AwaitingHelloAck;
-    last_outbound_heartbeat_ms_ = now_ms;
+    last_outbound_message_ms_ = now_ms;
     return make_outbound(ControllerMessageType::Hello,
                          ControllerLinkSessionEvent::HelloRequired,
                          now_ms, sent_at);
@@ -115,7 +115,7 @@ ControllerLinkSessionResult ControllerLinkSession::poll(
                                ControllerLinkSessionEvent::None);
 
         case ControllerLinkSessionState::AwaitingHelloAck:
-            if (elapsed_at_least(now_ms, last_outbound_heartbeat_ms_,
+            if (elapsed_at_least(now_ms, last_outbound_message_ms_,
                                  handshake_timeout_ms_)) {
                 state_ = ControllerLinkSessionState::LinkLost;
                 last_retry_ms_ = now_ms;
@@ -133,7 +133,7 @@ ControllerLinkSessionResult ControllerLinkSession::poll(
                 return make_result(ControllerLinkSessionStatus::HeartbeatTimeout,
                                    ControllerLinkSessionEvent::LinkLost);
             }
-            if (elapsed_at_least(now_ms, last_outbound_heartbeat_ms_,
+            if (elapsed_at_least(now_ms, last_outbound_message_ms_,
                                  heartbeat_interval_ms_)) {
                 return make_outbound(ControllerMessageType::Heartbeat,
                                      ControllerLinkSessionEvent::HeartbeatDue,
@@ -228,7 +228,7 @@ ControllerLinkSessionResult ControllerLinkSession::handle_message(
         last_peer_sequence_ = *message.envelope.sequence_number;
         peer_sequence_known_ = true;
         last_peer_activity_ms_ = now_ms;
-        last_outbound_heartbeat_ms_ = now_ms;
+        last_outbound_message_ms_ = now_ms;
         state_ = ControllerLinkSessionState::Established;
         return make_result(ControllerLinkSessionStatus::Success,
                            ControllerLinkSessionEvent::SessionEstablished);
@@ -297,7 +297,7 @@ ControllerLinkSessionResult ControllerLinkSession::make_outbound(
     } else {
         ++next_tx_sequence_;
     }
-    last_outbound_heartbeat_ms_ = now_ms;
+    last_outbound_message_ms_ = now_ms;
 
     ControllerLinkSessionResult result{};
     result.status = ControllerLinkSessionStatus::Success;
@@ -310,7 +310,7 @@ ControllerLinkSessionResult ControllerLinkSession::make_outbound(
 
 void ControllerLinkSession::stop() noexcept {
     state_ = ControllerLinkSessionState::Stopped;
-    last_outbound_heartbeat_ms_ = 0U;
+    last_outbound_message_ms_ = 0U;
     last_peer_activity_ms_ = 0U;
     last_retry_ms_ = 0U;
 }
