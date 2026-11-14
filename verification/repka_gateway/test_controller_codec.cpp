@@ -79,6 +79,13 @@ int main() {
                frame[2] == kControllerCodecWireVersion && frame[3] == 1U,
            "writes the DS magic, wire version and stable HELLO type identifier");
 
+    expect(frame[4] == 0x50U && frame[5] == 0x00U &&
+               frame[result.frame_size - 4U] == 0x1DU &&
+               frame[result.frame_size - 3U] == 0x59U &&
+               frame[result.frame_size - 2U] == 0xA9U &&
+               frame[result.frame_size - 1U] == 0x5BU,
+           "matches the independently calculated HELLO v1 golden frame length and CRC-32");
+
     ControllerCodecDecodeStorage storage{};
     ControllerCodecDecodedMessage decoded{};
     auto decode_result = decode_controller_message(
@@ -221,6 +228,14 @@ int main() {
     expect(encode(invalid_envelope, empty_payload, frame).status ==
                ControllerCodecStatus::InvalidUtf8,
            "rejects malformed UTF-8 instead of transmitting ambiguous text");
+
+    std::array<char, kControllerCodecMaximumFrameSize> oversized_text{};
+    invalid_envelope = hello_envelope;
+    invalid_envelope.controller_id = std::string_view{
+        oversized_text.data(), oversized_text.size()};
+    expect(encode(invalid_envelope, empty_payload, frame).status ==
+               ControllerCodecStatus::FrameTooLarge,
+           "rejects a valid text field when the resulting frame exceeds the fixed maximum");
 
     std::array<ControllerTelemetryMeasurement,
                kControllerCodecMaximumMeasurements + 1U> too_many{};
