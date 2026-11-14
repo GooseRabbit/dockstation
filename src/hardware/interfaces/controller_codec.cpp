@@ -725,13 +725,11 @@ ControllerCodecResult decode_controller_message(
     Reader reader(frame + kHeaderSize, body_length);
     std::uint16_t major = 0U;
     std::uint16_t minor = 0U;
+    std::uint64_t sequence_number = 0U;
     if (!reader.read_u16(major) || !reader.read_u16(minor) ||
         !reader.read_text(decoded.envelope.controller_id) ||
         !reader.read_text(decoded.envelope.controller_instance_id) ||
-        !reader.read_u64(*([](ControllerMessageEnvelope& envelope) noexcept {
-            envelope.sequence_number = 0U;
-            return &envelope.sequence_number.emplace();
-        })(decoded.envelope)) ||
+        !reader.read_u64(sequence_number) ||
         !reader.read_text(decoded.envelope.sent_at)) {
         const auto status = reader.status() == ControllerCodecStatus::Success
             ? ControllerCodecStatus::MalformedField
@@ -740,6 +738,7 @@ ControllerCodecResult decode_controller_message(
     }
     decoded.envelope.type = message_type;
     decoded.envelope.protocol_version = ControllerProtocolVersion{major, minor};
+    decoded.envelope.sequence_number = sequence_number;
 
     auto payload_status = ControllerCodecStatus::Success;
     if (!read_payload(reader, message_type, storage, decoded.payload, payload_status)) {
