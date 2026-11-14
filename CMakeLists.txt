@@ -138,6 +138,16 @@ if(BUILD_TESTING)
     dockstation_apply_compile_policy(test_controller_protocol)
     add_test(NAME controller_protocol COMMAND test_controller_protocol)
 
+    add_executable(test_controller_codec
+        src/hardware/interfaces/controller_codec.cpp
+        verification/repka_gateway/test_controller_codec.cpp
+    )
+    target_include_directories(test_controller_codec
+        PRIVATE "${PROJECT_SOURCE_DIR}/src"
+    )
+    dockstation_apply_compile_policy(test_controller_codec)
+    add_test(NAME controller_codec COMMAND test_controller_codec)
+
     add_executable(test_local_api
         verification/repka_gateway/test_local_api.cpp
     )
@@ -199,6 +209,7 @@ if(BUILD_TESTING)
                     test_command_line
                     test_runtime_config_file
                     test_controller_protocol
+                    test_controller_codec
                     test_local_api
                     test_source_cursor_reader
                     test_source_session_contract
@@ -236,6 +247,9 @@ if(BUILD_TESTING)
                 -fsanitize=address,undefined
             )
             target_link_options(test_controller_protocol PRIVATE
+                -fsanitize=address,undefined
+            )
+            target_link_options(test_controller_codec PRIVATE
                 -fsanitize=address,undefined
             )
             target_link_options(test_local_api PRIVATE
