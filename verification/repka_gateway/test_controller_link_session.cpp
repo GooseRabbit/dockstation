@@ -88,6 +88,21 @@ int main() {
                ControllerPayloadValidationStatus::Valid,
            "outbound HELLO satisfies the shared protocol validators");
 
+    std::array<std::uint8_t, kControllerCodecMaximumFrameSize> outbound_frame{};
+    const auto outbound_encode = encode_controller_message(
+        result.outbound_message,
+        ControllerMessagePayload{EmptyControllerMessagePayload{}},
+        outbound_frame.data(), outbound_frame.size());
+    ControllerCodecDecodeStorage outbound_storage{};
+    ControllerCodecDecodedMessage outbound_decoded{};
+    const auto outbound_decode = decode_controller_message(
+        outbound_frame.data(), outbound_encode.frame_size,
+        outbound_storage, outbound_decoded);
+    expect(outbound_encode.status == ControllerCodecStatus::Success &&
+               outbound_decode.status == ControllerCodecStatus::Success &&
+               outbound_decoded.envelope.type == ControllerMessageType::Hello,
+           "session HELLO envelope round-trips through the production codec");
+
     result = session.start(101U, "time");
     expect(result.status == ControllerLinkSessionStatus::InvalidState,
            "does not restart an active handshake implicitly");
@@ -119,12 +134,23 @@ int main() {
     expect(result.status == ControllerLinkSessionStatus::InvalidMessage,
            "rejects a payload type that does not match HELLO_ACK");
 
-    result = session.handle_message(
-        make_message(ControllerMessageType::HelloAck), 200U);
-    expect(result.status == ControllerLinkSessionStatus::Success &&
+    auto hello_ack = make_message(ControllerMessageType::HelloAck);
+    std::array<std::uint8_t, kControllerCodecMaximumFrameSize> inbound_frame{};
+    const auto inbound_encode = encode_controller_message(
+        hello_ack.envelope, hello_ack.payload,
+        inbound_frame.data(), inbound_frame.size());
+    ControllerCodecDecodeStorage inbound_storage{};
+    ControllerCodecDecodedMessage inbound_decoded{};
+    const auto inbound_decode = decode_controller_message(
+        inbound_frame.data(), inbound_encode.frame_size,
+        inbound_storage, inbound_decoded);
+    result = session.handle_message(inbound_decoded, 200U);
+    expect(inbound_encode.status == ControllerCodecStatus::Success &&
+               inbound_decode.status == ControllerCodecStatus::Success &&
+               result.status == ControllerLinkSessionStatus::Success &&
                result.event == ControllerLinkSessionEvent::SessionEstablished &&
                session.state() == ControllerLinkSessionState::Established,
-           "establishes the protocol session after a valid HELLO_ACK");
+           "establishes the protocol session after a codec-decoded HELLO_ACK");
 
     result = session.handle_message(
         make_message(ControllerMessageType::Heartbeat, "esp32-01",
