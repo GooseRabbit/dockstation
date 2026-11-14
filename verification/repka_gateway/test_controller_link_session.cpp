@@ -265,7 +265,9 @@ int main() {
 
     ControllerLinkSession no_timestamp_session(valid_config());
     static_cast<void>(no_timestamp_session.start(0U, "time"));
-    expect(no_timestamp_session.poll(1000U, "").status ==
+    static_cast<void>(no_timestamp_session.handle_message(
+        make_message(ControllerMessageType::HelloAck), 10U));
+    expect(no_timestamp_session.poll(1010U, "").status ==
                ControllerLinkSessionStatus::InvalidTimestamp,
            "does not emit heartbeat without a timestamp");
 
