@@ -38,6 +38,7 @@ add_library(dockstation_linux_runtime STATIC
     src/platform/linux/runtime_config_file.cpp
     src/platform/logging/logger.cpp
     src/hardware/interfaces/controller_codec.cpp
+    src/hardware/interfaces/controller_frame_stream_decoder.cpp
     src/communications/api_serialization.cpp
     src/communications/local_api_server.cpp
 )
@@ -148,6 +149,16 @@ if(BUILD_TESTING)
     dockstation_apply_compile_policy(test_controller_codec)
     add_test(NAME controller_codec COMMAND test_controller_codec)
 
+    add_executable(test_controller_frame_stream_decoder
+        verification/repka_gateway/test_controller_frame_stream_decoder.cpp
+    )
+    target_link_libraries(test_controller_frame_stream_decoder
+        PRIVATE dockstation_linux_runtime
+    )
+    dockstation_apply_compile_policy(test_controller_frame_stream_decoder)
+    add_test(NAME controller_frame_stream_decoder
+        COMMAND test_controller_frame_stream_decoder)
+
     add_executable(test_local_api
         verification/repka_gateway/test_local_api.cpp
     )
@@ -210,6 +221,7 @@ if(BUILD_TESTING)
                     test_runtime_config_file
                     test_controller_protocol
                     test_controller_codec
+                    test_controller_frame_stream_decoder
                     test_local_api
                     test_source_cursor_reader
                     test_source_session_contract
@@ -250,6 +262,9 @@ if(BUILD_TESTING)
                 -fsanitize=address,undefined
             )
             target_link_options(test_controller_codec PRIVATE
+                -fsanitize=address,undefined
+            )
+            target_link_options(test_controller_frame_stream_decoder PRIVATE
                 -fsanitize=address,undefined
             )
             target_link_options(test_local_api PRIVATE
