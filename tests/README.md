@@ -244,7 +244,7 @@ or proves target/hardware integration.
     g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -fno-exceptions -fno-rtti -Isrc src/core/event_validation.cpp src/core/event_processing.cpp src/core/event_handling.cpp src/core/event_processor_router.cpp src/core/station_event_pipeline.cpp src/core/source_session.cpp src/core/source_session_coordinator.cpp tests/contract/test_station_event_pipeline_contract.cpp -o test_station_event_pipeline_contract
     ./test_station_event_pipeline_contract
 
-The 41-check contract harness compiles the production F01–F04, F13, router,
+The 46-check contract harness compiles the production F01–F04, F13, router,
 SourceSessionCoordinator and StationEventPipeline source files. It covers all
 five configured event/category pairs, one-recipient routing, F01 invalid-envelope
 rejection, F02 unknown-type rejection, F03 duplicate/repository-error rejection,
