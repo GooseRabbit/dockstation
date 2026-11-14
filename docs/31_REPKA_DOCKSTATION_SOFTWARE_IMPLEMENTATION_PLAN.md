@@ -1,7 +1,7 @@
 # Полный план реализации программного комплекса DockStation на Repka Pi 5
 
 **Статус:** мастер-план реализации; последовательность разработки согласована, открытые платформенные, сетевые, серверные и аппаратные детали требуют отдельной проверки и решения.  
-**Редакция:** 1.50.  
+**Редакция:** 1.51.  
 **Дата:** 2026-11-14.  
 **Вычислительная платформа:** Repka Pi 5.  
 **Предполагаемая ОС:** официальная Repka OS; образ и версия проверяются перед развёртыванием.
@@ -756,6 +756,8 @@ Host-проверка `verification/repka_gateway/test_controller_codec.cpp` з�
 
 **ControllerFrameStreamDecoder реализован:** `src/hardware/interfaces/controller_frame_stream_decoder.hpp/.cpp` накапливает части входного потока в фиксированном буфере 2048 байт и определяет границу одного candidate frame по DS/version/type/body length. Он останавливает приём при FrameReady и сообщает `bytes_consumed`, чтобы caller не терял хвост входного блока. `consume_frame()` вызывается после успешного `decode_controller_message()`; при ошибке CRC/структуры caller вызывает `reject_frame()`, после чего парсер отбрасывает первый байт и повторно ищет синхронизацию. Парсер сам CRC и семантику не проверяет. Host-тест: `verification/repka_gateway/test_controller_frame_stream_decoder.cpp`; CTest `controller_frame_stream_decoder`.
 
+**Проверка кодового среза:** GitHub Actions run [43629000530](https://github.com/GooseRabbit/dockstation/actions/runs/43629000530) завершился SUCCESS для кодового HEAD `455663b6356361bf0417a78327d33f2d8fc69fb1`: CMake configure/build, 15/15 CTest с ASan/UBSan (включая controller_frame_stream_decoder), 31/31 дополнительных C++ host tests, Python compileall, 134 pytest, QML/package entry point, Gateway install/systemd/non-root checks и shell/network tests. Проверка выполнена на Ubuntu 24.04.5 x86_64; это не ESP-IDF cross-build и не физическое испытание.
+
 **Отдельный каталог ESP32 firmware создан:** `firmware/esp32/README.md` фиксирует границу будущего ESP-IDF проекта. Linux Gateway остаётся в корневом CMake; ESP32 будет собираться отдельным проектом в `firmware/esp32/`. Переносимые исходники ControllerProtocol/ControllerCodec/stream decoder остаются общими в `src/hardware/interfaces/` и будут подключаться к ESP-IDF через небольшой компонент без копирования исходников и без Linux-only зависимостей. Сам ESP-IDF project skeleton, `main/`, board profile и `sdkconfig` пока не создаются до подтверждения точного ESP32 target, Flash size и GPIO.
 
 **Ограничения:** ControllerFrameStreamDecoder выделяет candidate frames, но не выполняет UART I/O, транспортные тайм-ауты или криптографическую проверку. Linux/ESP-IDF UART adapters, аутентификация/конфиденциальность и контроль порядка/повторов sequence number ещё не реализованы. CRC лишь обнаруживает случайное повреждение и не заменяет требования безопасности docs/24. GPIO конкретной ESP32-платы и ESP-IDF target ещё не подтверждены; тесты не являются физическим обменом.
@@ -1091,6 +1093,7 @@ Host-проверка `verification/repka_gateway/test_controller_codec.cpp` з�
 | 1.48 | 2026-11-14 | Добавлен ControllerCodec v1: bounded бинарный frame, UTF-8 string fields, стабильные type/value/status IDs, CRC-32/ISO-HDLC, лимиты 2048 байт и 16 измерений, caller-owned decode storage; добавлены CMake/CTest и host-сценарии round-trip/negative cases. Кодек включён в Linux runtime. Первый CI/ASan/UBSan прогон после изменения ожидается; потоковый UART parser, transport и криптография не реализованы.
 | 1.49 | 2026-11-14 | GitHub Actions run 43627836035 SUCCESS для HEAD `f3397fd99c3acdf1294cc89358aaf70405170610`: CMake build, 14/14 CTest с ASan/UBSan, 31/31 C++ host tests, 134 pytest, QML/package, Gateway install/non-root/systemd и shell/network checks. ControllerCodec отмечен как реализованный и частично проверенный на host; ESP32 target и физический транспорт не подтверждены.
 | 1.50 | 2026-11-14 | Добавлен bounded ControllerFrameStreamDecoder для сборки кадров из произвольных частей байтового потока, split magic, отбрасывания шума и повторной синхронизации; добавлены CMake/CTest host-проверки. Создан `firmware/esp32/README.md` как отдельная граница будущего ESP-IDF проекта; ESP-IDF skeleton намеренно отложен до подтверждения target/Flash/GPIO. Результат CI для актуального кода после добавления stream decoder фиксируется после завершения run.
+| 1.51 | 2026-11-14 | GitHub Actions run 43629000530 SUCCESS для кодового HEAD `455663b6356361bf0417a78327d33f2d8fc69fb1`: 15/15 CTest с ASan/UBSan, 31/31 C++ host tests, 134 pytest, QML/package и Gateway/systemd/shell/network checks. Потоковый декодер отмечен как реализованный и частично проверенный на host. ESP-IDF project и физический UART остаются будущими этапами.
 
 **Ограничение:** это план. Функции не считаются реализованными до появления кода, проверок и, где требуется, аппаратных испытаний.
 
