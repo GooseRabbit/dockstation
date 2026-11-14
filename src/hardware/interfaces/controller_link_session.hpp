@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <string_view>
 
-#include "hardware/interfaces/controller_protocol.hpp"
+#include "hardware/interfaces/controller_codec.hpp"
 
 namespace dockstation::hardware::interfaces {
 
