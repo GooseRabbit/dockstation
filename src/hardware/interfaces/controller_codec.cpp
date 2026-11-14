@@ -631,13 +631,21 @@ ControllerCodecResult encode_controller_message(
 
     const auto effective_capacity =
         std::min(destination_capacity, kControllerCodecMaximumFrameSize);
+    const auto map_writer_failure = [destination_capacity](
+        ControllerCodecStatus status) noexcept {
+        if (status == ControllerCodecStatus::BufferTooSmall &&
+            destination_capacity >= kControllerCodecMaximumFrameSize) {
+            return ControllerCodecStatus::FrameTooLarge;
+        }
+        return status;
+    };
     Writer writer(destination, effective_capacity);
     if (!writer.write_u8(kMagicFirst) ||
         !writer.write_u8(kMagicSecond) ||
         !writer.write_u8(kControllerCodecWireVersion) ||
         !write_message_type(writer, envelope.type) ||
         !writer.write_u16(0U)) {
-        return failure(writer.status(), writer.offset());
+        return failure(map_writer_failure(writer.status()), writer.offset());
     }
 
     const auto body_start = writer.offset();
@@ -648,7 +656,7 @@ ControllerCodecResult encode_controller_message(
         !writer.write_text(envelope.controller_instance_id) ||
         !writer.write_u64(*envelope.sequence_number) ||
         !writer.write_text(envelope.sent_at)) {
-        return failure(writer.status(), writer.offset());
+        return failure(map_writer_failure(writer.status()), writer.offset());
     }
 
     auto payload_status = ControllerCodecStatus::Success;
@@ -671,10 +679,7 @@ ControllerCodecResult encode_controller_message(
 
     const auto checksum = crc32_iso_hdlc(destination, writer.offset());
     if (!writer.write_u32(checksum)) {
-        const auto status = destination_capacity > kControllerCodecMaximumFrameSize
-            ? ControllerCodecStatus::FrameTooLarge
-            : writer.status();
-        return failure(status, writer.offset());
+        return failure(map_writer_failure(writer.status()), writer.offset());
     }
     return {ControllerCodecStatus::Success, writer.offset(), 0U};
 }
