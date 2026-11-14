@@ -502,6 +502,28 @@ StateChanged публикуется только после подтверждё
 Проверка: `verification/repka_gateway/test_controller_link_session.cpp`, CTest `controller_link_session`. Host-тесты проверяют handshake, точную версию и peer ID, смену peer instance, монотонный sequence, round-trip HELLO/HELLO_ACK через production codec, heartbeat, потерю связи, retry, неверную конфигурацию, срок жизни timestamp и переполнение монотонного счётчика. Это host-проверка логики, не доказательство физической работы ESP32/UART или аутентификации устройства.
 
 
+### 16.6. Предлагаемый защищённый транспорт Repka—ESP32 (DEC-066)
+
+Этот раздел фиксирует проектную границу защищённого канала, а не готовый transport adapter. DEC-066 имеет статус ПРЕДЛОЖЕНИЕ до отдельного согласования криптографического профиля и подтверждения фактической ESP32-платы.
+
+**Предлагаемая схема:** Repka инициирует TLS 1.3 как client; ESP32 принимает соединение как server. Для первой локальной пары рассматривается индивидуальный внешний 256-битный PSK и только PSK-DHE/PSK-ephemeral режим с эфемерным (EC)DHE. Cipher suite candidate — TLS_AES_128_GCM_SHA256; общая эфемерная группа подлежит проверке совместимости. TLS 1.2 fallback, PSK-only, 0-RTT/early data и session resumption на первом этапе запрещены. Никакого plaintext fallback нет.
+
+**Слои обработки:**
+- UART adapter обменивается сырыми байтами с TLS через callbacks custom I/O; он не трактует незашифрованные байты как ControllerCodec frame.
+- TLS record layer выполняет handshake, взаимное доказательство знания pair-specific PSK, шифрование и проверку целостности записей.
+- Только после завершённого TLS handshake и успешной проверки защищённых записей plaintext application data передаются в ControllerFrameStreamDecoder.
+- ControllerFrameStreamDecoder собирает кадры ControllerCodec v1; ControllerCodec проверяет CRC и структуру; ControllerLinkSession выполняет логический HELLO/HELLO_ACK, проверку peer ID/instance, protocol version и sequence.
+- Вызывающий слой не должен вызывать ControllerLinkSession::handle_message() и не должен передавать никакие сообщения сервисам до успешной аутентификации TLS.
+
+TLS record framing принадлежит TLS-библиотеке; дополнительный самописный внешний encryption frame не нужен. ControllerCodec v1 остаётся внутренним прикладным форматом и не является криптографической защитой. Контракт UART и проводка определяются DEC-062; USB остаётся сервисным каналом по DEC-065.
+
+PSK identity — непрозрачный идентификатор выбранного ключевого набора, а не Station ID/серийный номер. Секрет уникален для конкретной пары Repka + ESP32, не общий для парка и не используется для station—server mTLS. Процедура первичного provisioning, безопасного хранения, ротации и отзыва определяется отдельным профилем безопасности и пока не реализована.
+
+При любом отказе handshake, PSK lookup, проверки AEAD tag или физического канала TLS-сессия закрывается, буферы и логическая ControllerLinkSession сбрасываются; восстановление начинается с полного нового TLS handshake. Нельзя переключаться на незашифрованный транспорт. Established в ControllerLinkSession допустим только внутри уже аутентифицированного TLS-сеанса; сам по себе этот статус криптографической аутентификацией не является. Успешная TLS-аутентификация устройства также не даёт полномочий на физические команды.
+
+Подробное предложение, хранение ключей, provisioning, ограничения и критерии проверки — docs/24 §6.4. До подтверждения ESP32 SoC, ESP-IDF, версии Mbed TLS и interop с Linux TLS backend нельзя фиксировать API, board profile, cipher/group allow-list или выпускать production-прошивку. Host/interop проверки не заменяют физические испытания UART и secure storage.
+
+
 ## 17. Контракт телеметрии и удалённых команд
 
 Телеметрия должна иметь отдельную версионируемую схему и временную метку.
