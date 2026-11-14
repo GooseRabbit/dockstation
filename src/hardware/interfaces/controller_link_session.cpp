@@ -82,7 +82,7 @@ ControllerLinkSessionResult ControllerLinkSession::start(
         return make_result(ControllerLinkSessionStatus::InvalidState,
                            ControllerLinkSessionEvent::None);
     }
-    if (!is_valid_controller_wire_text(sent_at)) {
+    if (sent_at.empty() || !is_valid_controller_wire_text(sent_at)) {
         return make_result(ControllerLinkSessionStatus::InvalidTimestamp,
                            ControllerLinkSessionEvent::None);
     }
@@ -268,7 +268,7 @@ ControllerLinkSessionResult ControllerLinkSession::make_outbound(
     ControllerLinkSessionEvent event,
     std::uint64_t now_ms,
     std::string_view sent_at) noexcept {
-    if (sent_at.empty()) {
+    if (sent_at.empty() || !is_valid_controller_wire_text(sent_at)) {
         return make_result(ControllerLinkSessionStatus::InvalidTimestamp,
                            ControllerLinkSessionEvent::None);
     }
