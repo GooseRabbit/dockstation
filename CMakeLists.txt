@@ -37,6 +37,7 @@ add_library(dockstation_linux_runtime STATIC
     src/platform/linux/command_line.cpp
     src/platform/linux/runtime_config_file.cpp
     src/platform/logging/logger.cpp
+    src/hardware/interfaces/controller_codec.cpp
     src/communications/api_serialization.cpp
     src/communications/local_api_server.cpp
 )
@@ -139,11 +140,10 @@ if(BUILD_TESTING)
     add_test(NAME controller_protocol COMMAND test_controller_protocol)
 
     add_executable(test_controller_codec
-        src/hardware/interfaces/controller_codec.cpp
         verification/repka_gateway/test_controller_codec.cpp
     )
-    target_include_directories(test_controller_codec
-        PRIVATE "${PROJECT_SOURCE_DIR}/src"
+    target_link_libraries(test_controller_codec
+        PRIVATE dockstation_linux_runtime
     )
     dockstation_apply_compile_policy(test_controller_codec)
     add_test(NAME controller_codec COMMAND test_controller_codec)
