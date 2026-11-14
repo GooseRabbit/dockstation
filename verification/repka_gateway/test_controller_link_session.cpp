@@ -298,6 +298,15 @@ int main() {
     expect(!missing_id_session.is_configured(),
            "rejects an empty local controller ID");
 
+    const char invalid_utf8_id[] = {
+        static_cast<char>(0xC0), static_cast<char>(0xAF)};
+    invalid_config = valid_config();
+    invalid_config.peer_controller_id =
+        std::string_view{invalid_utf8_id, sizeof(invalid_utf8_id)};
+    ControllerLinkSession invalid_utf8_session(invalid_config);
+    expect(!invalid_utf8_session.is_configured(),
+           "rejects a peer ID that cannot be encoded as controller wire text");
+
     ControllerLinkSession timestamp_session(valid_config());
     expect(timestamp_session.start(0U, "").status ==
                ControllerLinkSessionStatus::InvalidTimestamp,
