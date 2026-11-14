@@ -36,6 +36,19 @@ bool credentials_are_zero(const ControllerPskCredentials& credentials) noexcept 
     return true;
 }
 
+bool credential_sections_are_nonzero(
+    const ControllerPskCredentials& credentials) noexcept {
+    bool psk_nonzero = false;
+    bool identity_nonzero = false;
+    for (const std::uint8_t value : credentials.psk) {
+        psk_nonzero = psk_nonzero || value != 0U;
+    }
+    for (const std::uint8_t value : credentials.identity) {
+        identity_nonzero = identity_nonzero || value != 0U;
+    }
+    return psk_nonzero && identity_nonzero;
+}
+
 bool credentials_match_fixture(
     const ControllerPskCredentials& credentials) noexcept {
     for (std::size_t index = 0U; index < credentials.psk.size(); ++index) {
@@ -57,7 +70,7 @@ bool credentials_match_fixture(
 int main(int argc, char** argv) {
     if (argc != 3 || argv[1] == nullptr || argv[2] == nullptr) {
         std::cerr << "Usage: test_controller_psk_credential_store "
-                     "<expect-success|expect-failure> <absolute-directory>\n";
+                     "<expect-success|expect-readable|expect-failure> <absolute-directory>\n";
         return EXIT_FAILURE;
     }
 
@@ -71,6 +84,11 @@ int main(int argc, char** argv) {
                "accepts a correctly provisioned root-owned credential file");
         expect(credentials_match_fixture(credentials),
                "loads PSK and identity from their fixed binary offsets");
+    } else if (expectation == "expect-readable") {
+        expect(status == ControllerPskCredentialFileStatus::Success,
+               "reads the generated credential file under the service account");
+        expect(credential_sections_are_nonzero(credentials),
+               "loads non-zero PSK and identity sections from the generated file");
     } else if (expectation == "expect-failure") {
         expect(status != ControllerPskCredentialFileStatus::Success,
                "rejects a credential path that violates the storage contract");

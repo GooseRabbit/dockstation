@@ -56,7 +56,7 @@ if [[ "$file_stat" != "0:$(getent group dockstation | cut -d: -f3):640:1:48" ]];
     exit 1
 fi
 
-sudo -u dockstation -- "$loader_test" expect-success "$credential_directory"
+sudo -u dockstation -- "$loader_test" expect-readable "$credential_directory"
 first_digest="$(sudo sha256sum "$credential_file" | cut -d' ' -f1)"
 
 if sudo "$binary" >/dev/null 2>&1; then
@@ -121,7 +121,7 @@ if [[ "$first_digest" == "$fifth_digest" ]]; then
     echo "--replace did not install a new credential set" >&2
     exit 1
 fi
-sudo -u dockstation -- "$loader_test" expect-success "$credential_directory"
+sudo -u dockstation -- "$loader_test" expect-readable "$credential_directory"
 if sudo find "$credential_directory" -maxdepth 1 -type f -name '.repka-esp32.psk.tmp.*' -print -quit | grep -q .; then
     echo "A temporary credential file was left behind" >&2
     exit 1
