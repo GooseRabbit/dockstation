@@ -62,6 +62,18 @@ bool is_valid_controller_wire_text(std::string_view value) noexcept {
 
 namespace {
 
+constexpr std::size_t kHeaderSize = 6U;
+constexpr std::size_t kCrcSize = 4U;
+constexpr std::uint8_t kValueBoolean = 1U;
+constexpr std::uint8_t kValueSigned = 2U;
+constexpr std::uint8_t kValueUnsigned = 3U;
+constexpr std::uint8_t kValueFloat64 = 4U;
+constexpr std::uint8_t kValueText = 5U;
+
+static_assert(sizeof(double) == sizeof(std::uint64_t),
+              "ControllerCodec requires 64-bit double");
+static_assert(std::numeric_limits<double>::is_iec559,
+              "ControllerCodec requires IEEE-754 binary64 double");
 
 class Writer final {
 public:
