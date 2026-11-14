@@ -28,7 +28,7 @@ must be registered separately with CTest.
 | SSR-01 | Event or handshake names an unregistered logical source | Verifier returns `UnknownSource`; repository is not called; no cursor is created; event does not reach F13. |
 | SSR-02 | Registered source is `DISABLED` or `REVOKED` | Verification is rejected; no cursor mutation and no event processing. |
 | SSR-03 | Peer identity does not match the identity reference bound to the registered source | `Rejected`; source text, Station ID, MAC/IP or event payload alone cannot repair the mismatch. |
-| SSR-04 | Session proof/challenge is replayed, stale or not bound to this source/session | `Rejected`; no cursor mutation. |
+| SSR-04 | Session establishment proof is stale/replayed on a different channel, or is not bound to this source/session | `Rejected`; no cursor mutation. Reuse within the same still-active channel is covered by SSR-19. |
 | SSR-05 | Verifier returns `Unavailable`, `Error` or an unknown status | Fail closed; repository is not called; no event processing. |
 | SSR-06 | Cursor is `NotFound`, source is registered/active and verifier returns `Verified` | Repository atomically creates cursor with exact source and verified source_instance; last_sequence is empty; result `Confirmed`. |
 | SSR-07 | Cursor is `NotFound`, but source/session is unverified | No initial cursor is created; event is blocked. |
@@ -43,6 +43,8 @@ must be registered separately with CTest.
 | SSR-16 | Event from a session-capable source omits source_sequence | F04 reports `UNORDERED / SequenceMissing`; timestamp is not used as a fallback. |
 | SSR-17 | Repository returns `Error`, an unknown status, or contradictory result data | Fail closed; do not treat the session as confirmed and do not pass events to F13. |
 | SSR-18 | Source does not support source_instance | No automatic session reset is inferred. The applicable source contract must define ordering; absent source_sequence remains unordered under F04. |
+| SSR-19 | Several events are received over the same continuously open, authenticated channel | Rechecking the channel-bound session context for each event is idempotent; the same established proof is not misclassified as replay while that channel remains active; AlreadyCurrent preserves last_sequence. Reuse on a new/closed channel is rejected. |
+| SSR-20 | Event envelope is invalid or event_type is unknown before session confirmation | Pipeline returns InvalidEvent/UnknownEventType with no session result; verifier, cursor reader and session repository are not called and no cursor is created/replaced. |
 
 ## Cross-scenario invariants
 
@@ -63,9 +65,15 @@ must be registered separately with CTest.
 6. All unknown, unavailable, malformed, contradictory or failed results block
    event processing. No implicit `NotFound`, default sequence, timestamp
    ordering, or blind retry is permitted.
-7. After session confirmation, the event adapter binds the event to the
-   authenticated channel context before F13. Existing duplicate/freshness
-   checks and F09/F10 atomic cursor advancement remain in force.
+7. The transport adapter builds Event and SourceSessionEvidence from one
+   authenticated receive context. Matching source/source_instance strings
+   are necessary but not sufficient to establish this binding.
+8. SourceSessionVerifier is called for each event. It must distinguish a
+   repeated check on the same live authenticated channel from replay on a
+   different/closed channel; new channels require fresh session establishment.
+9. Pipeline performs pure F01/F02 checks before session confirmation so
+   malformed/unknown events cannot create or replace the persisted session cursor.
+   After confirmation, handle_event repeats F01/F02 and then runs F03/F04;
 
 ## Open implementation decisions
 
@@ -76,7 +84,8 @@ challenge-response protocol, protected transport, source_instance generation
 strategy, or Repka—ESP32 link. These remain separate design decisions.
 
 The host harness is registered as CTest target `source_session_contract` and
-reports its executed check count. This scenario specification itself is not
+reports its executed check count. The regression matrix includes SSR-19 (repeated
+validation on the same live channel) and SSR-20 (Pipeline preflight edge cases). This scenario specification itself is not
 an executed test and is not evidence of production security.
 
 
