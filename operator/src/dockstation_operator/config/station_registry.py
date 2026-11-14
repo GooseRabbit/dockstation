@@ -90,6 +90,11 @@ def repair_duplicate_local_ports(registry: StationRegistry) -> StationRegistry:
     changed = False
     for item in registry.profiles:
         port = item.connection.local_port
+        # JSON can decode a malformed port as a list or object. Leave it for
+        # validate_registry() to reject; duplicate repair must never hash it.
+        if isinstance(port, bool) or not isinstance(port, int):
+            updated.append(item)
+            continue
         if port in used_ports:
             partial = StationRegistry(tuple(updated), registry.selected_profile_id)
             port = allocate_local_port(partial)

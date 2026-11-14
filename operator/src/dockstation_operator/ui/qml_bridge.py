@@ -630,14 +630,31 @@ class QmlOperatorBridge(QObject):
             self._append_event("Нельзя удалить станцию, пока выполняется операция обмена.")
             return
         manager = self._connection_managers.get(key)
-        if manager is not None:
-            manager.disconnect_from_station()
         try:
             updated = remove_profile(self._registry, removed_id)
+            # Persist first: a failed write must not tear down a live session.
             save_registry(updated)
         except (KeyError, OSError, ValueError) as exc:
             self._append_event(f"Не удалось удалить локальный профиль: {exc}")
             return
+        if manager is not None:
+            try:
+                manager.disconnect_from_station()
+            except Exception as exc:
+                # The profile is already persisted as removed. Restore the old
+                # registry if the session cannot be closed and cancel removal.
+                try:
+                    save_registry(self._registry)
+                except (OSError, ValueError) as rollback_exc:
+                    self._append_event(
+                        "Не удалось закрыть подключение: "
+                        f"{exc}. Не удалось восстановить stations.json: {rollback_exc}."
+                    )
+                else:
+                    self._append_event(
+                        f"Не удалось закрыть подключение; удаление отменено: {exc}"
+                    )
+                return
         self._registry = updated
         self._station_status.pop(removed_id, None)
         self._models.pop(removed_id, None)
@@ -762,8 +779,9 @@ class QmlOperatorBridge(QObject):
             self._append_event(f"Ошибка сохранения профиля: {exc}")
             return False
         manager = self._manager_for(self._selected_profile_id)
-        if not manager.is_connected:
-            manager.profile = profile
+        # Keep the current tunnel/API session alive, but make the saved profile
+        # the target used by ConnectionManager after a later connection loss.
+        manager.profile = profile
         self._profile = profile
         self._sync_active_session_flags()
         self.profileChanged.emit()

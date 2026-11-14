@@ -88,6 +88,32 @@ def test_registry_fails_closed_for_unsupported_or_malformed_data(tmp_path: Path)
     assert load_registry(path) == StationRegistry()
 
 
+@pytest.mark.parametrize("invalid_port", ([], {"port": 18080}))
+def test_registry_fails_closed_for_non_integer_local_ports(tmp_path: Path, invalid_port):
+    path = tmp_path / "stations.json"
+    path.write_text(json.dumps({
+        "schema_version": 1,
+        "selected_profile_id": "home",
+        "profiles": [{
+            "profile_id": "home",
+            "alias": "Дом",
+            "connection": {
+                "host": "192.0.2.10",
+                "username": "operator",
+                "ssh_port": 22,
+                "private_key_path": "C:/keys/operator",
+                "known_hosts_path": "C:/keys/known_hosts",
+                "local_port": invalid_port,
+                "remote_api_port": 8080
+            }
+        }]
+    }), encoding="utf-8")
+
+    # Malformed JSON types are rejected cleanly instead of crashing during
+    # the duplicate-port repair that runs before full registry validation.
+    assert load_registry(path) == StationRegistry()
+
+
 def test_registry_select_and_remove_unknown_profiles_raise():
     registry = StationRegistry()
     with pytest.raises(KeyError):

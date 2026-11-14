@@ -188,6 +188,47 @@ def test_qml_bridge_uses_bounded_reconnect_backoff(tmp_path: Path, monkeypatch):
 
 
 
+def test_saving_profile_while_connected_updates_future_reconnect_target_without_drop(
+    tmp_path: Path, monkeypatch
+):
+    registry_file = tmp_path / "stations.json"
+    monkeypatch.setattr(station_registry, "station_registry_path", lambda: registry_file)
+    monkeypatch.setattr(qml_bridge, "station_registry_path", lambda: registry_file)
+    monkeypatch.setattr(qml_bridge, "load_profile", lambda: ConnectionProfile())
+
+    class ConnectedConnectionManager(InertConnectionManager):
+        def __init__(self):
+            super().__init__()
+            self.is_connected = True
+            self.profile = ConnectionProfile(host="192.0.2.10", username="operator")
+            self.reconnect_profile = None
+
+        def reconnect_connection(self):
+            self.reconnect_profile = self.profile
+            return self.profile
+
+    manager = ConnectedConnectionManager()
+    bridge = qml_bridge.QmlOperatorBridge(connection_manager=manager)
+    try:
+        bridge.setStationAlias("Дом")
+        bridge.setHost("192.0.2.20")
+        bridge.setUsername("operator")
+
+        assert bridge.saveProfile() is True
+        assert manager.is_connected is True
+        assert manager.disconnect_count == 0
+        assert manager.profile == bridge._profile
+        assert manager.profile.host == "192.0.2.20"
+
+        # A later lost link must retry with the persisted profile, not stale
+        # SSH settings from the session that was already established.
+        manager.is_connected = False
+        assert manager.reconnect_connection().host == "192.0.2.20"
+        assert manager.reconnect_profile == bridge._profile
+    finally:
+        bridge.shutdown()
+
+
 def test_saving_profile_while_disconnected_updates_automatic_reconnect_target(
     tmp_path: Path, monkeypatch
 ):
@@ -222,6 +263,48 @@ def test_saving_profile_while_disconnected_updates_automatic_reconnect_target(
     finally:
         bridge.shutdown()
 
+
+
+def test_removing_station_keeps_connection_when_registry_write_fails(
+    tmp_path: Path, monkeypatch
+):
+    registry_file = tmp_path / "stations.json"
+    monkeypatch.setattr(station_registry, "station_registry_path", lambda: registry_file)
+    monkeypatch.setattr(qml_bridge, "station_registry_path", lambda: registry_file)
+    monkeypatch.setattr(qml_bridge, "load_profile", lambda: ConnectionProfile())
+
+    class ConnectedConnectionManager(InertConnectionManager):
+        def __init__(self):
+            super().__init__()
+            self.is_connected = True
+
+        def disconnect_from_station(self):
+            super().disconnect_from_station()
+            self.is_connected = False
+
+    manager = ConnectedConnectionManager()
+    bridge = qml_bridge.QmlOperatorBridge(connection_manager=manager)
+    try:
+        bridge.addStationProfile("Дом")
+        profile_id = bridge.selectedProfileId
+        assert profile_id
+        bridge._models[profile_id].apply_diagnostics({"source": "LINUX_HOST"})
+        bridge._station_status[profile_id] = "CONNECTED"
+
+        def fail_save(_registry):
+            raise OSError("disk is read-only")
+
+        monkeypatch.setattr(qml_bridge, "save_registry", fail_save)
+        bridge.removeSelectedStation()
+
+        assert len(bridge.stationProfiles) == 1
+        assert bridge.selectedProfileId == profile_id
+        assert manager.is_connected is True
+        assert manager.disconnect_count == 0
+        assert bridge.stationProfiles[0]["status"] == "CONNECTED"
+        assert station_registry.load_registry(registry_file) == bridge._registry
+    finally:
+        bridge.shutdown()
 
 
 def test_switching_profile_keeps_other_station_reconnect_pending(

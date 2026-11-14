@@ -146,6 +146,17 @@ def test_validate_diagnostics_response_rejects_unknown_status():
         StationApiClient.validate_diagnostics_response(payload)
 
 
+@pytest.mark.parametrize("invalid_status", ([], {}, None))
+def test_validate_diagnostics_response_rejects_non_string_summary_status(invalid_status):
+    payload = valid_diagnostics()
+    payload["summary"]["status"] = invalid_status
+
+    # _require_status must convert malformed JSON values to ApiClientError,
+    # never leak TypeError from membership checks.
+    with pytest.raises(ApiClientError, match="summary.status"):
+        StationApiClient.validate_diagnostics_response(payload)
+
+
 def test_validate_diagnostics_response_rejects_naive_timestamp():
     payload = valid_diagnostics()
     payload["collected_at_utc"] = "2026-11-11T09:00:00"
