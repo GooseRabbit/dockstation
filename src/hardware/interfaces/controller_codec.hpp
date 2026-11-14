@@ -15,6 +15,10 @@ inline constexpr std::uint8_t kControllerCodecWireVersion = 1U;
 inline constexpr std::size_t kControllerCodecMaximumFrameSize = 2048U;
 inline constexpr std::size_t kControllerCodecMaximumMeasurements = 16U;
 
+// Validates a wire text field: well-formed UTF-8 without embedded NUL.
+// Empty strings are valid at this low level; individual fields may be required.
+[[nodiscard]] bool is_valid_controller_wire_text(std::string_view value) noexcept;
+
 enum class ControllerCodecStatus : std::uint8_t {
     Success,
     NullBuffer,
