@@ -318,6 +318,14 @@ int main() {
                ControllerLinkSessionStatus::InvalidTimestamp,
            "rejects an empty outbound timestamp without starting");
 
+    const char invalid_timestamp[] = {
+        static_cast<char>(0xFF), static_cast<char>(0x00)};
+    ControllerLinkSession invalid_timestamp_session(valid_config());
+    expect(invalid_timestamp_session.start(
+               0U, std::string_view{invalid_timestamp, sizeof(invalid_timestamp)}).status ==
+               ControllerLinkSessionStatus::InvalidTimestamp,
+           "rejects non-UTF-8 timestamps and embedded NUL bytes");
+
     ControllerLinkSession no_timestamp_session(valid_config());
     static_cast<void>(no_timestamp_session.start(0U, "time"));
     static_cast<void>(no_timestamp_session.handle_message(
