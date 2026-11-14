@@ -76,6 +76,13 @@ public:
     explicit ControllerLinkSession(
         const ControllerLinkSessionConfig& config) noexcept;
 
+    // A session owns sequence and peer-instance history. Copying or moving it
+    // could duplicate the transmit sequence or invalidate outbound string views.
+    ControllerLinkSession(const ControllerLinkSession&) = delete;
+    ControllerLinkSession& operator=(const ControllerLinkSession&) = delete;
+    ControllerLinkSession(ControllerLinkSession&&) = delete;
+    ControllerLinkSession& operator=(ControllerLinkSession&&) = delete;
+
     [[nodiscard]] bool is_configured() const noexcept { return configured_; }
     [[nodiscard]] ControllerLinkSessionState state() const noexcept {
         return state_;
