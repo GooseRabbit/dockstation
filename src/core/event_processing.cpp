@@ -50,8 +50,8 @@ bool is_empty_event(const Event& event) noexcept {
 
 bool has_non_whitespace(std::string_view value) noexcept {
     for (const char ch : value) {
-        if (ch != ' ' && ch != '\\t' && ch != '\\n' &&
-            ch != '\\r' && ch != '\\f' && ch != '\\v') {
+        if (ch != ' ' && ch != '\t' && ch != '\n' &&
+            ch != '\r' && ch != '\f' && ch != '\v') {
             return true;
         }
     }
