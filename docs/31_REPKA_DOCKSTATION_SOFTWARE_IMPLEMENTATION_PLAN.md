@@ -1,7 +1,7 @@
 # Полный план реализации программного комплекса DockStation на Repka Pi 5
 
 **Статус:** мастер-план реализации; последовательность разработки согласована, открытые платформенные, сетевые, серверные и аппаратные детали требуют отдельной проверки и решения.  
-**Редакция:** 1.53.  
+**Редакция:** 1.54.  
 **Дата:** 2026-11-14.  
 **Вычислительная платформа:** Repka Pi 5.  
 **Предполагаемая ОС:** официальная Repka OS; образ и версия проверяются перед развёртыванием.
@@ -735,6 +735,17 @@ SQLite остаётся кандидатом, не решением. Сравн�
 
 Прямой UART выбран как минимальный первый физический вариант для короткой внутренней линии. Если после компоновки станции кабель окажется длинным либо испытания выявят помехи/ошибки передачи, допускается RS-485 с трансиверами на обоих концах; прикладной формат и логические сообщения при этом не должны меняться. CRC кадра, если будет включена, обнаруживает случайное повреждение, но не заменяет предусмотренную docs/07 и docs/24 аутентификацию, целостность и конфиденциальность.
 
+**Защищённый канал — предложение DEC-066, не реализация:** поверх выбранного UART предлагается TLS 1.3 PSK-DHE: Repka — TLS client, ESP32 — TLS server; уникальный случайный 256-битный PSK для этой пары; только PSK с эфемерным (EC)DHE; TLS_AES_128_GCM_SHA256 и общая эфемерная группа — первые кандидаты для interop, не окончательный allow-list. TLS 1.2 fallback, PSK-only, 0-RTT/early data и session resumption на первом этапе запрещены. Это локальный link credential; он не заменяет Station Device Key/mTLS со стороны сервера и не является полномочием на физические команды.
+
+Архитектурная граница: UART raw bytes → TLS record layer → расшифрованные application bytes → ControllerFrameStreamDecoder → ControllerCodec → ControllerLinkSession. Существующие ControllerCodec/ControllerFrameStreamDecoder/ControllerLinkSession сохраняются; потоковый декодер должен получать данные только из TLS read(), а ControllerLinkSession вызывается только после успешного TLS handshake. Собственный внешний encryption frame и самописная криптография не добавляются. Возможные библиотечные кандидаты — OpenSSL 3.x на Repka и Mbed TLS 3.6+ в ESP-IDF на ESP32; Mbed TLS использует custom send/receive callbacks, OpenSSL — BIO pair/custom BIO. Версии библиотек и точные TLS API не фиксируются до выбора SoC/ESP-IDF и подтверждения interop.
+
+PSK должен быть уникальным для пары, генерироваться CSPRNG и передаваться только через отдельную физически контролируемую процедуру provisioning. Для production на ESP32 требуется оценить Secure Boot, Flash Encryption и NVS Encryption; на Repka — отдельное root-controlled credential storage и остаточный риск извлечения системного накопителя. Наличие USB service port само по себе не является аутентификацией установщика. До разработки нужно отдельно спроектировать процесс выдачи/ротации/отзыва ключа и защиту от доступа к временному секрету во время provisioning. Любой сбой TLS приводит к разрыву сессии и повторному полному handshake; plaintext fallback запрещён. Локальные межблокировки ESP32 продолжают работать независимо от Repka.
+
+**Обязательная проверка перед production:** OpenSSL ↔ Mbed TLS TLS 1.3 PSK-DHE interoperability; отказ для неверного/отсутствующего PSK, неправильной identity, изменённой/обрезанной записи; доказательство отсутствия TLS 1.2/PSK-only/0-RTT/plaintext fallback; отсутствие plaintext до handshake complete; корректный сброс после разрыва/ошибки; секреты отсутствуют в логах и конфигурациях; права на файловое хранилище; измерения peak heap/handshake latency на точном ESP32 при UART 115200; физические испытания линии и защищённого хранения. DEC-066 остаётся ПРЕДЛОЖЕНИЕМ до явного согласования владельцем проекта.
+
+Полный профиль и ограничения зафиксированы в docs/24 §6.4; граница data contract — docs/06 §16.6; общее требование — docs/07 §11.
+
+
 **Результат:** один логический контракт используется через тестовый host-адаптер и затем через реальный UART-адаптер ESP32; тестовый адаптер подтверждает только программный контракт, а локальные блокировки остаются на стороне контроллера. Потеря канала приводит к UNKNOWN/UNAVAILABLE, а не к предположению о безопасном состоянии. Повторная доставка/повтор команды не должны повторять физическое действие. USB-сервисный канал прошивки и питания не заменяет штатный UART обмена.
 
 **Политика прошивки ESP32 — цель «одна плановая прошивка» (DEC-063):**
@@ -1102,6 +1113,7 @@ Host-тест `verification/repka_gateway/test_controller_link_session.cpp` за
 | 1.51 | 2026-11-14 | GitHub Actions run 43629000530 SUCCESS для кодового HEAD `455663b6356361bf0417a78327d33f2d8fc69fb1`: 15/15 CTest с ASan/UBSan, 31/31 C++ host tests, 134 pytest, QML/package и Gateway/systemd/shell/network checks. Потоковый декодер отмечен как реализованный и частично проверенный на host. ESP-IDF project и физический UART остаются будущими этапами.
 | 1.52 | 2026-11-14 | Добавлен ControllerLinkSession: логический HELLO/HELLO_ACK, heartbeat, sequence tracking, peer-instance binding, timeout и retry; зарегистрированы CMake/CTest host tests и сквозная проверка envelopes через ControllerCodec. Пересмотрены контракты ControllerProtocol и синхронизированы docs/06, docs/18, docs/26. Полный CI для итогового HEAD фиксируется после завершающей проверки; физический UART, аутентификация/криптография и ESP-IDF firmware остаются открытыми.
 | 1.53 | 2026-11-14 | Выполнена сквозная ревизия сегодняшнего controller-link кода: объединена UTF-8-проверка wire-текста для Codec и Session, исправлены проверки обязательности `sent_at`, ID/instance lifecycle и владения session state (copy/move запрещены), доработаны временные/sequence boundary tests. Синхронизированы docs/06, docs/18, docs/26 и граница `firmware/esp32`. GitHub Actions run 43631459004 SUCCESS для HEAD `db5a283b6e3f3597c9202900a85c2634d25febbb`: 16/16 CTest с ASan/UBSan, 31/31 дополнительных C++ host tests, 134 pytest, QML, Gateway/systemd/non-root и shell/network checks. Физический UART, криптографическая аутентификация и ESP-IDF firmware остаются открытыми.
+| 1.54 | 2026-11-14 | Подготовлено предложение DEC-066 по защищённому внутреннему Repka—ESP32 UART: TLS 1.3 PSK-DHE с индивидуальным 256-битным PSK, Repka TLS client / ESP32 TLS server, существующий ControllerCodec внутри TLS, запрет plaintext fallback и 0-RTT, ограничения provisioning/storage и acceptance test matrix. Согласованы по смыслу границы docs/06 §16.6, docs/07 §11 и docs/24 §6.4; криптографический профиль остаётся ПРЕДЛОЖЕНИЕМ до отдельного sign-off. TLS stack compatibility/interop, provisioning, physical UART and ESP32 target не реализованы и не проверены.
 
 **Ограничение:** это план. Функции не считаются реализованными до появления кода, проверок и, где требуется, аппаратных испытаний.
 
