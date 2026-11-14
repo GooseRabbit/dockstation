@@ -56,6 +56,7 @@ dockstation_apply_compile_policy(dockstation_linux_runtime)
 # The transport manager will link this library when physical UART integration is added.
 add_library(dockstation_controller_tls STATIC
     src/platform/linux/controller_psk_tls_client.cpp
+    src/platform/linux/controller_psk_credential_store.cpp
 )
 target_include_directories(dockstation_controller_tls
     PUBLIC "${PROJECT_SOURCE_DIR}/src"
@@ -194,6 +195,16 @@ if(BUILD_TESTING)
     add_test(NAME controller_psk_tls_client
         COMMAND test_controller_psk_tls_client)
 
+    add_executable(test_controller_psk_credential_store
+        verification/repka_gateway/test_controller_psk_credential_store.cpp
+    )
+    target_link_libraries(test_controller_psk_credential_store
+        PRIVATE dockstation_controller_tls
+    )
+    dockstation_apply_compile_policy(test_controller_psk_credential_store)
+    add_test(NAME controller_psk_credential_store_rejects_relative_path
+        COMMAND test_controller_psk_credential_store expect-failure relative/path)
+
     add_executable(test_local_api
         verification/repka_gateway/test_local_api.cpp
     )
@@ -260,6 +271,7 @@ if(BUILD_TESTING)
                     test_controller_frame_stream_decoder
                     test_controller_link_session
                     test_controller_psk_tls_client
+                    test_controller_psk_credential_store
                     test_local_api
                     test_source_cursor_reader
                     test_source_session_contract
@@ -309,6 +321,9 @@ if(BUILD_TESTING)
                 -fsanitize=address,undefined
             )
             target_link_options(test_controller_psk_tls_client PRIVATE
+                -fsanitize=address,undefined
+            )
+            target_link_options(test_controller_psk_credential_store PRIVATE
                 -fsanitize=address,undefined
             )
             target_link_options(test_local_api PRIVATE

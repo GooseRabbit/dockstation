@@ -20,6 +20,29 @@ constexpr const char* kTlsNamedGroup = "P-256";
 
 }  // namespace
 
+ControllerPskCredentials::ControllerPskCredentials(
+    const ControllerPskCredentials& other) noexcept
+    : psk(other.psk), identity(other.identity) {}
+
+ControllerPskCredentials& ControllerPskCredentials::operator=(
+    const ControllerPskCredentials& other) noexcept {
+    if (this != &other) {
+        clear();
+        psk = other.psk;
+        identity = other.identity;
+    }
+    return *this;
+}
+
+ControllerPskCredentials::~ControllerPskCredentials() {
+    clear();
+}
+
+void ControllerPskCredentials::clear() noexcept {
+    OPENSSL_cleanse(psk.data(), psk.size());
+    OPENSSL_cleanse(identity.data(), identity.size());
+}
+
 ControllerPskTlsClient::~ControllerPskTlsClient() {
     close();
 }
@@ -83,8 +106,7 @@ void ControllerPskTlsClient::close() noexcept {
         SSL_CTX_free(context_);
         context_ = nullptr;
     }
-    OPENSSL_cleanse(credentials_.psk.data(), credentials_.psk.size());
-    OPENSSL_cleanse(credentials_.identity.data(), credentials_.identity.size());
+    credentials_.clear();
     credentials_ready_ = false;
     failed_ = false;
     last_openssl_error_ = 0UL;
@@ -376,8 +398,7 @@ void ControllerPskTlsClient::mark_failed() noexcept {
         SSL_CTX_free(context_);
         context_ = nullptr;
     }
-    OPENSSL_cleanse(credentials_.psk.data(), credentials_.psk.size());
-    OPENSSL_cleanse(credentials_.identity.data(), credentials_.identity.size());
+    credentials_.clear();
     credentials_ready_ = false;
 }
 

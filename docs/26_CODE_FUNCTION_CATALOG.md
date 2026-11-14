@@ -938,6 +938,17 @@ Wire v1: magic `DS`, wire version 1, тип сообщения 1…6, uint16 lit
 
 Host-проверка: `verification/repka_gateway/test_controller_psk_tls_client.cpp`; CTest — `controller_psk_tls_client`. 13 проверок используют OpenSSL TLS peer и BIO transport pairs. Это проверка TLS state machine на host, а не эмуляция UART/ESP32 и не межстековая проверка с Mbed TLS. Адаптер не подключён к текущему C++ Gateway runtime до появления controller transport manager; физический UART, Mbed TLS firmware, secure provisioning/storage и аппаратная приёмка остаются открытыми.
 
+### src/platform/linux/controller_psk_credential_store.hpp/.cpp
+
+| Функция / тип | Назначение |
+|---|---|
+| `ControllerPskCredentialFileStatus` | Безопасные коды результата загрузки; значения ключей и путь в статус не включаются. |
+| `load_controller_psk_credentials()` | Читает `/etc/dockstation/credentials/repka-esp32.psk` с фиксированным именем файла и политикой owner/group/mode. |
+| `load_controller_psk_credentials_from_directory()` | Тот же контракт с абсолютным каталогом для host filesystem acceptance tests; filename, root owner, группа `dockstation` и режимы не настраиваются caller. |
+| `ControllerPskCredentials::clear()` / destructor | Очищает 32-byte PSK и 16-byte identity через `OPENSSL_cleanse`; loader очищает выходные значения при любой ошибке. |
+
+Формат файла — ровно 48 бинарных байт: PSK[32] затем identity[16]. Проверяются no-follow для всех path components, root ownership, каталог `0750`, файл `0640`, группа `dockstation`, отсутствие ACL, regular file, `nlink=1`, точный размер и стабильность stat metadata во время чтения. Тест `verification/repka_gateway/test_controller_psk_credential_store.sh` использует временные root-owned files в `/run` и запускает binary от service user; он не создаёт production PSK и не реализует provisioning.
+
 ### src/hardware/interfaces/controller_link_session.hpp/.cpp
 
 | Функция / тип | Назначение |

@@ -1,7 +1,7 @@
 # Интерфейсы и контракты данных
 
 **Статус:** предварительная спецификация.  
-**Редакция:** 1.27  
+**Редакция:** 1.28  
 **Дата актуализации:** 2026-11-14.
 
 ## 1. Назначение
@@ -508,7 +508,7 @@ StateChanged публикуется только после подтверждё
 
 **Утверждённая базовая схема:** Repka инициирует TLS 1.3 как client; ESP32 принимает соединение как server. Для каждой локальной пары используется индивидуальный внешний 256-битный PSK и только PSK-DHE/PSK-ephemeral режим с эфемерным (EC)DHE. Cipher suite candidate — TLS_AES_128_GCM_SHA256; общая эфемерная группа подлежит проверке совместимости. TLS 1.2 fallback, PSK-only, 0-RTT/early data и session resumption на первом этапе запрещены. Никакого plaintext fallback нет.
 
-**Текущий Linux-срез:** `src/platform/linux/controller_psk_tls_client.hpp/.cpp` реализует `ControllerPskTlsClient` поверх OpenSSL 3.x. Слой получает и отдаёт зашифрованный поток через BIO pair, а вызывающий транспорт должен самостоятельно передавать его байты физическому устройству; класс не открывает UART и не содержит эмулятора оборудования. Зафиксированные для этого host-среза кандидаты — `TLS_AES_128_GCM_SHA256` и `P-256`; до Mbed TLS interop и испытаний точной ESP32-платы это не окончательный общий production allow-list. После TLS handshake клиент дополнительно требует, чтобы OpenSSL подтвердил PSK-сессию (`SSL_session_reused`) и согласованную группу P-256; сертификатный fallback и PSK-only без эфемерного DHE не принимаются. Отключены ранние данные, session tickets и кеш сессий. `ControllerPskCredentials` передаются вызывающим владельцем из внешнего хранилища; этот класс сам не выполняет provisioning или чтение ключа из файла/NVS.
+**Текущий Linux-срез:** `src/platform/linux/controller_psk_tls_client.hpp/.cpp` реализует `ControllerPskTlsClient` поверх OpenSSL 3.x. Слой получает и отдаёт зашифрованный поток через BIO pair, а вызывающий транспорт должен самостоятельно передавать его байты физическому устройству; класс не открывает UART и не содержит эмулятора оборудования. Зафиксированные для этого host-среза кандидаты — `TLS_AES_128_GCM_SHA256` и `P-256`; до Mbed TLS interop и испытаний точной ESP32-платы это не окончательный общий production allow-list. После TLS handshake клиент дополнительно требует, чтобы OpenSSL подтвердил PSK-сессию (`SSL_session_reused`) и согласованную группу P-256; сертификатный fallback и PSK-only без эфемерного DHE не принимаются. Отключены ранние данные, session tickets и кеш сессий. `ControllerPskCredentials` — очищаемый RAII-объект: PSK и identity стираются при уничтожении, а copy assignment сначала стирает прежнее содержимое. Отдельный `ControllerPskCredentialStore` читает фиксированный 48-байтовый бинарный файл `/etc/dockstation/credentials/repka-esp32.psk`: первые 32 байта — PSK, следующие 16 — identity. Проверяются root-owned path без симлинков, отсутствие ACL, каталог `root:dockstation 0750`, файл `root:dockstation 0640`, regular file, `nlink=1`, точный размер и неизменность stat metadata во время чтения. TLS client ещё не подключён к loader в Gateway composition root; loader не создаёт/не ротирует ключи и не устанавливает их на ESP32.
 
 **Слои обработки:**
 - UART adapter обменивается сырыми байтами с TLS через callbacks custom I/O; он не трактует незашифрованные байты как ControllerCodec frame.

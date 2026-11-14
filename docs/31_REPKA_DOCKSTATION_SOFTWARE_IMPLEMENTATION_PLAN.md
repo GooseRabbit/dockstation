@@ -1,7 +1,7 @@
 # Полный план реализации программного комплекса DockStation на Repka Pi 5
 
 **Статус:** мастер-план реализации; последовательность разработки согласована, открытые платформенные, сетевые, серверные и аппаратные детали требуют отдельной проверки и решения.  
-**Редакция:** 1.59.  
+**Редакция:** 1.60.  
 **Дата:** 2026-11-14.  
 **Вычислительная платформа:** Repka Pi 5.  
 **Предполагаемая ОС:** официальная Repka OS; образ и версия проверяются перед развёртыванием.
@@ -715,6 +715,8 @@ SQLite остаётся кандидатом, не решением. Сравн�
 
 **Реализованный Linux host-срез:** `src/platform/linux/controller_psk_tls_client.hpp/.cpp` содержит `ControllerPskTlsClient` на OpenSSL 3.x; отдельная CMake-библиотека `dockstation_controller_tls` и CTest `controller_psk_tls_client` регистрируются в корневой сборке. Клиент принимает credentials от caller, создаёт TLS 1.3 external-PSK client, закрепляет host candidate suite `TLS_AES_128_GCM_SHA256` и группу `P-256`, требует выбранной PSK-сессии и проверяет, что handshake использовал эфемерную группу. C++ Gateway runtime пока не линкуется с этим адаптером: его будет подключать будущий controller transport manager. Host peer test использует OpenSSL BIO pairs, не открывает UART, не имитирует плату и не доказывает Mbed TLS interop.
 
+**Реализованный Linux credential loader:** `src/platform/linux/controller_psk_credential_store.hpp/.cpp` читает бинарный файл `/etc/dockstation/credentials/repka-esp32.psk` с 32-byte PSK и 16-byte identity. Проверяются root owner, группа `dockstation`, каталог `0750`, файл `0640`, отсутствие ACL/symlink/hardlink, regular-file type, точный размер и стабильность метаданных. `ControllerPskCredentials` очищает свои буферы в деструкторе; loader очищает output при ошибке и временный buffer после чтения. Provisioning/rotation ещё не реализованы, C++ Gateway пока не подключён к loader/TLS transport.
+
 **Логические функции/границы:**
 - `open_controller_uart()` / `close_controller_uart()` — открыть и закрыть raw point-to-point UART; этот адаптер не передаёт незашифрованные ControllerCodec frames напрямую.
 - `perform_controller_tls_handshake()` / `close_controller_tls_session()` — установить или закрыть TLS 1.3 PSK-DHE канал; до `handshake complete` прикладные данные не выдаются.
@@ -745,7 +747,7 @@ SQLite остаётся кандидатом, не решением. Сравн�
 
 PSK должен быть уникальным для пары, генерироваться CSPRNG и передаваться только через отдельную физически контролируемую процедуру provisioning. Для production на ESP32 требуется оценить Secure Boot, Flash Encryption и NVS Encryption; на Repka — отдельное root-controlled credential storage и остаточный риск извлечения системного накопителя. Наличие USB service port само по себе не является аутентификацией установщика. До разработки нужно отдельно спроектировать процесс выдачи/ротации/отзыва ключа и защиту от доступа к временному секрету во время provisioning. Любой сбой TLS приводит к разрыву сессии и повторному полному handshake; plaintext fallback запрещён. Локальные межблокировки ESP32 продолжают работать независимо от Repka.
 
-**Обязательная проверка перед production:** OpenSSL ↔ Mbed TLS TLS 1.3 PSK-DHE interoperability; отказ для неверного/отсутствующего PSK, неправильной identity, изменённой/обрезанной записи; доказательство отсутствия TLS 1.2/PSK-only/0-RTT/plaintext fallback; отсутствие plaintext до handshake complete; корректный сброс после разрыва/ошибки; секреты отсутствуют в логах и конфигурациях; права на файловое хранилище; измерения peak heap/handshake latency на точном ESP32 при UART 115200; физические испытания линии и защищённого хранения. DEC-066 остаётся ПРЕДЛОЖЕНИЕМ до явного согласования владельцем проекта.
+**Обязательная проверка перед production:** OpenSSL ↔ Mbed TLS TLS 1.3 PSK-DHE interoperability; отказ для неверного/отсутствующего PSK, неправильной identity, изменённой/обрезанной записи; доказательство отсутствия TLS 1.2/PSK-only/0-RTT/plaintext fallback; отсутствие plaintext до handshake complete; корректный сброс после разрыва/ошибки; секреты отсутствуют в логах и конфигурациях; права на файловое хранилище; измерения peak heap/handshake latency на точном ESP32 при UART 115200; физические испытания линии и защищённого хранения. DEC-066 утверждён владельцем проекта 2026-11-14; текущие host-компоненты не закрывают Mbed TLS interop, provisioning и аппаратную приёмку.
 
 Полный профиль и ограничения зафиксированы в docs/24 §6.4; граница data contract — docs/06 §16.6; общее требование — docs/07 §11.
 
@@ -1123,6 +1125,7 @@ Host-тест `verification/repka_gateway/test_controller_link_session.cpp` за
 | 1.57 | 2026-11-14 | Уточнена структура этапа 7: ESP32-specific `main`, UART и Mbed TLS adapter принадлежат только `firmware/esp32`; Linux UART/OpenSSL adapter остаётся в `src/platform/linux`, переносимые протокол/codec/session — в `src/hardware/interfaces`. Разделены TLS authentication handshake и логический HELLO/HELLO_ACK; ControllerFrameStreamDecoder получает только TLS plaintext после успешной проверки. Физический transport и TLS код не реализованы.
 | 1.58 | 2026-11-14 | Владелец утвердил базовый криптографический профиль DEC-066: TLS 1.3 PSK-DHE и уникальный 32-байтовый PSK на пару Repka—ESP32. В плане этапа 7 статус изменён с предложения на утверждённую архитектуру. Cipher/group allow-list, точные версии OpenSSL/ESP-IDF/Mbed TLS, PSK identity API, physical provisioning, key storage, TLS adapters, UART и ESP32 target остаются непроверенными и не реализованными.
 | 1.59 | 2026-11-14 | Добавлен самостоятельный Linux/OpenSSL TLS 1.3 PSK client host-срез и отдельный CTest (13 проверок). Добавлены OpenSSL 3.0+ в CMake, статическая цель `dockstation_controller_tls`, host test и CI dependency `libssl-dev`. Клиент ещё не подключён к Gateway runtime и не обменивается данными с физическим UART; Mbed TLS interop, ESP32 firmware, provisioning/storage и hardware tests остаются открытыми.
+| 1.60 | 2026-11-14 | Добавлен Linux `ControllerPskCredentialStore` с fixed binary 48-byte file, no-follow path traversal, root:dockstation ownership, exact 0750/0640, ACL/hardlink/size/stat checks и RAII secret cleanup. Добавлен privileged filesystem acceptance script и CTest для проверки path validation; CI запускает script после создания системной группы/пользователя. Реальный provisioning, atomic rotation, Gateway composition integration, physical UART и ESP32 остаются открытыми.
 
 **Ограничение:** это план. Функции не считаются реализованными до появления кода, проверок и, где требуется, аппаратных испытаний.
 

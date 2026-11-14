@@ -12,10 +12,20 @@ inline constexpr std::size_t kControllerPskSize = 32U;
 inline constexpr std::size_t kControllerPskIdentitySize = 16U;
 
 // Credentials are provisioned outside the application configuration and are
-// supplied by the caller. initialize() copies them into this object; the caller
-// remains responsible for securely clearing its own input copy. Neither value
-// is logged or serialized by this class.
+// supplied by the caller. This value object is copyable only for explicit
+// initialization boundaries and securely clears its own buffers on destruction.
+// Neither value is logged or serialized by this class.
 struct ControllerPskCredentials final {
+    ControllerPskCredentials() noexcept = default;
+    ControllerPskCredentials(const ControllerPskCredentials& other) noexcept;
+    ControllerPskCredentials& operator=(const ControllerPskCredentials& other) noexcept;
+    ~ControllerPskCredentials();
+
+    ControllerPskCredentials(ControllerPskCredentials&&) = delete;
+    ControllerPskCredentials& operator=(ControllerPskCredentials&&) = delete;
+
+    void clear() noexcept;
+
     std::array<std::uint8_t, kControllerPskSize> psk{};
     std::array<std::uint8_t, kControllerPskIdentitySize> identity{};
 };

@@ -1,8 +1,8 @@
 # Испытания и приёмка
 
 **Статус:** предварительный план.  
-**Редакция:** 2.7.
-**Дата актуализации:** 2026-11-13.
+**Редакция:** 2.8.
+**Дата актуализации:** 2026-11-14.
 
 ## 1. Назначение
 
@@ -135,6 +135,8 @@
 ### 3.0. Host-проверки защищённого канала Repka—ESP32
 
 `verification/repka_gateway/test_controller_psk_tls_client.cpp` (CTest `controller_psk_tls_client`) проверяет отдельный Linux/OpenSSL TLS-клиент: TLS 1.3 PSK-DHE handshake, двусторонний encrypted application data, отказ до handshake, пустые учётные данные, неверные PSK и identity, TLS 1.2-only peer, сертификатный fallback без выбранного PSK, PSK-only peer без эфемерного DHE и изменённую AEAD-запись. В тесте используется in-memory OpenSSL TLS peer только для проверки TLS state machine; это не UART/ESP32 emulator, не Mbed TLS interop и не аппаратное испытание.
+
+`verification/repka_gateway/test_controller_psk_credential_store.sh` запускает credential-store test binary от пользователя `dockstation` и создаёт временные root-owned fixtures в `/run`. Проверяются успешное чтение раскладки 32+16 байт, неверные owner/group/mode, неправильный размер, нулевые credentials, файл- и каталог-симлинки, небезопасный режим каталога и hard link. При отказе выходные credentials обязаны быть очищены. Это host-проверка POSIX filesystem policy; provisioning, ротация и защита от компрометации root/физического извлечения диска не проверяются.
 
 ### 3.1. Испытания операторского приложения
 
