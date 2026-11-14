@@ -890,7 +890,21 @@ PlatformLogger обслуживает технические сообщения 
 | `validate_controller_message()` | Fail-closed проверка типа и наличия обязательных полей общего конверта. Не проверяет совместимость версий, порядок/повторы последовательности и формат временной метки. |
 | `validate_controller_message_payload()` | Проверяет соответствие типа сообщения телу, обязательные поля измерений и ошибок, известность quality/severity и конечность вещественных значений. |
 
-Проверка: `verification/repka_gateway/test_controller_protocol.cpp`; CTest — `controller_protocol`. Логические тела реализованы, но JSON/бинарная сериализация, формат и границы кадров, timestamp standard, согласование версий и физический транспорт не выбраны.
+Проверка: `verification/repka_gateway/test_controller_protocol.cpp`; CTest — `controller_protocol`. Логические тела и валидаторы реализованы.
+
+### src/hardware/interfaces/controller_codec.hpp/.cpp
+
+| Функция / тип | Назначение |
+|---|---|
+| `ControllerCodecStatus` / `ControllerCodecResult` | Статус кодирования/декодирования и размер полного кадра/смещение ошибки. |
+| `ControllerCodecDecodeStorage` | Caller-owned фиксированное хранилище максимум 16 декодированных измерений. |
+| `ControllerCodecDecodedMessage` | Декодированный общий конверт и типизированное тело; строковые представления ссылаются на входной кадр. |
+| `encode_controller_message()` | Кодирует logical envelope + payload в полный бинарный кадр v1 в caller-owned буфер без динамического выделения памяти. |
+| `decode_controller_message()` | Проверяет и декодирует ровно один полный кадр v1; отклоняет неверный magic/version/type/length/CRC, некорректный UTF-8, недопустимые value tags и превышение лимитов. |
+
+Wire v1: magic `DS`, wire version 1, тип сообщения 1…6, uint16 little-endian body length, общий envelope, typed payload и CRC-32/ISO-HDLC по header + body. Максимальный кадр 2048 байт, максимум 16 измерений. Подробная таблица полей — docs/06 §16.3.
+
+Проверка: `verification/repka_gateway/test_controller_codec.cpp`; CTest — `controller_codec`. Host-тесты проверяют round-trip HELLO/telemetry/ERROR, все типы значений, границы целых чисел, нулевой snapshot, UTF-8, размеры, повреждённую CRC и malformed frames. Кодек не накапливает потоковые данные и не открывает UART. CRC не является аутентификацией/шифрованием. UART-драйвер, потоковый frame assembler, протокол аутентификации/криптографии и ESP-IDF firmware target остаются отдельными задачами.
 
 
 ---
