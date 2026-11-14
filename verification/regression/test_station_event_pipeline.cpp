@@ -160,6 +160,21 @@ void already_current_session_passes_exact_cursor_to_profile() {
            "profile receives the exact preserved cursor from SourceSessionCoordinator");
 }
 
+void source_without_instance_is_blocked() {
+    EventRepositoryFake events; Processor global, operation, timeout;
+    Verifier verifier; CursorReader reader; SessionRepository sessions;
+    StationEventPipeline pipeline{events,global,operation,timeout,verifier,reader,sessions};
+    Event legacy = event_value();
+    legacy.source_instance.reset();
+    const auto r = pipeline.handle(legacy,{false,true,false},evidence_value());
+    expect(r.session_status==SourceSessionCoordinatorStatus::InvalidEvidence &&
+           !r.event_result,
+           "source without source_instance is rejected by the session gate");
+    expect(verifier.calls==0 && reader.calls==0 && sessions.calls==0 &&
+           events.calls==0 && global.calls==0,
+           "source without a session identity cannot bypass F13 authentication");
+}
+
 void old_instance_is_blocked() {
     EventRepositoryFake events; Processor global, operation, timeout;
     Verifier verifier; CursorReader reader; SessionRepository sessions;
@@ -198,6 +213,7 @@ int main() {
     confirmed_session_reaches_f13();
     invalid_event_is_rejected_before_session_mutation();
     already_current_session_passes_exact_cursor_to_profile();
+    source_without_instance_is_blocked();
     old_instance_is_blocked();
     cursor_and_registration_errors_block();
     if (failures) { std::cerr<<failures<<" of "<<checks<<" checks failed.\n"; return 1; }
