@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-binary="$PWD/build/test_controller_psk_credential_store"
-if [[ ! -x "$binary" ]]; then
-    echo "Credential-store test binary is missing: $binary" >&2
+binary_source="$PWD/build/test_controller_psk_credential_store"
+if [[ ! -x "$binary_source" ]]; then
+    echo "Credential-store test binary is missing: $binary_source" >&2
     exit 1
 fi
 if ! getent group dockstation >/dev/null; then
@@ -23,6 +23,11 @@ trap cleanup EXIT
 
 sudo chown root:dockstation "$temporary_root"
 sudo chmod 0750 "$temporary_root"
+
+# The GitHub workspace may not be traversable by the unprivileged service
+# account. Run a root-owned test binary from the same controlled /run tree.
+binary="$temporary_root/test_controller_psk_credential_store"
+sudo install -o root -g dockstation -m 0750 "$binary_source" "$binary"
 
 prepare_directory() {
     local name="$1"
