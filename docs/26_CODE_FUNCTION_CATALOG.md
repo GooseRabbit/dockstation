@@ -906,6 +906,22 @@ Wire v1: magic `DS`, wire version 1, тип сообщения 1…6, uint16 lit
 
 Проверка: `verification/repka_gateway/test_controller_codec.cpp`; CTest — `controller_codec`. Host-тесты проверяют round-trip HELLO/telemetry/ERROR, все типы значений, границы целых чисел, нулевой snapshot, UTF-8, размеры, повреждённую CRC и malformed frames. Кодек не накапливает потоковые данные и не открывает UART. CRC не является аутентификацией/шифрованием. UART-драйвер, потоковый frame assembler, протокол аутентификации/криптографии и ESP-IDF firmware target остаются отдельными задачами.
 
+### src/hardware/interfaces/controller_frame_stream_decoder.hpp/.cpp
+
+| Функция / тип | Назначение |
+|---|---|
+| `ControllerFrameStreamStatus` / `ControllerFrameStreamResult` | Результат приёма части потока: NeedMoreData, FrameReady, FramePending, NullInput; число потреблённых и отброшенных байтов и размер кадра. |
+| `ControllerFrameStreamDecoder` | Фиксированный внутренний буфер максимум 2048 байт; без динамического выделения памяти. |
+| `push_bytes()` | Принимает часть входного потока до одного полного кандидата-кадра и сообщает точное количество потреблённых байтов. Хвост входа после FrameReady остаётся ответственностью caller. |
+| `frame_data()` / `frame_size()` / `has_frame()` | Предоставляют временное представление текущего candidate frame. |
+| `consume_frame()` | Убирает кадр после того, как caller успешно проверил его через `decode_controller_message()`. |
+| `reject_frame()` | Отбрасывает первый байт неверного кандидата и повторно ищет сигнатуру, сохраняя возможность синхронизации на следующих данных. |
+| `reset()` | Сбрасывает частичный кадр и состояние парсера. |
+
+Парсер проверяет только magic/version/type/ограниченную длину; CRC и структуру тела проверяет ControllerCodec. После FrameReady caller должен декодировать кадр; при успехе вызвать consume_frame(), при ошибке — reject_frame(). Не использовать frame_data() после изменения внутреннего буфера.
+
+Проверка: `verification/repka_gateway/test_controller_frame_stream_decoder.cpp`; CTest — `controller_frame_stream_decoder`. Покрываются неполные куски, split magic, шум/повторная синхронизация, чрезмерная длина, последовательные кадры, CRC rejection и восстановление. Потоковый парсер не открывает UART и не является аппаратной эмуляцией.
+
 
 ---
 
