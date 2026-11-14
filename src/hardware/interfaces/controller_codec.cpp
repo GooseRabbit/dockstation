@@ -617,16 +617,16 @@ ControllerCodecResult encode_controller_message(
         ControllerMessageValidationStatus::Valid) {
         return failure(ControllerCodecStatus::InvalidEnvelope);
     }
-    if (validate_controller_message_payload(envelope.type, payload).status !=
-        ControllerPayloadValidationStatus::Valid) {
-        return failure(ControllerCodecStatus::InvalidPayload);
-    }
     if (envelope.type == ControllerMessageType::TelemetrySnapshot) {
         const auto* snapshot = std::get_if<ControllerTelemetrySnapshotPayload>(&payload);
         if (snapshot != nullptr &&
             snapshot->measurement_count > kControllerCodecMaximumMeasurements) {
             return failure(ControllerCodecStatus::TooManyMeasurements);
         }
+    }
+    if (validate_controller_message_payload(envelope.type, payload).status !=
+        ControllerPayloadValidationStatus::Valid) {
+        return failure(ControllerCodecStatus::InvalidPayload);
     }
 
     const auto effective_capacity =
