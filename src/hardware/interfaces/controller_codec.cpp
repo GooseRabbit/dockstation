@@ -8,22 +8,8 @@
 #include <variant>
 
 namespace dockstation::hardware::interfaces {
-namespace {
 
-constexpr std::size_t kHeaderSize = 6U;
-constexpr std::size_t kCrcSize = 4U;
-constexpr std::uint8_t kValueBoolean = 1U;
-constexpr std::uint8_t kValueSigned = 2U;
-constexpr std::uint8_t kValueUnsigned = 3U;
-constexpr std::uint8_t kValueFloat64 = 4U;
-constexpr std::uint8_t kValueText = 5U;
-
-static_assert(sizeof(double) == sizeof(std::uint64_t),
-              "ControllerCodec requires 64-bit double");
-static_assert(std::numeric_limits<double>::is_iec559,
-              "ControllerCodec requires IEEE-754 binary64 double");
-
-[[nodiscard]] bool is_valid_utf8(std::string_view value) noexcept {
+bool is_valid_controller_wire_text(std::string_view value) noexcept {
     std::size_t index = 0U;
     while (index < value.size()) {
         const auto first = static_cast<std::uint8_t>(value[index]);
@@ -74,6 +60,9 @@ static_assert(std::numeric_limits<double>::is_iec559,
     return true;
 }
 
+namespace {
+
+
 class Writer final {
 public:
     Writer(std::uint8_t* data, std::size_t capacity) noexcept
@@ -110,7 +99,7 @@ public:
             status_ = ControllerCodecStatus::StringTooLong;
             return false;
         }
-        if (!is_valid_utf8(value)) {
+        if (!is_valid_controller_wire_text(value)) {
             status_ = ControllerCodecStatus::InvalidUtf8;
             return false;
         }
@@ -215,7 +204,7 @@ public:
         }
         value = std::string_view{
             reinterpret_cast<const char*>(data_ + offset_), count};
-        if (!is_valid_utf8(value)) {
+        if (!is_valid_controller_wire_text(value)) {
             status_ = ControllerCodecStatus::InvalidUtf8;
             return false;
         }
