@@ -1,7 +1,7 @@
 # Идентичность станции и криптографическая защита
 
 **Статус:** техническая спецификация идентичности и доступа; правила изоляции OwnerSpace заданы владельцем проекта, конкретные криптографические параметры остаются предложениями до согласования.  
-**Редакция:** 0.4.  
+**Редакция:** 0.5.  
 **Дата:** 2026-11-11.
 
 ## 1. Назначение
@@ -245,6 +245,7 @@ Wi-Fi WPA2/WPA3 и сегментация сети рассматриваютс�
 - [RFC 9257 — Guidance for External PSK Usage in TLS](https://www.rfc-editor.org/rfc/rfc9257.html): минимальная энтропия PSK, pairwise-use ограничения, provisioning, PSK identity encoding и privacy/linkability. В §6.1.1 отмечены исторические ограничения длины identity в API Mbed TLS; это дополнительная причина проверять точную версию ESP-IDF.
 - [ESP-IDF 6.1 — Mbed TLS](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/protocols/mbedtls.html): Mbed TLS fork, TLS 1.3 и конфигурационные presets; TLS 1.3 полностью поддерживается начиная с Mbed TLS 3.6.0.
 - [Mbed TLS 3.6.3 SSL API](https://mbed-tls.readthedocs.io/projects/api/en/v3.6.3/api/file/ssl_8h/): PSK key-exchange modes, PSK callbacks и пользовательские send/receive callbacks.
+- [Mbed TLS 3.6.6 configuration reference](https://mbed-tls.readthedocs.io/projects/api/en/v3.6.6/api/file/mbedtls__config_8h/): предел MBEDTLS_PSK_MAX_LEN (обычно 32 байта для 256-битного PSK; фактическая конфигурация ESP-IDF проверяется отдельно).
 - [OpenSSL 3.0 BIO pair](https://docs.openssl.org/3.0/man3/BIO_s_bio/): TLS I/O под управлением приложения для нестандартного транспорта.
 - [ESP-IDF 6.1 — NVS Encryption](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/storage/nvs_encryption.html) и [Flash Encryption](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/security/flash-encryption.html): взаимозависимость защиты NVS и Flash Encryption, ограничения production/release режима.
 - [ESP-IDF 6.1 — Security Overview](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/security/security.html): Secure Boot, Flash Encryption и общие цели платформенной защиты.
@@ -446,3 +447,4 @@ Wi-Fi WPA2/WPA3 и сегментация сети рассматриваютс�
 | 0.2 | 2026-11-11 | Добавлена обязательная multi-tenant модель OwnerSpace, изоляция станций и ресурсов, проверка полномочий на каждом запросе, station-scoped delegation и контролируемая передача владения (DEC-055). |
 | 0.3 | 2026-11-14 | Добавлено предложение DEC-066 для внутреннего Repka—ESP32 UART: TLS 1.3 PSK-DHE с уникальным случайным секретом пары, строгим отказом без защищённого канала, интеграцией существующего ControllerCodec внутри TLS, правилами 0-RTT/ключевого хранения/provisioning и перечнем обязательных interop/аппаратных проверок. Профиль остаётся предложением до отдельного согласования и подтверждения ESP32 target. |
 | 0.4 | 2026-11-14 | Уточнены внешние PSK правила по RFC 9257: ключ строго попарный (один client + один server), не меняет роли и не переиспользуется; identity видима в ClientHello и может связывать повторные соединения, поэтому не содержит Station ID/персональные данные. Добавлен технический источник RFC 9257. |
+| 0.5 | 2026-11-14 | Разделены длины PSK и PSK identity: секрет 32 байта с 256 битами энтропии; identity — отдельный непрозрачный случайный идентификатор, 16 байт как стартовая совместимая граница API Mbed TLS, не секрет и видимая в ClientHello. Добавлен источник по MBEDTLS_PSK_MAX_LEN; оба ограничения должны быть подтверждены для выбранного ESP-IDF fork. |
