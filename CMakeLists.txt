@@ -39,6 +39,7 @@ add_library(dockstation_linux_runtime STATIC
     src/platform/logging/logger.cpp
     src/hardware/interfaces/controller_codec.cpp
     src/hardware/interfaces/controller_frame_stream_decoder.cpp
+    src/hardware/interfaces/controller_link_session.cpp
     src/communications/api_serialization.cpp
     src/communications/local_api_server.cpp
 )
@@ -158,6 +159,16 @@ if(BUILD_TESTING)
     dockstation_apply_compile_policy(test_controller_frame_stream_decoder)
     add_test(NAME controller_frame_stream_decoder
         COMMAND test_controller_frame_stream_decoder)
+
+    add_executable(test_controller_link_session
+        verification/repka_gateway/test_controller_link_session.cpp
+    )
+    target_link_libraries(test_controller_link_session
+        PRIVATE dockstation_linux_runtime
+    )
+    dockstation_apply_compile_policy(test_controller_link_session)
+    add_test(NAME controller_link_session
+        COMMAND test_controller_link_session)
 
     add_executable(test_local_api
         verification/repka_gateway/test_local_api.cpp
