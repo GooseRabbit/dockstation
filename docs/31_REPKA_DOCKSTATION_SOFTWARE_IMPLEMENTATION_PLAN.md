@@ -1,7 +1,7 @@
 # Полный план реализации программного комплекса DockStation на Repka Pi 5
 
 **Статус:** мастер-план реализации; последовательность разработки согласована, открытые платформенные, сетевые, серверные и аппаратные детали требуют отдельной проверки и решения.  
-**Редакция:** 1.41.  
+**Редакция:** 1.42.  
 **Дата:** 2026-11-14.  
 **Вычислительная платформа:** Repka Pi 5.  
 **Предполагаемая ОС:** официальная Repka OS; образ и версия проверяются перед развёртыванием.
@@ -384,7 +384,7 @@ F03 выполняет предварительный read-only поиск event
 
 **Статус: СОГЛАСОВАНО владельцем и реализовано как логический read-only порт. Production adapter постоянного хранения ещё не реализован.**
 
-Текущий факт: `StationEventPipeline::handle(event, validation_policy, expected_cursor)` получает курсор извне. F13 проверяет по нему порядок события, затем без изменения передаёт тот же снимок профильному обработчику. F09/F11 и F10 внутри атомарного commit сравнивают ожидаемый курсор с сохранённым и одновременно продвигают его при записи операции/перехода, события и результата. В репозитории нет порта, который после старта процесса читает актуальный cursor из постоянного хранилища.
+Текущий факт: StationEventPipeline::handle(event, validation_policy, evidence) принимает SourceSessionEvidence, а не произвольный cursor. Pipeline сначала выполняет чистые F01/F02 preflight-проверки, затем через SourceSessionCoordinator вызывает verifier → SourceCursorReader → SourceSessionRepository. Только Confirmed/AlreadyCurrent запускают дальнейшую F03/F04/F13 обработку. Coordinator передаёт подтверждённый cursor внутрь handle_event и профильного обработчика. F09/F11 и F10 внутри атомарного commit сравнивают ожидаемый cursor с сохранённым и одновременно продвигают его при записи операции/перехода, события и результата. Production reader/repository adapters постоянного хранилища и реальный transport context пока отсутствуют.
 
 **Реализованный минимальный read-only интерфейс** (production adapter пока отсутствует):
 
@@ -442,7 +442,7 @@ public:
 
 ### 5.4.2. Доверенная регистрация источника и подтверждение source session
 
-**Статус: архитектура и публичные C++-сигнатуры согласованы владельцем 2026-11-14. Логические порты и fail-closed проверки формы результатов реализованы; SourceSessionCoordinator реализован и проверяется host harness. Production adapters и интеграция с реальным каналом/F13 не выполнены.**
+**Статус: архитектура и публичные C++-сигнатуры согласованы владельцем 2026-11-14. Логические порты, validators и SourceSessionCoordinator реализованы; Coordinator интегрирован в StationEventPipeline. Production verifier/registry/storage adapters, реальный transport context и production composition root ещё не реализованы.**
 
 #### Разделение идентификаторов
 
@@ -568,7 +568,13 @@ public:
 4. Прочитать курсор для подтверждённого source через `SourceCursorReader`. Ошибка, неизвестный статус или противоречивый payload возвращают `CursorReadError`; `Error` не превращается в `NotFound`.
 5. Передать результат чтения и полученный непосредственно от verifier-а `VerifiedSourceSession` в `SourceSessionRepository`. Только корректные `Confirmed` и `AlreadyCurrent` возвращают cursor. Конфликты и ошибки возвращаются без cursor; автоматического retry нет.
 
-Координатор не владеет адаптерами, не реализует криптографию или постоянное хранение и не продвигает `last_sequence`. Вызывающий доверенный адаптер получает `Event` и `SourceSessionEvidence` из одного аутентифицированного контекста канала. После успешного подтверждения он передаёт возвращённый cursor в `StationEventPipeline::handle()`; далее F13 проверяет конверт, duplicate и freshness, а F09/F10 продолжают атомарно продвигать cursor. Сам координатор пока не подключён к production channel adapter или composition root.
+Координатор не владеет адаптерами, не реализует криптографию или постоянное хранение и не продвигает `last_sequence`. Он уже встроен в `StationEventPipeline`: вызывающий транспортный адаптер передаёт Event и SourceSessionEvidence из одного аутентифицированного контекста, а Pipeline сам получает подтверждённый cursor и передаёт его в `handle_event()`/профиль. Production channel adapter и production composition root ещё не реализованы.
+
+#### Порядок входного Pipeline и повторная проверка канала
+
+До вызова Coordinator Pipeline выполняет чистые F01 (структура Event) и F02 (известность event_type). Невалидный Event или неизвестный тип возвращается без попытки session confirmation: event_result заполнен, session_status пуст, verifier/reader/repository не вызываются и source cursor не меняется. После подтверждения сессии handle_event() повторяет F01/F02 для защиты от обхода общего входа, затем выполняет F03/F04 и профильную маршрутизацию.
+
+SourceSessionVerifier вызывается для каждого события. session_proof подтверждает установление текущего канала, а peer_identity_evidence должен позволять убедиться, что именно этот канал всё ещё открыт и аутентифицирован. Повторная проверка на том же непрерывно открытом канале должна быть идемпотентной; повтор proof на новом/закрытом канале или вне исходного channel binding отклоняется. Новый канал проходит новое challenge/session establishment. Это обязательное поведение будущего production verifier/transport adapter; fake host tests криптографическую реализацию не доказывают.
 
 #### Атомарные правила фиксации cursor
 
@@ -1002,10 +1008,12 @@ USB/UART, пины и формат кадров остаются открыты�
 | 1.34 | 2026-11-14 | Добавлены C++ Gateway systemd unit template, пример конфигурации и CMake install. CI run 43520279910 SUCCESS: 10/10 CTest, 31/31 C++ host tests, install layout/systemd-analyze проверки, права dockstation и запуск не-root Gateway с health/diagnostics, loopback-only bind и SIGTERM shutdown. Ручные `systemctl` lifecycle и reboot проверка в пользовательской Ubuntu VM остаются открытыми. |
 | 1.35 | 2026-11-14 | Зафиксирована ручная проверка полного systemd lifecycle C++ Gateway в Ubuntu 24.04.5 LTS x86_64 VM: установка, enable/start, restart, stop/start, active/running под dockstation, HTTP 200 health/diagnostics, loopback-only bind, journal и автозапуск после reboot (enabled/active, journal текущей загрузки). Windows Operator после загрузки снова отображал Connected. ARM64/Repka Pi 5 и аппаратные проверки остаются открытыми. |
 | 1.36 | 2026-11-14 | Развёрнута карта интеграции существующих портов SSM/ConfigurationManager с постоянным хранилищем: атомарные единицы F07/F09/F10/F11/F14, read-порты F16/F17/CFG-F07, границы EventRepository, идентификаторы, курсоры и Timer. Явно выделены отсутствующие контракты чтения cursor, списка незавершённых операций и завершения recovery; сохранены открытыми backend, формат ID, запись конфигурации и политика таймеров после reboot. Добавлены последовательность небольших срезов и критерии adapter-level тестов; код и публичные интерфейсы не менялись. |
+| 1.37 | 2026-11-14 | Подготовлено предложение публичного read-only интерфейса SourceCursorReader с семантикой Found/NotFound/Error, проверками целостности результата, сроком жизни string_view и поведением при конкурирующем commit. Отдельно оставлено открытым доверенное подтверждение первой/новой source_instance. Добавлены сценарии verification-контракта; код и публичные интерфейсы не менялись. |
 | 1.38 | 2026-11-14 | SourceCursorReader согласован владельцем и добавлен в `src/core/event_processing.hpp`: read-only статусы Found/NotFound/Error и стабильный снимок SourceCursor; добавлена fail-closed проверка формы результата в `event_processing.cpp`. В CTest зарегистрирован отдельный verification harness с 25 проверками. Обновлены docs/06 и docs/26. Production adapter, интеграция с F13/composition root, транзакционные проверки с F09/F10 и доверенная процедура первой/новой source_instance остаются открытыми. |
 | 1.39 | 2026-11-14 | По согласованию владельца добавлен §5.4.2: разделены постоянная регистрация logical source и доверенное подтверждение source session через SourceSessionVerifier/SourceSessionRepository; описаны статусы, атомарные правила обновления cursor, проверка ревизии регистрации и привязка событий к подтверждённому каналу. Добавлена спецификация SSR-01…SSR-18 в verification/regression. Публичные C++-сигнатуры требуют отдельного согласования; код, production adapters, криптографический протокол и аппаратная проверка не выполнялись. |
 | 1.40 | 2026-11-14 | Владелец утвердил публичные SourceSessionVerifier/SourceSessionRepository сигнатуры. Добавлены src/core/source_session.hpp/.cpp и fail-closed validators для evidence, Verified session и confirmation result. Добавлен CTest host harness SSR-01…SSR-18 на fake verifier/reader/repository; документация 06/26 и regression README обновлена. Production registry/verifier/storage, composition-root/event-adapter wiring, криптография, provisioning и аппаратная проверка остаются открытыми. |
 | 1.41 | 2026-11-14 | Реализован утверждённый SourceSessionCoordinator: проверка привязки Event к evidence, последовательность verifier → cursor reader → transactional repository, fail-closed статусы и возврат cursor только при Confirmed/AlreadyCurrent. SSR-01…SSR-18 переведены с тестовой копии оркестрации на production coordinator с fake ports. Обновлены CMake, docs/06, docs/26 и regression-сценарии. Production adapters, аутентифицированный transport context и F13 composition-root integration остаются открытыми. |
+| 1.42 | 2026-11-14 | Укреплены fail-closed validators: отклоняются пробельные source/source_instance/registration_revision, некорректный Found cursor и успешное подтверждение при expected Error. StationEventPipeline выполняет F01/F02 до любых session-side effects и возвращает пустой session_status при раннем отказе; добавлены тесты точной передачи cursor в профиль и повторной проверки той же активной сессии. Синхронизированы интерфейсы Pipeline в docs/06, docs/26, docs/31 и docs/18; обновлены README и regression-инструкции. Production transport/verifier/storage остаются открытыми. |
 
 **Ограничение:** это план. Функции не считаются реализованными до появления кода, проверок и, где требуется, аппаратных испытаний.
 
@@ -1042,8 +1050,8 @@ USB/UART, пины и формат кадров остаются открыты�
 
 ## Дополнение: обязательная привязка F13 к подтверждённой сессии
 
-**Реализовано на уровне core:** StationEventPipeline теперь вызывает SourceSessionCoordinator до F13. Публичный входной метод принимает SourceSessionEvidence, а не произвольный SourceCursor. При любом статусе подтверждения, кроме Confirmed и AlreadyCurrent, поиск события и профильная обработка не запускаются. Причина отказа сохраняется в результате pipeline.
+**Реализовано на уровне core:** StationEventPipeline выполняет F01/F02 до SourceSessionCoordinator, затем после Confirmed/AlreadyCurrent запускает общий F03/F04/F13. Публичный входной метод принимает SourceSessionEvidence, а не произвольный SourceCursor. Некорректный Event или неизвестный тип не вызывают session verifier/reader/repository и не меняют cursor. При отказе подтверждения сессии поиск события и профильная обработка не запускаются; точный статус сохраняется, а при раннем F01/F02 результат session confirmation отсутствует.
 
-**Проверка:** отдельный CTest station_event_pipeline покрывает неподтверждённую сессию, успешную обработку, несовпадение старого instance, ошибку чтения курсора и изменение регистрации.
+**Проверка:** CTest station_event_pipeline проверяет успешное подтверждение, блокировку при отказе, несовпадение instance, ошибки cursor/registration, ранний отказ F01/F02 без изменения cursor и точную передачу cursor профильному обработчику. Контрактный тест в tests/ проверяет все пять маршрутов и захват переданного cursor.
 
-**Ограничения:** тесты используют fake-адаптеры. Реальный verifier, доверенное создание SourceSessionEvidence внутри аутентифицированного transport adapter, постоянное хранилище и атомарность транзакций должны быть реализованы отдельно. Подтверждение сессии и commit события пока не объединены в одну транзакцию. C++ Gateway runtime ещё не подключён к этому core pipeline.
+**Ограничения:** тесты используют fake-адаптеры. Реальный verifier, доверенное создание SourceSessionEvidence внутри аутентифицированного transport adapter, постоянное хранилище и атомарность production-транзакций должны быть реализованы отдельно. Подтверждение сессии и commit события пока не объединены в одну транзакцию: неуспешная обработка первого события может оставить новую сессию подтверждённой с пустым last_sequence. C++ Gateway runtime ещё не подключён к этому core pipeline.
