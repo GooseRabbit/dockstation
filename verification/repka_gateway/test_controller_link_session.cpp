@@ -235,29 +235,41 @@ int main() {
     expect(result.status == ControllerLinkSessionStatus::Success,
            "accepts a higher HELLO_ACK sequence from the same peer instance");
 
-    result = session.poll(10800U, "time");
-    expect(result.status == ControllerLinkSessionStatus::HandshakeTimeout &&
-               session.state() == ControllerLinkSessionState::LinkLost,
-           "marks a handshake that receives no acknowledgement as lost");
-
-    result = session.poll(11800U, "2026-11-14T19:00:11Z");
+    result = session.poll(12799U, "2026-11-14T19:00:12Z");
     expect(result.status == ControllerLinkSessionStatus::Success &&
+               result.event == ControllerLinkSessionEvent::HeartbeatDue &&
                result.outbound_message.sequence_number == 5U,
-           "retry sequence remains monotonic after a handshake timeout");
+           "sends the next heartbeat while the peer activity timeout has not elapsed");
+
+    result = session.poll(12800U, "time");
+    expect(result.status == ControllerLinkSessionStatus::HeartbeatTimeout &&
+               session.state() == ControllerLinkSessionState::LinkLost,
+           "marks an established session lost when peer activity times out");
+
+    result = session.poll(13799U, "time");
+    expect(result.state == ControllerLinkSessionState::LinkLost &&
+               !result.has_outbound_message,
+           "waits for the retry interval after the second link loss");
+
+    result = session.poll(13800U, "2026-11-14T19:00:13Z");
+    expect(result.status == ControllerLinkSessionStatus::Success &&
+               result.outbound_message.sequence_number == 6U &&
+               result.outbound_message.type == ControllerMessageType::Hello,
+           "restarts HELLO with a monotonic sequence after peer timeout");
 
     result = session.handle_message(
         make_message(ControllerMessageType::HelloAck, "esp32-01",
-                     "esp32-boot-02", 1U), 11900U);
+                     "esp32-boot-02", 1U), 13900U);
     expect(result.status == ControllerLinkSessionStatus::Success &&
                result.event == ControllerLinkSessionEvent::SessionEstablished,
-           "accepts a new peer instance after its sequence restarts");
+           "accepts a new peer instance after its sequence restarts on a fresh handshake");
 
     session.stop();
     expect(session.state() == ControllerLinkSessionState::Stopped,
            "stop returns the state machine to Stopped");
-    result = session.start(12000U, "time");
+    result = session.start(14000U, "time");
     expect(result.status == ControllerLinkSessionStatus::Success &&
-               result.outbound_message.sequence_number == 6U,
+               result.outbound_message.sequence_number == 7U,
            "stop/start does not reset the local sequence counter");
 
     session.stop();
