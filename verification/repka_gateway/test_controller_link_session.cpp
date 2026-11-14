@@ -171,11 +171,11 @@ int main() {
                result.event == ControllerLinkSessionEvent::PeerHeartbeatReceived,
            "accepts an increasing heartbeat from the established peer");
 
-    result = session.poll(1499U, "time");
+    result = session.poll(1199U, "time");
     expect(!result.has_outbound_message &&
                result.event == ControllerLinkSessionEvent::None,
            "does not emit heartbeat before the configured interval");
-    result = session.poll(1500U, "2026-11-14T19:00:01Z");
+    result = session.poll(1200U, "2026-11-14T19:00:01Z");
     expect(result.status == ControllerLinkSessionStatus::Success &&
                result.event == ControllerLinkSessionEvent::HeartbeatDue &&
                result.has_outbound_message &&
@@ -207,8 +207,10 @@ int main() {
            "accepts a valid sequenced ERROR message for upper-layer handling");
 
     result = session.poll(6699U, "time");
-    expect(result.state == ControllerLinkSessionState::Established,
-           "keeps session established before peer activity timeout");
+    expect(result.state == ControllerLinkSessionState::Established &&
+               result.has_outbound_message &&
+               result.event == ControllerLinkSessionEvent::HeartbeatDue,
+           "keeps session established and sends a due heartbeat before peer timeout");
     result = session.poll(6700U, "time");
     expect(result.status == ControllerLinkSessionStatus::HeartbeatTimeout &&
                result.event == ControllerLinkSessionEvent::LinkLost &&
@@ -223,13 +225,13 @@ int main() {
     expect(result.status == ControllerLinkSessionStatus::Success &&
                result.event == ControllerLinkSessionEvent::HelloRequired &&
                result.outbound_message.type == ControllerMessageType::Hello &&
-               result.outbound_message.sequence_number == 3U &&
+               result.outbound_message.sequence_number == 4U &&
                session.state() == ControllerLinkSessionState::AwaitingHelloAck,
            "automatically retries HELLO with a higher local sequence");
 
     result = session.handle_message(
         make_message(ControllerMessageType::HelloAck, "esp32-01",
-                     "esp32-boot-01", 4U), 7800U);
+                     "esp32-boot-01", 5U), 7800U);
     expect(result.status == ControllerLinkSessionStatus::Success,
            "accepts a higher HELLO_ACK sequence from the same peer instance");
 
@@ -240,7 +242,7 @@ int main() {
 
     result = session.poll(11800U, "2026-11-14T19:00:11Z");
     expect(result.status == ControllerLinkSessionStatus::Success &&
-               result.outbound_message.sequence_number == 4U,
+               result.outbound_message.sequence_number == 5U,
            "retry sequence remains monotonic after a handshake timeout");
 
     result = session.handle_message(
@@ -255,7 +257,7 @@ int main() {
            "stop returns the state machine to Stopped");
     result = session.start(12000U, "time");
     expect(result.status == ControllerLinkSessionStatus::Success &&
-               result.outbound_message.sequence_number == 5U,
+               result.outbound_message.sequence_number == 6U,
            "stop/start does not reset the local sequence counter");
 
     session.stop();
