@@ -1,7 +1,7 @@
 # Полный план реализации программного комплекса DockStation на Repka Pi 5
 
 **Статус:** мастер-план реализации; последовательность разработки согласована, открытые платформенные, сетевые, серверные и аппаратные детали требуют отдельной проверки и решения.  
-**Редакция:** 1.61.  
+**Редакция:** 1.62.  
 **Дата:** 2026-11-15.  
 **Вычислительная платформа:** Repka Pi 5.  
 **Предполагаемая ОС:** официальная Repka OS; образ и версия проверяются перед развёртыванием.
@@ -1128,35 +1128,35 @@ Host-тест `verification/repka_gateway/test_controller_link_session.cpp` за
 | 1.60 | 2026-11-14 | Добавлен Linux `ControllerPskCredentialStore` с fixed binary 48-byte file, no-follow path traversal, root:dockstation ownership, exact 0750/0640, ACL/hardlink/size/stat checks и RAII secret cleanup. Добавлен privileged filesystem acceptance script и CTest для проверки path validation; CI запускает script после создания системной группы/пользователя. Реальный provisioning, atomic rotation, Gateway composition integration, physical UART и ESP32 остаются открытыми.
 
 | 1.61 | 2026-11-15 | Добавлена standalone CLI dockstation-credential-provision: CSPRNG для PSK[32]/identity[16], безопасный временный файл root-only, права root:dockstation 0640, atomic no-overwrite install и explicit --replace только после проверки старого файла loader-ом; CMake install/CTest и privileged acceptance script покрывают создание, отказ от перезаписи, ошибки mode/ACL и локальную замену. Документы 06/07/11/12/24/26 синхронизированы. ESP32 provisioning/coordinated rotation, Gateway integration, Mbed TLS interop, физический UART и аппаратная приёмка остаются открытыми. |
+| 1.62 | 2026-11-15 | Полная синхронизация статуса с последним CI run 43646438975 для HEAD `192b154e1d0d7b3d2afed36bd41b8b2e1045af9a`: 19/19 CTest, 31/31 дополнительных C++ host tests, 134 pytest, credential acceptance и Gateway/systemd/QML/shell checks. В документации добавлен REQ-SEC-014, acceptance-критерии TEST-SW-128…133 и TEST-HW-008; исправлена нумерация §12 docs/17 и дополнен реестр модулей. Аппаратная интеграция и OpenSSL↔Mbed TLS interop остаются открытыми. |
 
 **Ограничение:** это план. Функции не считаются реализованными до появления кода, проверок и, где требуется, аппаратных испытаний.
 
 
 
-## 13. Результат полного host CI
+## 13. Результат последнего полного host CI
 
-Полный workflow `.github/workflows/linux-cmake.yml` [43608617035](https://github.com/GooseRabbit/dockstation/actions/runs/43608617035) завершился SUCCESS на Ubuntu 24.04.5 x86_64 для HEAD `22933ce86484c45d47322ba3940a98119afb66d4`.
+Полный workflow `.github/workflows/linux-cmake.yml` [43646438975](https://github.com/GooseRabbit/dockstation/actions/runs/43646438975) завершился SUCCESS на Ubuntu 24.04.5 x86_64 для HEAD `192b154e1d0d7b3d2afed36bd41b8b2e1045af9a` (ветка `chore/flatten-repka-directories`, 2026-11-15).
 
 | Проверка | Результат |
 |---|---:|
-| CMake configure и сборка всех Linux targets, включая C++ Gateway | PASS |
-| CTest с ASan/UBSan | 13/13 PASS |
+| CMake configure и сборка всех Linux targets, включая C++ Gateway, TLS client и credential provisioner | PASS |
+| CTest с ASan/UBSan | 19/19 PASS |
 | C++ host unit/contract программы StationStateManager и ConfigurationManager | 31/31 PASS |
-| Установочная раскладка C++ Gateway, unit и примера конфигурации | PASS |
-| `systemd-analyze verify` для установленного unit | PASS |
-| Доступность конфигурации и бинарного файла для `dockstation` без права записи | PASS |
-| Запуск C++ Gateway от имени `dockstation`, health и diagnostics | PASS |
-| Listener ограничен `127.0.0.1:8080`; завершение по SIGTERM | PASS |
+| Установочная раскладка C++ Gateway и systemd unit | PASS |
+| `systemd-analyze verify`, права и запуск от непривилегированного пользователя `dockstation` | PASS |
+| Gateway health/diagnostics, loopback-only listener и SIGTERM shutdown | PASS |
 | Python compileall | PASS |
-| Python pytest: Operator, Python Gateway и integration | 134 PASS |
+| Python pytest: Operator, Python Gateway, integration и QML | 134 PASS |
+| Credential loader/provisioner privileged acceptance | PASS |
 | QML package entry point и ресурсы | PASS |
 | Shell syntax/behavior и network helper tests | PASS |
 
-Сквозной тест запускает собранный C++ Gateway отдельным процессом. Он получает health и system diagnostics, проверяет JSON существующим Operator API validator, подтверждает 404 для неизвестного маршрута и 405 для POST, затем отправляет SIGTERM и проверяет успешное завершение процесса.
+Credential acceptance проверяет локальную Repka-сторону: первичную установку бинарной записи PSK[32]+identity[16], чтение от service user, отказ от перезаписи, отказ `--replace` для небезопасного старого файла и успешную атомарную локальную замену. Это не проверяет выдачу совпадающих credentials ESP32.
 
-Отдельный deployment CI-шаг устанавливает unit и конфигурацию, проверяет unit через `systemd-analyze verify`, права непривилегированной учётной записи, запуск C++ Gateway от имени `dockstation`, оба GET endpoint, loopback-only listener и завершение процесса по SIGTERM. Этот шаг не использует systemd manager и не подтверждает `systemctl enable/start/stop/restart` или запуск после перезагрузки.
+Сквозной тест запускает собранный C++ Gateway отдельным процессом. Он получает health и system diagnostics, проверяет JSON существующим Operator API validator, подтверждает 404 для неизвестного маршрута и 405 для POST, затем отправляет SIGTERM и проверяет успешное завершение процесса. Deployment CI проверяет install layout, unit через `systemd-analyze verify`, права непривилегированной учётной записи и запуск C++ Gateway от имени `dockstation`; он не использует systemd manager.
 
-Это подтверждает host-проверки на Ubuntu 24.04.5 x86_64. Это не ARM64/Repka Pi 5 deployment, не ручной lifecycle systemd в пользовательской VM и не испытание ESP32/физической станции.
+Результат подтверждает host-проверки на Ubuntu 24.04.5 x86_64. Он не подтверждает ARM64/Repka Pi 5 deployment, OpenSSL↔Mbed TLS interop, ESP32 firmware, физический UART, согласованное provisioning обеих сторон или аппаратные испытания. Ручной lifecycle systemd в пользовательской Ubuntu VM и ручная Windows Operator ↔ C++ Gateway проверка описаны отдельно выше.
 
 
 
