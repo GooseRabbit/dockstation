@@ -9,8 +9,9 @@ g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -fno-exceptions -fno-rtti -Isrc 
 ./repository_contract_edges
 ```
 
-The repository-contract edge harness verifies two fail-closed cases without
-modifying the existing `tests/` programs or `tools/` runner:
+The repository-contract edge harness verifies two fail-closed cases. Focused
+regression tests live under `verification/regression/`; existing `tests/` programs
+may be updated when their production contract changes, without rewriting unrelated suites:
 
 - `check_duplicate_event()` accepts `NOT_FOUND` as `NEW` only when the
   repository's returned `Event` is completely empty.
