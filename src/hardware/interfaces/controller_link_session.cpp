@@ -11,13 +11,9 @@ namespace {
     std::size_t& destination_size,
     std::string_view source) noexcept {
     if (source.empty() ||
-        source.size() > kControllerLinkSessionMaximumIdentifierBytes) {
+        source.size() > kControllerLinkSessionMaximumIdentifierBytes ||
+        !is_valid_controller_wire_text(source)) {
         return false;
-    }
-    for (const char value : source) {
-        if (value == '\0') {
-            return false;
-        }
     }
     std::copy(source.begin(), source.end(), destination.begin());
     destination_size = source.size();
