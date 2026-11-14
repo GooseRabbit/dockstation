@@ -2,11 +2,11 @@
 set -euo pipefail
 
 binary="$PWD/build/dockstation-credential-provision"
-loader_test="$PWD/build/test_controller_psk_credential_store"
+loader_test_source="$PWD/build/test_controller_psk_credential_store"
 credential_directory="/etc/dockstation/credentials"
 credential_file="$credential_directory/repka-esp32.psk"
 
-if [[ ! -x "$binary" || ! -x "$loader_test" ]]; then
+if [[ ! -x "$binary" || ! -x "$loader_test_source" ]]; then
     echo "Credential provisioner or credential-store test binary is missing" >&2
     exit 1
 fi
@@ -23,13 +23,19 @@ parent_existed=false
 if [[ -d /etc/dockstation ]]; then
     parent_existed=true
 fi
+binary_root="$(sudo mktemp -d /usr/local/bin/dockstation-credential-provision-test.XXXXXX)"
 cleanup() {
-    sudo rm -rf -- "$credential_directory"
+    sudo rm -rf -- "$credential_directory" "$binary_root"
     if [[ "$parent_existed" != true ]]; then
         sudo rmdir --ignore-fail-on-non-empty /etc/dockstation 2>/dev/null || true
     fi
 }
 trap cleanup EXIT
+
+sudo chown root:dockstation "$binary_root"
+sudo chmod 0750 "$binary_root"
+loader_test="$binary_root/test_controller_psk_credential_store"
+sudo install -o root -g dockstation -m 0750 "$loader_test_source" "$loader_test"
 
 "$binary" --help >/dev/null
 
