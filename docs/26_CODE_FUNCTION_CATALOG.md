@@ -889,3 +889,18 @@ PlatformLogger обслуживает технические сообщения 
 | `validate_controller_message_payload()` | Проверяет соответствие типа сообщения телу, обязательные поля измерений и ошибок, известность quality/severity и конечность вещественных значений. |
 
 Проверка: `verification/repka_gateway/test_controller_protocol.cpp`; CTest — `controller_protocol`. Логические тела реализованы, но JSON/бинарная сериализация, формат и границы кадров, timestamp standard, согласование версий и физический транспорт не выбраны.
+
+
+---
+
+## Дополнение: интеграция SourceSessionCoordinator в F13
+
+### src/core/station_event_pipeline.hpp/.cpp
+
+| Функция / тип | Назначение |
+|---|---|
+| StationEventPipeline | Композиция проверки источника и сессии с общим входным контуром F13. Получает verifier, cursor reader и session repository как зависимости. |
+| StationEventPipeline::handle(event, validation_policy, evidence) | Сначала подтверждает сессию через SourceSessionCoordinator; только для Confirmed или AlreadyCurrent вызывает F13 с полученным курсором. Произвольный курсор от вызывающего кода не принимает. |
+| StationEventPipelineResult | Сохраняет точный SourceSessionCoordinatorStatus; содержит EventHandlingResult только если F13 был запущен. |
+
+Проверка: verification/regression/test_station_event_pipeline.cpp; CTest — station_event_pipeline. Тесты используют fake-порты и подтверждают блокировку F13 при отказе/ошибке сессии, конфликте регистрации и несовпадении старого source_instance.

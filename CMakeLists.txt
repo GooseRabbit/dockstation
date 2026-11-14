@@ -169,6 +169,22 @@ if(BUILD_TESTING)
     dockstation_apply_compile_policy(test_source_session_contract)
     add_test(NAME source_session_contract COMMAND test_source_session_contract)
 
+    add_executable(test_station_event_pipeline
+        src/core/event_processing.cpp
+        src/core/event_validation.cpp
+        src/core/event_handling.cpp
+        src/core/event_processor_router.cpp
+        src/core/station_event_pipeline.cpp
+        src/core/source_session.cpp
+        src/core/source_session_coordinator.cpp
+        verification/regression/test_station_event_pipeline.cpp
+    )
+    target_include_directories(test_station_event_pipeline
+        PRIVATE "${PROJECT_SOURCE_DIR}/src"
+    )
+    dockstation_apply_compile_policy(test_station_event_pipeline)
+    add_test(NAME station_event_pipeline COMMAND test_station_event_pipeline)
+
     if(DOCKSTATION_ENABLE_SANITIZERS)
         if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
             foreach(target_name
@@ -185,7 +201,8 @@ if(BUILD_TESTING)
                     test_controller_protocol
                     test_local_api
                     test_source_cursor_reader
-                    test_source_session_contract)
+                    test_source_session_contract
+                    test_station_event_pipeline)
                 target_compile_options(${target_name} PRIVATE
                     -fsanitize=address,undefined
                     -fno-omit-frame-pointer
@@ -228,6 +245,9 @@ if(BUILD_TESTING)
                 -fsanitize=address,undefined
             )
             target_link_options(test_source_session_contract PRIVATE
+                -fsanitize=address,undefined
+            )
+            target_link_options(test_station_event_pipeline PRIVATE
                 -fsanitize=address,undefined
             )
         else()

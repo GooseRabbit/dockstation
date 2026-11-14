@@ -6,7 +6,10 @@ StationEventPipeline::StationEventPipeline(
     EventRepository& event_repository,
     EventProcessorPort& global_processor,
     EventProcessorPort& operation_processor,
-    EventProcessorPort& timeout_processor) noexcept
+    EventProcessorPort& timeout_processor,
+    SourceSessionVerifier& session_verifier,
+    SourceCursorReader& cursor_reader,
+    SourceSessionRepository& session_repository) noexcept
     : routes_{
           {"STARTUP_REQUESTED", EventCategory::Command, &global_processor},
           {"INITIALIZATION_COMPLETED", EventCategory::Subsystem, &global_processor},
@@ -15,18 +18,28 @@ StationEventPipeline::StationEventPipeline(
           {"OPERATION_TIMEOUT", EventCategory::Timer, &timeout_processor}
       },
       router_(routes_, sizeof(routes_) / sizeof(routes_[0])),
-      event_repository_(event_repository) {}
+      event_repository_(event_repository),
+      session_coordinator_(session_verifier, cursor_reader, session_repository) {}
 
 bool StationEventPipeline::is_configured() const noexcept {
     return router_.is_configured();
 }
 
-EventHandlingResult StationEventPipeline::handle(
+StationEventPipelineResult StationEventPipeline::handle(
     const Event& event,
     const EventValidationPolicy& validation_policy,
-    const SourceCursor& expected_cursor) noexcept {
-    return handle_event(event, validation_policy, expected_cursor,
-                        event_repository_, router_);
+    const SourceSessionEvidence& evidence) noexcept {
+    const SourceSessionCoordinatorResult session =
+        session_coordinator_.confirm(event, evidence);
+    if (session.status != SourceSessionCoordinatorStatus::Confirmed &&
+        session.status != SourceSessionCoordinatorStatus::AlreadyCurrent) {
+        return {session.status, std::nullopt};
+    }
+
+    const EventHandlingResult handled =
+        handle_event(event, validation_policy, session.cursor,
+                     event_repository_, router_);
+    return {session.status, handled};
 }
 
 }  // namespace dockstation::core
