@@ -666,7 +666,7 @@ ControllerCodecResult encode_controller_message(
             : (writer.status() != ControllerCodecStatus::Success
                    ? writer.status()
                    : ControllerCodecStatus::InvalidPayload);
-        return failure(status, writer.offset());
+        return failure(map_writer_failure(status), writer.offset());
     }
 
     const auto body_size = writer.offset() - body_start;
