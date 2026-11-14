@@ -4,10 +4,16 @@
 #include <iostream>
 #include <limits>
 #include <string_view>
+#include <type_traits>
 
 #include "hardware/interfaces/controller_link_session.hpp"
 
 using namespace dockstation::hardware::interfaces;
+
+static_assert(!std::is_copy_constructible_v<ControllerLinkSession>);
+static_assert(!std::is_copy_assignable_v<ControllerLinkSession>);
+static_assert(!std::is_move_constructible_v<ControllerLinkSession>);
+static_assert(!std::is_move_assignable_v<ControllerLinkSession>);
 
 namespace {
 int failures = 0;
