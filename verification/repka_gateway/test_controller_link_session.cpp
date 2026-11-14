@@ -318,13 +318,21 @@ int main() {
                ControllerLinkSessionStatus::InvalidTimestamp,
            "rejects an empty outbound timestamp without starting");
 
-    const char invalid_timestamp[] = {
-        static_cast<char>(0xFF), static_cast<char>(0x00)};
-    ControllerLinkSession invalid_timestamp_session(valid_config());
-    expect(invalid_timestamp_session.start(
-               0U, std::string_view{invalid_timestamp, sizeof(invalid_timestamp)}).status ==
+    const char invalid_utf8_timestamp[] = {static_cast<char>(0xFF)};
+    ControllerLinkSession invalid_utf8_timestamp_session(valid_config());
+    expect(invalid_utf8_timestamp_session.start(
+               0U, std::string_view{invalid_utf8_timestamp,
+                                    sizeof(invalid_utf8_timestamp)}).status ==
                ControllerLinkSessionStatus::InvalidTimestamp,
-           "rejects non-UTF-8 timestamps and embedded NUL bytes");
+           "rejects a non-UTF-8 outbound timestamp");
+
+    const char embedded_nul_timestamp[] = {'t', '\0', 'x'};
+    ControllerLinkSession embedded_nul_timestamp_session(valid_config());
+    expect(embedded_nul_timestamp_session.start(
+               0U, std::string_view{embedded_nul_timestamp,
+                                    sizeof(embedded_nul_timestamp)}).status ==
+               ControllerLinkSessionStatus::InvalidTimestamp,
+           "rejects an outbound timestamp containing embedded NUL");
 
     ControllerLinkSession no_timestamp_session(valid_config());
     static_cast<void>(no_timestamp_session.start(0U, "time"));
