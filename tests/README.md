@@ -244,14 +244,14 @@ or proves target/hardware integration.
     g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -fno-exceptions -fno-rtti -Isrc src/core/event_validation.cpp src/core/event_processing.cpp src/core/event_handling.cpp src/core/event_processor_router.cpp src/core/station_event_pipeline.cpp src/core/source_session.cpp src/core/source_session_coordinator.cpp tests/contract/test_station_event_pipeline_contract.cpp -o test_station_event_pipeline_contract
     ./test_station_event_pipeline_contract
 
-The contract harness compiles the production F01–F04, F13, router,
+The 41-check contract harness compiles the production F01–F04, F13, router,
 SourceSessionCoordinator and StationEventPipeline source files. It covers all
 five configured event/category pairs, one-recipient routing, F01 invalid-envelope
 rejection, F02 unknown-type rejection, F03 duplicate/repository-error rejection,
 F04 stale/unordered rejection, known-but-unhandled event types, and an unexpected
-UNSUPPORTED response from a registered profile. It also verifies that rejected
-sessions, source-instance mismatches, cursor-read errors and registration races
-stop before event lookup/profile dispatch. The test supplies fake verifier,
+UNSUPPORTED response from a registered profile. It also verifies that rejected sessions, source-instance mismatches, cursor-read
+errors, registration races, early F01/F02 rejection and exact cursor forwarding
+are checked at their expected boundaries. The test supplies fake verifier,
 cursor/session/event repositories and recording profile ports. It validates the
 logical composition only; it does not prove cryptographic verification, trusted
 transport evidence construction, persistent-storage transactions, target or
