@@ -410,14 +410,14 @@ void ssr_19_same_live_channel_can_confirm_multiple_events() {
 
 void ssr_20_reject_blank_text_identifiers_and_error_cursor_success() {
     auto blank_source = evidence();
-    blank_source.source = "  \\t ";
+    blank_source.source = "  \t ";
     expect(!is_valid_source_session_evidence(blank_source),
            "SSR-20 whitespace-only source is rejected");
     auto blank_instance = evidence();
-    blank_instance.source_instance = " \\n";
+    blank_instance.source_instance = " \n";
     expect(!is_valid_source_session_evidence(blank_instance),
            "SSR-20 whitespace-only source_instance is rejected");
-    const VerifiedSourceSession blank_revision{"esp32/main", "boot-new", " \\t"};
+    const VerifiedSourceSession blank_revision{"esp32/main", "boot-new", " \t"};
     expect(!is_valid_verified_source_session(blank_revision),
            "SSR-20 whitespace-only registration revision is rejected");
 
