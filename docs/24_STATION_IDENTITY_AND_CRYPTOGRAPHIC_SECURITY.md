@@ -225,7 +225,7 @@ Wi-Fi WPA2/WPA3 и сегментация сети рассматриваютс�
 4. Только plaintext application data, возвращённые TLS после успешного handshake и проверки записей, передаются в ControllerFrameStreamDecoder; затем работают существующие ControllerCodec и ControllerLinkSession.
 5. Следовательно, ControllerFrameStreamDecoder больше не подключается напрямую к сырым байтам GPIO UART: он получает байты уже из TLS read(). Формат ControllerCodec v1 остаётся внутренним прикладным форматом и не считается криптографической защитой.
 
-В качестве библиотек-кандидатов: Mbed TLS из ESP-IDF на ESP32 (TLS 1.3 полноценно поддерживается начиная с Mbed TLS 3.6.0; требуется включить и проверить TLS 1.3 и PSK-ephemeral режим для точного target) и OpenSSL 3.x на Repka. Mbed TLS предоставляет пользовательские send/receive callbacks; OpenSSL BIO pair позволяет управлять TLS I/O поверх нестандартного транспорта. Совместимость конкретных версий, PSK callbacks, cipher/group allow-list и поведение при частичных UART I/O обязательны к отдельной interop-проверке. Пока точные ESP32 SoC и ESP-IDF не подтверждены, ни версия ESP-IDF, ни конкретные API/настройки прошивки окончательно не фиксируются.
+В качестве библиотек-кандидатов: Mbed TLS из ESP-IDF на ESP32 (TLS 1.3 полноценно поддерживается начиная с Mbed TLS 3.6.0; требуется включить TLS 1.3, TLS server role и PSK-ephemeral режим для точного target) и OpenSSL 3.x на Repka. Для ESP32 нужен профиль Mbed TLS с TLS 1.3 и server mode; облегчённый preset, в котором доступен только TLS 1.2 client, не подходит. Mbed TLS предоставляет пользовательские send/receive callbacks; OpenSSL BIO pair позволяет управлять TLS I/O поверх нестандартного транспорта. Совместимость конкретных версий, PSK callbacks, cipher/group allow-list и поведение при частичных UART I/O обязательны к отдельной interop-проверке. Пока точные ESP32 SoC и ESP-IDF не подтверждены, ни версия ESP-IDF, ни конкретные API/настройки прошивки окончательно не фиксируются.
 
 **Хранение ключа:**
 - Для Linux — отдельный credential-файл, например /etc/dockstation/credentials/repka-esp32.psk, не в JSON-конфигурации и не в репозитории; каталог доступен только root и группе сервиса, файл — root-owned и читаем только процессом dockstation. Права ОС снижают риск случайного чтения, но не защищают от физического извлечения незашифрованного системного накопителя или компрометации root.
@@ -239,6 +239,16 @@ Wi-Fi WPA2/WPA3 и сегментация сети рассматриваютс�
 **Команды и повторы:** TLS защищает записи и аутентифицирует канал, но не выдаёт права на опасное действие. Первый этап остаётся read-only: HELLO/HELLO_ACK/HEARTBEAT/REQUEST_SNAPSHOT/TELEMETRY_SNAPSHOT/ERROR. При последующем добавлении команд обязательны отдельная проверка полномочий, Station ID/target binding, command_id, срок действия, sequence/nonce, проверка локального SafetyManager и дедупликация на уровне приложения по §8.2. Потеря ответа после отправки команды не означает, что действие не произошло; для потенциально опасной операции требуется OUTCOME_UNKNOWN и сверка, а не слепой повтор.
 
 **Проверки до реализации/приёмки:** interop TLS 1.3 PSK-DHE OpenSSL ↔ Mbed TLS; отказ при неверном/отсутствующем PSK и identity; принудительное отсутствие TLS 1.2/PSK-only/0-RTT/session resumption; отказ при изменённой/обрезанной записи; разрыв во время handshake и чтения/записи; проверка, что до handshake complete plaintext не доходит до ControllerCodec; отсутствие секретов в логах/файлах конфигурации; проверка прав на credential storage; измерение heap peak, handshake time и устойчивости на точном ESP32 при UART 115200. Host-тесты и interop не заменяют физические испытания UART и безопасного хранения ключа на готовой плате.
+
+**Технические источники для проверки предложения:**
+- [RFC 9846 — TLS 1.3](https://www.rfc-editor.org/rfc/rfc9846.html): PSK, psk_dhe_ke/PSK-DHE, forward secrecy и риски 0-RTT/replay.
+- [ESP-IDF 6.1 — Mbed TLS](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/protocols/mbedtls.html): Mbed TLS fork, TLS 1.3 и конфигурационные presets; TLS 1.3 полностью поддерживается начиная с Mbed TLS 3.6.0.
+- [Mbed TLS 3.6.3 SSL API](https://mbed-tls.readthedocs.io/projects/api/en/v3.6.3/api/file/ssl_8h/): PSK key-exchange modes, PSK callbacks и пользовательские send/receive callbacks.
+- [OpenSSL 3.0 BIO pair](https://docs.openssl.org/3.0/man3/BIO_s_bio/): TLS I/O под управлением приложения для нестандартного транспорта.
+- [ESP-IDF 6.1 — NVS Encryption](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/storage/nvs_encryption.html) и [Flash Encryption](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/security/flash-encryption.html): взаимозависимость защиты NVS и Flash Encryption, ограничения production/release режима.
+- [ESP-IDF 6.1 — Security Overview](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/security/security.html): Secure Boot, Flash Encryption и общие цели платформенной защиты.
+
+
 
 ## 7. Пароли, пользователи и сессии
 
