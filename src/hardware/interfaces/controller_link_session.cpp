@@ -82,7 +82,7 @@ ControllerLinkSessionResult ControllerLinkSession::start(
         return make_result(ControllerLinkSessionStatus::InvalidState,
                            ControllerLinkSessionEvent::None);
     }
-    if (sent_at.empty()) {
+    if (!is_valid_controller_wire_text(sent_at)) {
         return make_result(ControllerLinkSessionStatus::InvalidTimestamp,
                            ControllerLinkSessionEvent::None);
     }
