@@ -241,23 +241,22 @@ or proves target/hardware integration.
 
 ## Station event pipeline contract tests (F13 application-facing composition)
 
-    g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -fno-exceptions -fno-rtti -Isrc src/core/event_validation.cpp src/core/event_processing.cpp src/core/event_handling.cpp src/core/event_processor_router.cpp src/core/station_event_pipeline.cpp tests/contract/test_station_event_pipeline_contract.cpp -o test_station_event_pipeline_contract
+    g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -fno-exceptions -fno-rtti -Isrc src/core/event_validation.cpp src/core/event_processing.cpp src/core/event_handling.cpp src/core/event_processor_router.cpp src/core/station_event_pipeline.cpp src/core/source_session.cpp src/core/source_session_coordinator.cpp tests/contract/test_station_event_pipeline_contract.cpp -o test_station_event_pipeline_contract
     ./test_station_event_pipeline_contract
 
-The 28-check contract harness compiles the production F01–F04, F13, router and
-StationEventPipeline source files. It covers all five configured event/category
-pairs, one-recipient routing, F01 invalid-envelope rejection, F02 unknown-type
-rejection, F03 duplicate/repository-error rejection, F04 stale/unordered rejection,
-known-but-unhandled event types, and an unexpected UNSUPPORTED response from a
-registered profile. The test supplies a fake EventRepository and recording profile
-ports; it verifies composition/common ingress, not the internal algorithms of the
-three concrete profile processors. Their behavior remains covered by the separate
-global-transition, operation-update and timeout unit/contract tests.
-
-The isolated review build used copies byte-identical to the common headers and
-F01–F04/F13/router source files from current main. GCC 14.2 and Clang 17 strict
-builds, GCC ASan/UBSan and Clang Static Analyzer passed. It is not a full checkout,
-persistent-storage, target or hardware integration test.
+The contract harness compiles the production F01–F04, F13, router,
+SourceSessionCoordinator and StationEventPipeline source files. It covers all
+five configured event/category pairs, one-recipient routing, F01 invalid-envelope
+rejection, F02 unknown-type rejection, F03 duplicate/repository-error rejection,
+F04 stale/unordered rejection, known-but-unhandled event types, and an unexpected
+UNSUPPORTED response from a registered profile. It also verifies that rejected
+sessions, source-instance mismatches, cursor-read errors and registration races
+stop before event lookup/profile dispatch. The test supplies fake verifier,
+cursor/session/event repositories and recording profile ports. It validates the
+logical composition only; it does not prove cryptographic verification, trusted
+transport evidence construction, persistent-storage transactions, target or
+hardware integration. The three concrete profile processors remain covered by
+the separate global-transition, operation-update and timeout unit/contract tests.
 
 
 ## Global transition profile processor tests (SSM-F13)
