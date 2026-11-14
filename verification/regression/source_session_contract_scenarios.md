@@ -42,7 +42,7 @@ must be registered separately with CTest.
 | SSR-15 | Delayed event from the previous source_instance arrives after a new session was confirmed | F04 reports `UNORDERED / SourceInstanceMismatch`; no profile commit. |
 | SSR-16 | Event from a session-capable source omits source_sequence | F04 reports `UNORDERED / SequenceMissing`; timestamp is not used as a fallback. |
 | SSR-17 | Repository returns `Error`, an unknown status, or contradictory result data | Fail closed; do not treat the session as confirmed and do not pass events to F13. |
-| SSR-18 | Source does not support source_instance | No automatic session reset is inferred. The applicable source contract must define ordering; absent source_sequence remains unordered under F04. |
+| SSR-18 | Source does not support source_instance | The current session-gated Pipeline returns InvalidEvidence and does not call verifier/reader/repository or F13. The generic F04 freshness function may still represent a cursor without instance when used independently, but this does not authorize bypassing session verification. A legacy source needs a separately approved authenticated-session contract. |
 | SSR-19 | Several events are received over the same continuously open, authenticated channel | Rechecking the channel-bound session context for each event is idempotent; the same established proof is not misclassified as replay while that channel remains active; AlreadyCurrent preserves last_sequence. Reuse on a new/closed channel is rejected. |
 | SSR-20 | Event envelope is invalid or event_type is unknown before session confirmation | Pipeline returns InvalidEvent/UnknownEventType with no session result; verifier, cursor reader and session repository are not called and no cursor is created/replaced. |
 
