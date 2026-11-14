@@ -15,19 +15,22 @@ if ! getent passwd dockstation >/dev/null; then
     exit 1
 fi
 
+# /run is used only for credentials fixtures because it may be mounted noexec.
+# Put the temporary executable under /usr/local/bin, on the executable root FS.
+binary_root="$(sudo mktemp -d /usr/local/bin/dockstation-credential-test.XXXXXX)"
 temporary_root="$(sudo mktemp -d /run/dockstation-credential-test.XXXXXX)"
 cleanup() {
-    sudo rm -rf -- "$temporary_root"
+    sudo rm -rf -- "$temporary_root" "$binary_root"
 }
 trap cleanup EXIT
 
+sudo chown root:dockstation "$binary_root"
+sudo chmod 0750 "$binary_root"
+binary="$binary_root/test_controller_psk_credential_store"
+sudo install -o root -g dockstation -m 0750 "$binary_source" "$binary"
+
 sudo chown root:dockstation "$temporary_root"
 sudo chmod 0750 "$temporary_root"
-
-# The GitHub workspace may not be traversable by the unprivileged service
-# account. Run a root-owned test binary from the same controlled /run tree.
-binary="$temporary_root/test_controller_psk_credential_store"
-sudo install -o root -g dockstation -m 0750 "$binary_source" "$binary"
 
 prepare_directory() {
     local name="$1"
