@@ -1,7 +1,7 @@
 # Полный план реализации программного комплекса DockStation на Repka Pi 5
 
 **Статус:** мастер-план реализации; последовательность разработки согласована, открытые платформенные, сетевые, серверные и аппаратные детали требуют отдельной проверки и решения.  
-**Редакция:** 1.48.  
+**Редакция:** 1.49.  
 **Дата:** 2026-11-14.  
 **Вычислительная платформа:** Repka Pi 5.  
 **Предполагаемая ОС:** официальная Repka OS; образ и версия проверяются перед развёртыванием.
@@ -750,7 +750,9 @@ SQLite остаётся кандидатом, не решением. Сравн�
 
 **ControllerCodec v1 реализован:** `src/hardware/interfaces/controller_codec.hpp/.cpp` кодирует и декодирует один полный bounded frame без динамического выделения памяти. Формат: magic `DS`, версия wire-формата 1, стабильный числовой type ID, uint16 little-endian body length, общий envelope, typed payload, CRC-32/ISO-HDLC по header + body. Максимальный полный кадр — 2048 байт; максимум 16 измерений. Текстовые поля — UTF-8 с uint16 длиной в байтах, embedded NUL запрещён. Значения telemetry имеют стабильные теги bool/int64/uint64/binary64/text; quality и error severity имеют отдельные wire-коды. Декодер принимает ровно один полный кадр и использует caller-owned storage; строки в decoded message ссылаются на входной frame buffer. Полное описание — docs/06 §16.3.
 
-Host-проверка `verification/repka_gateway/test_controller_codec.cpp` зарегистрирована в CTest как `controller_codec`; она покрывает round-trip, все типы значений, целые границы, пустой snapshot, UTF-8, лимиты, повреждение CRC, обрезанные/лишние/некорректные кадры и invalid boolean. Кодек включён в `dockstation_linux_runtime`. Сборка/CI после добавления кодека пока ожидаются.
+Host-проверка `verification/repka_gateway/test_controller_codec.cpp` зарегистрирована в CTest как `controller_codec`; она покрывает round-trip, все типы значений, целые границы, пустой snapshot, UTF-8, лимиты, независимый golden frame/CRC, повреждение CRC, обрезанные/лишние/некорректные кадры и invalid boolean. Кодек включён в `dockstation_linux_runtime`.
+
+**Проверка:** GitHub Actions run [43627836035](https://github.com/GooseRabbit/dockstation/actions/runs/43627836035) завершился SUCCESS для кодового HEAD `f3397fd99c3acdf1294cc89358aaf70405170610`: CMake configure/build, 14/14 CTest с ASan/UBSan, 31/31 дополнительных C++ host tests, Python compileall, 134 pytest, QML package entry point, Gateway install/systemd/non-root checks и shell/network tests. Это проверка на Ubuntu 24.04.5 x86_64; она не является кросс-сборкой для ESP32, проверкой Repka ARM64 или аппаратным тестом.
 
 **Ограничения:** ControllerCodec декодирует один уже выделенный кадр; сборщик UART-потока, повторная синхронизация после шума, транспортные тайм-ауты, Linux/ESP-IDF UART adapters, криптографическая аутентификация/конфиденциальность и порядок/повторы последовательностей ещё не реализованы. CRC лишь обнаруживает случайное повреждение и не заменяет требования безопасности docs/24. GPIO конкретной ESP32-платы и ESP-IDF target ещё не подтверждены; тесты не являются физическим обменом.
 
@@ -1083,6 +1085,7 @@ Host-проверка `verification/repka_gateway/test_controller_codec.cpp` з�
 | 1.46 | 2026-11-14 | В журнал решений добавлены DEC-063/064: цель одной плановой прошивки ESP32 с обычной настройкой через проверяемую конфигурацию и обязательная разработка без симулятора. Мастер-план явно связывает с ними требования к firmware profile, VirtualBox host tests и кросс-сборке под подтверждённый ESP32 target.
 | 1.47 | 2026-11-14 | По DEC-065 зафиксирована временная схема прототипа: USB Repka постоянно питает ESP32 и используется как сервисный канал прошивки/восстановления через USB-UART; штатный обмен остаётся отдельным GPIO UART. Запрещено подключать параллельное питание V5/3V3 без пересмотра схемы. Автоматический DTR/RTS boot mode оставлен на проверку конкретной платы.
 | 1.48 | 2026-11-14 | Добавлен ControllerCodec v1: bounded бинарный frame, UTF-8 string fields, стабильные type/value/status IDs, CRC-32/ISO-HDLC, лимиты 2048 байт и 16 измерений, caller-owned decode storage; добавлены CMake/CTest и host-сценарии round-trip/negative cases. Кодек включён в Linux runtime. Первый CI/ASan/UBSan прогон после изменения ожидается; потоковый UART parser, transport и криптография не реализованы.
+| 1.49 | 2026-11-14 | GitHub Actions run 43627836035 SUCCESS для HEAD `f3397fd99c3acdf1294cc89358aaf70405170610`: CMake build, 14/14 CTest с ASan/UBSan, 31/31 C++ host tests, 134 pytest, QML/package, Gateway install/non-root/systemd и shell/network checks. ControllerCodec отмечен как реализованный и частично проверенный на host; ESP32 target и физический транспорт не подтверждены.
 
 **Ограничение:** это план. Функции не считаются реализованными до появления кода, проверок и, где требуется, аппаратных испытаний.
 
