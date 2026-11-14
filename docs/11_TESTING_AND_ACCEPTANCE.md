@@ -132,6 +132,10 @@
 
 | TEST-SW-049 | Проверка watchdog при штатном запуске | Состояние watchdog считывается без принудительного сброса контроллера или намеренного создания зависания |
 
+### 3.0. Host-проверки защищённого канала Repka—ESP32
+
+`verification/repka_gateway/test_controller_psk_tls_client.cpp` (CTest `controller_psk_tls_client`) проверяет отдельный Linux/OpenSSL TLS-клиент: TLS 1.3 PSK-DHE handshake, двусторонний encrypted application data, отказ до handshake, пустые учётные данные, неверные PSK и identity, TLS 1.2-only peer, сертификатный fallback без выбранного PSK, PSK-only peer без эфемерного DHE и изменённую AEAD-запись. В тесте используется in-memory OpenSSL TLS peer только для проверки TLS state machine; это не UART/ESP32 emulator, не Mbed TLS interop и не аппаратное испытание.
+
 ### 3.1. Испытания операторского приложения
 
 | ID | Сценарий | Ожидаемый результат |

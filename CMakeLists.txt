@@ -10,6 +10,7 @@ include(CTest)
 include(GNUInstallDirs)
 
 find_package(Threads REQUIRED)
+find_package(OpenSSL 3.0 REQUIRED COMPONENTS SSL Crypto)
 
 option(DOCKSTATION_ENABLE_SANITIZERS
        "Enable AddressSanitizer and UndefinedBehaviorSanitizer for verification" OFF)
@@ -50,6 +51,19 @@ target_link_libraries(dockstation_linux_runtime
     PUBLIC Threads::Threads
 )
 dockstation_apply_compile_policy(dockstation_linux_runtime)
+
+# Keep controller TLS independent from the current read-only Gateway runtime.
+# The transport manager will link this library when physical UART integration is added.
+add_library(dockstation_controller_tls STATIC
+    src/platform/linux/controller_psk_tls_client.cpp
+)
+target_include_directories(dockstation_controller_tls
+    PUBLIC "${PROJECT_SOURCE_DIR}/src"
+)
+target_link_libraries(dockstation_controller_tls
+    PUBLIC OpenSSL::SSL OpenSSL::Crypto
+)
+dockstation_apply_compile_policy(dockstation_controller_tls)
 
 add_executable(dockstation_linux_bootstrap
     repka_gateway/main.cpp
@@ -170,6 +184,16 @@ if(BUILD_TESTING)
     add_test(NAME controller_link_session
         COMMAND test_controller_link_session)
 
+    add_executable(test_controller_psk_tls_client
+        verification/repka_gateway/test_controller_psk_tls_client.cpp
+    )
+    target_link_libraries(test_controller_psk_tls_client
+        PRIVATE dockstation_controller_tls
+    )
+    dockstation_apply_compile_policy(test_controller_psk_tls_client)
+    add_test(NAME controller_psk_tls_client
+        COMMAND test_controller_psk_tls_client)
+
     add_executable(test_local_api
         verification/repka_gateway/test_local_api.cpp
     )
@@ -221,6 +245,7 @@ if(BUILD_TESTING)
         if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
             foreach(target_name
                     dockstation_linux_runtime
+                    dockstation_controller_tls
                     dockstation_linux_bootstrap
                     test_application_bootstrap
                     test_runtime_environment
@@ -234,6 +259,7 @@ if(BUILD_TESTING)
                     test_controller_codec
                     test_controller_frame_stream_decoder
                     test_controller_link_session
+                    test_controller_psk_tls_client
                     test_local_api
                     test_source_cursor_reader
                     test_source_session_contract
@@ -280,6 +306,9 @@ if(BUILD_TESTING)
                 -fsanitize=address,undefined
             )
             target_link_options(test_controller_link_session PRIVATE
+                -fsanitize=address,undefined
+            )
+            target_link_options(test_controller_psk_tls_client PRIVATE
                 -fsanitize=address,undefined
             )
             target_link_options(test_local_api PRIVATE

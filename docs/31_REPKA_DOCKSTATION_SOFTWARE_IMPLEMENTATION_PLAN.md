@@ -1,7 +1,7 @@
 # Полный план реализации программного комплекса DockStation на Repka Pi 5
 
 **Статус:** мастер-план реализации; последовательность разработки согласована, открытые платформенные, сетевые, серверные и аппаратные детали требуют отдельной проверки и решения.  
-**Редакция:** 1.58.  
+**Редакция:** 1.59.  
 **Дата:** 2026-11-14.  
 **Вычислительная платформа:** Repka Pi 5.  
 **Предполагаемая ОС:** официальная Repka OS; образ и версия проверяются перед развёртыванием.
@@ -713,6 +713,8 @@ SQLite остаётся кандидатом, не решением. Сравн�
 
 **Планируемые границы файлов (имена адаптеров предварительные):** общие контракты/реализации `src/hardware/interfaces/controller_transport.hpp`, `controller_protocol.hpp`, `controller_codec.hpp/.cpp`, `controller_frame_stream_decoder.hpp/.cpp`, `controller_link_session.hpp/.cpp`; raw UART и OpenSSL adapter для Repka — в `src/platform/linux/`; ESP-IDF `main/`, UART driver и Mbed TLS adapter — только внутри `firmware/esp32/` и его собственных components. Портируемые файлы протокола не копируются в прошивку и не получают Linux-only dependencies. `verification/integration/controller_test_adapter/` допускается только как host contract adapter; он не имитирует GPIO/UART/ESP32 и не выполняет физические действия.
 
+**Реализованный Linux host-срез:** `src/platform/linux/controller_psk_tls_client.hpp/.cpp` содержит `ControllerPskTlsClient` на OpenSSL 3.x; отдельная CMake-библиотека `dockstation_controller_tls` и CTest `controller_psk_tls_client` регистрируются в корневой сборке. Клиент принимает credentials от caller, создаёт TLS 1.3 external-PSK client, закрепляет host candidate suite `TLS_AES_128_GCM_SHA256` и группу `P-256`, требует выбранной PSK-сессии и проверяет, что handshake использовал эфемерную группу. C++ Gateway runtime пока не линкуется с этим адаптером: его будет подключать будущий controller transport manager. Host peer test использует OpenSSL BIO pairs, не открывает UART, не имитирует плату и не доказывает Mbed TLS interop.
+
 **Логические функции/границы:**
 - `open_controller_uart()` / `close_controller_uart()` — открыть и закрыть raw point-to-point UART; этот адаптер не передаёт незашифрованные ControllerCodec frames напрямую.
 - `perform_controller_tls_handshake()` / `close_controller_tls_session()` — установить или закрыть TLS 1.3 PSK-DHE канал; до `handshake complete` прикладные данные не выдаются.
@@ -1120,6 +1122,7 @@ Host-тест `verification/repka_gateway/test_controller_link_session.cpp` за
 | 1.56 | 2026-11-14 | Уточнено разделение PSK (32 байта секрета) и PSK identity (начальный кандидат 16 случайных байт, не секрет и видима в ClientHello); длина identity и совместимость с конкретным ESP-IDF Mbed TLS проверяются на interop. DEC-066 остаётся предложением и не реализован.
 | 1.57 | 2026-11-14 | Уточнена структура этапа 7: ESP32-specific `main`, UART и Mbed TLS adapter принадлежат только `firmware/esp32`; Linux UART/OpenSSL adapter остаётся в `src/platform/linux`, переносимые протокол/codec/session — в `src/hardware/interfaces`. Разделены TLS authentication handshake и логический HELLO/HELLO_ACK; ControllerFrameStreamDecoder получает только TLS plaintext после успешной проверки. Физический transport и TLS код не реализованы.
 | 1.58 | 2026-11-14 | Владелец утвердил базовый криптографический профиль DEC-066: TLS 1.3 PSK-DHE и уникальный 32-байтовый PSK на пару Repka—ESP32. В плане этапа 7 статус изменён с предложения на утверждённую архитектуру. Cipher/group allow-list, точные версии OpenSSL/ESP-IDF/Mbed TLS, PSK identity API, physical provisioning, key storage, TLS adapters, UART и ESP32 target остаются непроверенными и не реализованными.
+| 1.59 | 2026-11-14 | Добавлен самостоятельный Linux/OpenSSL TLS 1.3 PSK client host-срез и отдельный CTest (13 проверок). Добавлены OpenSSL 3.0+ в CMake, статическая цель `dockstation_controller_tls`, host test и CI dependency `libssl-dev`. Клиент ещё не подключён к Gateway runtime и не обменивается данными с физическим UART; Mbed TLS interop, ESP32 firmware, provisioning/storage и hardware tests остаются открытыми.
 
 **Ограничение:** это план. Функции не считаются реализованными до появления кода, проверок и, где требуется, аппаратных испытаний.
 

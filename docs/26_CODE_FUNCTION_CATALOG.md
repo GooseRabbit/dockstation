@@ -923,6 +923,21 @@ Wire v1: magic `DS`, wire version 1, тип сообщения 1…6, uint16 lit
 
 Проверка: `verification/repka_gateway/test_controller_frame_stream_decoder.cpp`; CTest — `controller_frame_stream_decoder`. Покрываются неполные куски, split magic, шум/повторная синхронизация, чрезмерная длина, последовательные кадры, CRC rejection и восстановление. Потоковый парсер не открывает UART и не является аппаратной эмуляцией.
 
+
+
+### src/platform/linux/controller_psk_tls_client.hpp/.cpp
+
+| Функция / тип | Назначение |
+|---|---|
+| `ControllerPskCredentials` | Контейнер для 32-байтового PSK и отдельной 16-байтовой бинарной PSK identity; значения поступают от вызывающего слоя, не из обычной JSON-конфигурации. |
+| `ControllerPskTlsClient::initialize()` / `close()` | Создаёт/закрывает OpenSSL TLS client и очищает собственную копию credentials. Файл ключа, provisioning и ротацию выполняет отдельный будущий слой. |
+| `ControllerPskTlsClient::advance_handshake()` | Выполняет неблокирующий TLS 1.3 PSK handshake и возвращает `NeedRead`/`NeedWrite` до завершения. |
+| `feed_encrypted_bytes()` / `take_encrypted_bytes()` | Принимает/выдаёт произвольные части ciphertext через BIO pair; вызывающий physical adapter должен обрабатывать частичные операции. Сам UART не открывается. |
+| `write_application_data()` / `read_application_data()` | Обменивается TLS application data только после полного handshake и проверки фиксированного TLS-профиля. |
+| `verify_negotiated_profile()` | Пропускает только TLS 1.3, TLS_AES_128_GCM_SHA256, группу P-256 и выбранную external-PSK сессию; сертификатный fallback/PSK-only не являются допустимой заменой. |
+
+Host-проверка: `verification/repka_gateway/test_controller_psk_tls_client.cpp`; CTest — `controller_psk_tls_client`. 13 проверок используют OpenSSL TLS peer и BIO transport pairs. Это проверка TLS state machine на host, а не эмуляция UART/ESP32 и не межстековая проверка с Mbed TLS. Адаптер не подключён к текущему C++ Gateway runtime до появления controller transport manager; физический UART, Mbed TLS firmware, secure provisioning/storage и аппаратная приёмка остаются открытыми.
+
 ### src/hardware/interfaces/controller_link_session.hpp/.cpp
 
 | Функция / тип | Назначение |

@@ -21,6 +21,11 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
 
+      - name: Install OpenSSL development headers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev
+
       - name: Configure CMake
         run: >-
           cmake -S . -B build
