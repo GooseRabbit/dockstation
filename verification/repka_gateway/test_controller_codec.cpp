@@ -133,22 +133,28 @@ int main() {
     if (decoded_snapshot != nullptr &&
         decoded_snapshot->measurement_count == measurements.size()) {
         const auto& values = storage.measurements;
+        const auto* temperature = std::get_if<double>(&values[0].value);
         expect(values[0].sensor_id == "temperature" &&
-                   std::get<double>(values[0].value) == 23.75 &&
+                   temperature != nullptr && *temperature == 23.75 &&
                    values[0].unit == "degC" &&
                    values[0].quality == SensorQualityStatus::Ok,
                "round-trips binary64 sensor measurements");
+        const auto* lid_closed = std::get_if<bool>(&values[1].value);
         expect(values[1].sensor_id == "lid.closed" &&
-                   std::get<bool>(values[1].value) &&
+                   lid_closed != nullptr && *lid_closed &&
                    values[1].quality == SensorQualityStatus::Unknown,
                "round-trips boolean values and UNKNOWN quality");
-        expect(std::get<std::int64_t>(values[2].value) ==
-                   std::numeric_limits<std::int64_t>::min(),
+        const auto* signed_value = std::get_if<std::int64_t>(&values[2].value);
+        expect(signed_value != nullptr &&
+                   *signed_value == std::numeric_limits<std::int64_t>::min(),
                "round-trips the minimum signed 64-bit value");
-        expect(std::get<std::uint64_t>(values[3].value) ==
-                   std::numeric_limits<std::uint64_t>::max(),
+        const auto* unsigned_value = std::get_if<std::uint64_t>(&values[3].value);
+        expect(unsigned_value != nullptr &&
+                   *unsigned_value == std::numeric_limits<std::uint64_t>::max(),
                "round-trips the maximum unsigned 64-bit value");
-        expect(std::get<std::string_view>(values[4].value) == "AUTO" &&
+        const auto* text_value =
+            std::get_if<std::string_view>(&values[4].value);
+        expect(text_value != nullptr && *text_value == "AUTO" &&
                    values[4].quality == SensorQualityStatus::NotConfigured,
                "round-trips text values and NOT_CONFIGURED quality");
     }
