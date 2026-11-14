@@ -10,8 +10,6 @@
 namespace dockstation::hardware::interfaces {
 namespace {
 
-constexpr std::uint8_t kMagicFirst = 0x44U;  // 'D'
-constexpr std::uint8_t kMagicSecond = 0x53U; // 'S'
 constexpr std::size_t kHeaderSize = 6U;
 constexpr std::size_t kCrcSize = 4U;
 constexpr std::uint8_t kValueBoolean = 1U;
@@ -640,8 +638,8 @@ ControllerCodecResult encode_controller_message(
         return status;
     };
     Writer writer(destination, effective_capacity);
-    if (!writer.write_u8(kMagicFirst) ||
-        !writer.write_u8(kMagicSecond) ||
+    if (!writer.write_u8(kControllerCodecMagicFirst) ||
+        !writer.write_u8(kControllerCodecMagicSecond) ||
         !writer.write_u8(kControllerCodecWireVersion) ||
         !write_message_type(writer, envelope.type) ||
         !writer.write_u16(0U)) {
