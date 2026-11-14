@@ -698,7 +698,7 @@ ControllerCodecResult decode_controller_message(
     if (frame_size > kControllerCodecMaximumFrameSize) {
         return failure(ControllerCodecStatus::FrameTooLarge);
     }
-    if (frame[0] != kMagicFirst || frame[1] != kMagicSecond) {
+    if (frame[0] != kControllerCodecMagicFirst || frame[1] != kControllerCodecMagicSecond) {
         return failure(ControllerCodecStatus::BadMagic);
     }
     if (frame[2] != kControllerCodecWireVersion) {
