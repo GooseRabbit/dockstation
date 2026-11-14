@@ -160,8 +160,8 @@ enum class Flow {
 
 Event event_for_evidence(const SourceSessionEvidence& input) {
     Event event{};
-    event.source = input.source()
-    event.source_instance = input.source_instance()
+    event.source = input.source();
+    event.source_instance = input.source_instance();
     return event;
 }
 
