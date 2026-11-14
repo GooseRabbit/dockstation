@@ -90,6 +90,10 @@ ControllerLinkSessionResult ControllerLinkSession::start(
         return make_result(ControllerLinkSessionStatus::InvalidTimestamp,
                            ControllerLinkSessionEvent::None);
     }
+    if (tx_sequence_exhausted_) {
+        return make_result(ControllerLinkSessionStatus::SequenceExhausted,
+                           ControllerLinkSessionEvent::None);
+    }
 
     state_ = ControllerLinkSessionState::AwaitingHelloAck;
     last_outbound_heartbeat_ms_ = now_ms;
