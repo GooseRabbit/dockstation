@@ -28,8 +28,9 @@ struct ControllerProtocolVersion {
 
 // Transport-independent metadata shared by controller messages. String views
 // are non-owning and must remain valid for the duration of validation/use.
-// The timestamp format, version compatibility policy and sequence ordering
-// rules are deliberately left to later protocol/bridge decisions.
+// Timestamp syntax remains an open protocol decision. ControllerLinkSession
+// applies the configured exact version match and strictly increasing sequence
+// policy; this generic envelope validator intentionally does not.
 struct ControllerMessageEnvelope {
     ControllerMessageType type{ControllerMessageType::Unknown};
     std::optional<ControllerProtocolVersion> protocol_version{};
@@ -96,8 +97,9 @@ struct ControllerMessageValidationResult {
 }
 
 // Validates only the common logical envelope. Message-specific payload
-// validation, version negotiation, duplicate/order tracking and wire decoding
-// are separate responsibilities and are not implemented by this function.
+// validation and wire decoding are separate responsibilities. Version matching
+// and per-instance sequence ordering are handled by ControllerLinkSession,
+// not by this generic structural validator.
 [[nodiscard]] inline ControllerMessageValidationResult validate_controller_message(
     const ControllerMessageEnvelope& message) noexcept {
     if (!is_known_controller_message_type(message.type)) {
