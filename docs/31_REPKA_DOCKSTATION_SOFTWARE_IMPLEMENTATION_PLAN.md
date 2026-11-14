@@ -1,7 +1,7 @@
 # Полный план реализации программного комплекса DockStation на Repka Pi 5
 
 **Статус:** мастер-план реализации; последовательность разработки согласована, открытые платформенные, сетевые, серверные и аппаратные детали требуют отдельной проверки и решения.  
-**Редакция:** 1.56.  
+**Редакция:** 1.57.  
 **Дата:** 2026-11-14.  
 **Вычислительная платформа:** Repka Pi 5.  
 **Предполагаемая ОС:** официальная Repka OS; образ и версия проверяются перед развёртыванием.
@@ -711,15 +711,17 @@ SQLite остаётся кандидатом, не решением. Сравн�
 
 ## Этап 7. Мост Repka—ESP32
 
-**Файлы:** src/hardware/interfaces/controller_transport.hpp; controller_protocol.hpp; controller_codec.hpp/.cpp; src/hardware/esp32/esp32_bridge.hpp/.cpp; src/platform/linux/serial_transport.hpp/.cpp; verification/integration/controller_test_adapter/.
+**Планируемые границы файлов (имена адаптеров предварительные):** общие контракты/реализации `src/hardware/interfaces/controller_transport.hpp`, `controller_protocol.hpp`, `controller_codec.hpp/.cpp`, `controller_frame_stream_decoder.hpp/.cpp`, `controller_link_session.hpp/.cpp`; raw UART и OpenSSL adapter для Repka — в `src/platform/linux/`; ESP-IDF `main/`, UART driver и Mbed TLS adapter — только внутри `firmware/esp32/` и его собственных components. Портируемые файлы протокола не копируются в прошивку и не получают Linux-only dependencies. `verification/integration/controller_test_adapter/` допускается только как host contract adapter; он не имитирует GPIO/UART/ESP32 и не выполняет физические действия.
 
-**Функции:**
-- open_controller_transport(), close_controller_transport().
-- read_controller_frame(), write_controller_frame().
-- encode_controller_message(), decode_controller_message(), validate_controller_message().
-- perform_controller_handshake(), request_controller_snapshot().
-- send_controller_request(), process_controller_response().
-- monitor_controller_link(), handle_controller_link_loss(), reconnect_controller().
+**Логические функции/границы:**
+- `open_controller_uart()` / `close_controller_uart()` — открыть и закрыть raw point-to-point UART; этот адаптер не передаёт незашифрованные ControllerCodec frames напрямую.
+- `perform_controller_tls_handshake()` / `close_controller_tls_session()` — установить или закрыть TLS 1.3 PSK-DHE канал; до `handshake complete` прикладные данные не выдаются.
+- `read_tls_application_data()` / `write_tls_application_data()` — передать application bytes между TLS и прикладным слоем через обработку частичных чтений/записей и тайм-аутов.
+- `ControllerFrameStreamDecoder` принимает только расшифрованные bytes из TLS read; `ControllerCodec` выполняет wire decode/encode, `ControllerLinkSession` начинает логический HELLO/HELLO_ACK только после TLS-аутентификации.
+- `request_controller_snapshot()` — единственный прикладной запрос первого read-only среза; `process_controller_response()` — обработка telemetry/error после обоих рукопожатий.
+- `monitor_controller_link()`, `handle_controller_link_loss()`, `reconnect_controller()` — при сбое TLS закрыть/очистить логическую сессию и повторять только полный новый TLS handshake; plaintext fallback запрещён.
+
+Здесь два разных рукопожатия с разными задачами: **TLS handshake** аутентифицирует пару контроллеров и защищает канал; прикладной **HELLO/HELLO_ACK** подтверждает совместимость логического ControllerProtocol/instance/sequence. Успешный HELLO не заменяет TLS, а TLS не выдаёт право на физические команды.
 
 **Согласованный физический канал (DEC-062):** внутренний канал Repka Pi 5 ↔ ESP32 — проводной полнодуплексный UART, точка-точка, логические уровни 3,3 В. Исходный профиль линии — 115200 бод, 8 бит данных, без чётности, 1 стоп-бит (8N1), без аппаратного RTS/CTS. Это начальный профиль для реализации и последующей аппаратной проверки, а не результат измерения на установленной плате.
 
@@ -1116,6 +1118,7 @@ Host-тест `verification/repka_gateway/test_controller_link_session.cpp` за
 | 1.54 | 2026-11-14 | Подготовлено предложение DEC-066 по защищённому внутреннему Repka—ESP32 UART: TLS 1.3 PSK-DHE с индивидуальным 256-битным PSK, Repka TLS client / ESP32 TLS server, существующий ControllerCodec внутри TLS, запрет plaintext fallback и 0-RTT, ограничения provisioning/storage и acceptance test matrix. Согласованы по смыслу границы docs/06 §16.6, docs/07 §11 и docs/24 §6.4; криптографический профиль остаётся ПРЕДЛОЖЕНИЕМ до отдельного sign-off. TLS stack compatibility/interop, provisioning, physical UART and ESP32 target не реализованы и не проверены.
 | 1.55 | 2026-11-14 | Уточнён профиль внешнего PSK по RFC 9257: 256 бит энтропии CSPRNG, ровно одна пара client/server без смены ролей, PSK identity открыта в ClientHello и не должна раскрывать станционную/персональную информацию; уточнены границы privacy/linkability. DEC-066 остаётся предложением; interop и target проверки не выполнялись.
 | 1.56 | 2026-11-14 | Уточнено разделение PSK (32 байта секрета) и PSK identity (начальный кандидат 16 случайных байт, не секрет и видима в ClientHello); длина identity и совместимость с конкретным ESP-IDF Mbed TLS проверяются на interop. DEC-066 остаётся предложением и не реализован.
+| 1.57 | 2026-11-14 | Уточнена структура этапа 7: ESP32-specific `main`, UART и Mbed TLS adapter принадлежат только `firmware/esp32`; Linux UART/OpenSSL adapter остаётся в `src/platform/linux`, переносимые протокол/codec/session — в `src/hardware/interfaces`. Разделены TLS authentication handshake и логический HELLO/HELLO_ACK; ControllerFrameStreamDecoder получает только TLS plaintext после успешной проверки. Физический transport и TLS код не реализованы.
 
 **Ограничение:** это план. Функции не считаются реализованными до появления кода, проверок и, где требуется, аппаратных испытаний.
 
