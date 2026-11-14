@@ -949,6 +949,20 @@ Host-проверка: `verification/repka_gateway/test_controller_psk_tls_clien
 
 Формат файла — ровно 48 бинарных байт: PSK[32] затем identity[16]. Проверяются no-follow для всех path components, root ownership, каталог `0750`, файл `0640`, группа `dockstation`, отсутствие ACL, regular file, `nlink=1`, точный размер и стабильность stat metadata во время чтения. Тест `verification/repka_gateway/test_controller_psk_credential_store.sh` использует временные root-owned files в `/run` и запускает binary от service user; он не создаёт production PSK и не реализует provisioning.
 
+### tools/controller_psk_credential_provision.cpp
+
+| Функция / тип | Назначение |
+|---|---|
+| main() | Принимает только --help или --replace; остальные аргументы отклоняет. Рабочий запуск требует root и системную группу dockstation. |
+| provision(false) | Генерирует 32-byte PSK и 16-byte identity через OpenSSL RAND_bytes, создаёт локальный бинарный файл и атомарно устанавливает его без перезаписи существующего файла. |
+| provision(true) | Сначала требует, чтобы существующий файл успешно прошёл load_controller_psk_credentials(), затем атомарно заменяет только локальный файл Repka. |
+| open_credentials_directory() | Покомпонентно открывает/создаёт /etc/dockstation/credentials без следования symlink; проверяет root ownership, группу dockstation, каталог 0750 и отсутствие ACL. |
+| write_random_temp_file() / install_atomically() | Записывает временный файл root-only, fsync, применяет root:dockstation 0640 и выполняет renameat2 RENAME_NOREPLACE либо renameat при явной локальной замене; после rename выполняет fsync каталога. |
+
+Файл имеет фиксированное имя repka-esp32.psk и размер 48 бинарных байт: PSK[32] + identity[16]. Секретные байты не выводятся и не принимаются через аргументы. Обычный запуск не перезаписывает существующий файл. --replace не является coordinated rotation: ESP32 не получает новую пару, поэтому после такой операции TLS связь пары не сможет установиться до отдельного физически контролируемого provisioning ESP32. Утилита не включена в Gateway runtime; она устанавливается как самостоятельная root-only CLI.
+
+Проверка: CTest controller_psk_credential_provision_help и verification/repka_gateway/test_controller_psk_credential_provision.sh. Acceptance script проверяет первый install, loader read от service user, no-overwrite, отказ replace при неверном mode/ACL, атомарную локальную замену и удаление временных файлов.
+
 ### src/hardware/interfaces/controller_link_session.hpp/.cpp
 
 | Функция / тип | Назначение |

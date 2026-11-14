@@ -1,8 +1,8 @@
 # Полный план реализации программного комплекса DockStation на Repka Pi 5
 
 **Статус:** мастер-план реализации; последовательность разработки согласована, открытые платформенные, сетевые, серверные и аппаратные детали требуют отдельной проверки и решения.  
-**Редакция:** 1.60.  
-**Дата:** 2026-11-14.  
+**Редакция:** 1.61.  
+**Дата:** 2026-11-15.  
 **Вычислительная платформа:** Repka Pi 5.  
 **Предполагаемая ОС:** официальная Repka OS; образ и версия проверяются перед развёртыванием.
 
@@ -715,7 +715,7 @@ SQLite остаётся кандидатом, не решением. Сравн�
 
 **Реализованный Linux host-срез:** `src/platform/linux/controller_psk_tls_client.hpp/.cpp` содержит `ControllerPskTlsClient` на OpenSSL 3.x; отдельная CMake-библиотека `dockstation_controller_tls` и CTest `controller_psk_tls_client` регистрируются в корневой сборке. Клиент принимает credentials от caller, создаёт TLS 1.3 external-PSK client, закрепляет host candidate suite `TLS_AES_128_GCM_SHA256` и группу `P-256`, требует выбранной PSK-сессии и проверяет, что handshake использовал эфемерную группу. C++ Gateway runtime пока не линкуется с этим адаптером: его будет подключать будущий controller transport manager. Host peer test использует OpenSSL BIO pairs, не открывает UART, не имитирует плату и не доказывает Mbed TLS interop.
 
-**Реализованный Linux credential loader:** `src/platform/linux/controller_psk_credential_store.hpp/.cpp` читает бинарный файл `/etc/dockstation/credentials/repka-esp32.psk` с 32-byte PSK и 16-byte identity. Проверяются root owner, группа `dockstation`, каталог `0750`, файл `0640`, отсутствие ACL/symlink/hardlink, regular-file type, точный размер и стабильность метаданных. `ControllerPskCredentials` очищает свои буферы в деструкторе; loader очищает output при ошибке и временный buffer после чтения. Provisioning/rotation ещё не реализованы, C++ Gateway пока не подключён к loader/TLS transport.
+**Реализованный Linux credential loader:** `src/platform/linux/controller_psk_credential_store.hpp/.cpp` читает бинарный файл `/etc/dockstation/credentials/repka-esp32.psk` с 32-byte PSK и 16-byte identity. Проверяются root owner, группа `dockstation`, каталог `0750`, файл `0640`, отсутствие ACL/symlink/hardlink, regular-file type, точный размер и стабильность метаданных. `ControllerPskCredentials` очищает свои буферы в деструкторе; loader очищает output при ошибке и временный buffer после чтения. Локальная утилита dockstation-credential-provision реализована: создаёт PSK[32]+identity[16] через OpenSSL RAND_bytes, устанавливает бинарный файл атомарно с root:dockstation ownership и режимом 0640, а существующий файл по умолчанию не перезаписывает. --replace требует успешной проверки старых credentials loader-ом и меняет только локальную Repka сторону; ключ в ESP32 не передаётся. Coordinated provisioning/rotation/revocation остаются открытыми. C++ Gateway пока не подключён к loader/TLS transport.
 
 **Логические функции/границы:**
 - `open_controller_uart()` / `close_controller_uart()` — открыть и закрыть raw point-to-point UART; этот адаптер не передаёт незашифрованные ControllerCodec frames напрямую.
@@ -1126,6 +1126,8 @@ Host-тест `verification/repka_gateway/test_controller_link_session.cpp` за
 | 1.58 | 2026-11-14 | Владелец утвердил базовый криптографический профиль DEC-066: TLS 1.3 PSK-DHE и уникальный 32-байтовый PSK на пару Repka—ESP32. В плане этапа 7 статус изменён с предложения на утверждённую архитектуру. Cipher/group allow-list, точные версии OpenSSL/ESP-IDF/Mbed TLS, PSK identity API, physical provisioning, key storage, TLS adapters, UART и ESP32 target остаются непроверенными и не реализованными.
 | 1.59 | 2026-11-14 | Добавлен самостоятельный Linux/OpenSSL TLS 1.3 PSK client host-срез и отдельный CTest (13 проверок). Добавлены OpenSSL 3.0+ в CMake, статическая цель `dockstation_controller_tls`, host test и CI dependency `libssl-dev`. Клиент ещё не подключён к Gateway runtime и не обменивается данными с физическим UART; Mbed TLS interop, ESP32 firmware, provisioning/storage и hardware tests остаются открытыми.
 | 1.60 | 2026-11-14 | Добавлен Linux `ControllerPskCredentialStore` с fixed binary 48-byte file, no-follow path traversal, root:dockstation ownership, exact 0750/0640, ACL/hardlink/size/stat checks и RAII secret cleanup. Добавлен privileged filesystem acceptance script и CTest для проверки path validation; CI запускает script после создания системной группы/пользователя. Реальный provisioning, atomic rotation, Gateway composition integration, physical UART и ESP32 остаются открытыми.
+
+| 1.61 | 2026-11-15 | Добавлена standalone CLI dockstation-credential-provision: CSPRNG для PSK[32]/identity[16], безопасный временный файл root-only, права root:dockstation 0640, atomic no-overwrite install и explicit --replace только после проверки старого файла loader-ом; CMake install/CTest и privileged acceptance script покрывают создание, отказ от перезаписи, ошибки mode/ACL и локальную замену. Документы 06/07/11/12/24/26 синхронизированы. ESP32 provisioning/coordinated rotation, Gateway integration, Mbed TLS interop, физический UART и аппаратная приёмка остаются открытыми. |
 
 **Ограничение:** это план. Функции не считаются реализованными до появления кода, проверок и, где требуется, аппаратных испытаний.
 

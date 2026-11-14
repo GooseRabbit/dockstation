@@ -66,6 +66,15 @@ target_link_libraries(dockstation_controller_tls
 )
 dockstation_apply_compile_policy(dockstation_controller_tls)
 
+# Local-only PSK provisioning utility. It is not part of the Gateway runtime.
+add_executable(dockstation-credential-provision
+    tools/controller_psk_credential_provision.cpp
+)
+target_link_libraries(dockstation-credential-provision
+    PRIVATE dockstation_controller_tls
+)
+dockstation_apply_compile_policy(dockstation-credential-provision)
+
 add_executable(dockstation_linux_bootstrap
     repka_gateway/main.cpp
 )
@@ -205,6 +214,9 @@ if(BUILD_TESTING)
     add_test(NAME controller_psk_credential_store_rejects_relative_path
         COMMAND test_controller_psk_credential_store expect-failure relative/path)
 
+    add_test(NAME controller_psk_credential_provision_help
+        COMMAND dockstation-credential-provision --help)
+
     add_executable(test_local_api
         verification/repka_gateway/test_local_api.cpp
     )
@@ -257,6 +269,7 @@ if(BUILD_TESTING)
             foreach(target_name
                     dockstation_linux_runtime
                     dockstation_controller_tls
+                    dockstation-credential-provision
                     dockstation_linux_bootstrap
                     test_application_bootstrap
                     test_runtime_environment
@@ -281,6 +294,9 @@ if(BUILD_TESTING)
                     -fno-omit-frame-pointer
                 )
             endforeach()
+            target_link_options(dockstation-credential-provision PRIVATE
+                -fsanitize=address,undefined
+            )
             target_link_options(dockstation_linux_bootstrap PRIVATE
                 -fsanitize=address,undefined
             )
@@ -351,7 +367,7 @@ configure_file(
     "${PROJECT_BINARY_DIR}/dockstation-gateway.service"
     @ONLY
 )
-install(TARGETS dockstation_linux_bootstrap
+install(TARGETS dockstation_linux_bootstrap dockstation-credential-provision
     RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
 )
 install(FILES "${PROJECT_BINARY_DIR}/dockstation-gateway.service"
