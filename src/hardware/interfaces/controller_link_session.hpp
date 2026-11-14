@@ -133,7 +133,7 @@ private:
 
     ControllerLinkSessionState state_{ControllerLinkSessionState::Stopped};
     std::uint64_t next_tx_sequence_{1U};
-    std::uint64_t last_outbound_heartbeat_ms_{0U};
+    std::uint64_t last_outbound_message_ms_{0U};
     std::uint64_t last_peer_activity_ms_{0U};
     std::uint64_t last_retry_ms_{0U};
     std::uint64_t last_peer_sequence_{0U};
