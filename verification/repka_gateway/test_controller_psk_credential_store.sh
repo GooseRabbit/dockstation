@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-binary="\${DOCKSTATION_CREDENTIAL_STORE_TEST_BINARY:-$PWD/build/test_controller_psk_credential_store}"
+binary="$PWD/build/test_controller_psk_credential_store"
 if [[ ! -x "$binary" ]]; then
     echo "Credential-store test binary is missing: $binary" >&2
     exit 1
@@ -35,7 +35,12 @@ prepare_directory() {
 
 write_fixture() {
     local file_path="$1"
-    local byte_count="\${2:-48}"
+    local byte_count
+    if [[ "$#" -ge 2 ]]; then
+        byte_count="$2"
+    else
+        byte_count=48
+    fi
     sudo python3 -c \
         'import pathlib, sys; pathlib.Path(sys.argv[1]).write_bytes(bytes(range(1, int(sys.argv[2]) + 1)))' \
         "$file_path" "$byte_count"
