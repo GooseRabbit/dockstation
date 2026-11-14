@@ -1,7 +1,7 @@
 # Полный план реализации программного комплекса DockStation на Repka Pi 5
 
 **Статус:** мастер-план реализации; последовательность разработки согласована, открытые платформенные, сетевые, серверные и аппаратные детали требуют отдельной проверки и решения.  
-**Редакция:** 1.42.  
+**Редакция:** 1.43.  
 **Дата:** 2026-11-14.  
 **Вычислительная платформа:** Repka Pi 5.  
 **Предполагаемая ОС:** официальная Repka OS; образ и версия проверяются перед развёртыванием.
@@ -1014,6 +1014,7 @@ USB/UART, пины и формат кадров остаются открыты�
 | 1.40 | 2026-11-14 | Владелец утвердил публичные SourceSessionVerifier/SourceSessionRepository сигнатуры. Добавлены src/core/source_session.hpp/.cpp и fail-closed validators для evidence, Verified session и confirmation result. Добавлен CTest host harness SSR-01…SSR-18 на fake verifier/reader/repository; документация 06/26 и regression README обновлена. Production registry/verifier/storage, composition-root/event-adapter wiring, криптография, provisioning и аппаратная проверка остаются открытыми. |
 | 1.41 | 2026-11-14 | Реализован утверждённый SourceSessionCoordinator: проверка привязки Event к evidence, последовательность verifier → cursor reader → transactional repository, fail-closed статусы и возврат cursor только при Confirmed/AlreadyCurrent. SSR-01…SSR-18 переведены с тестовой копии оркестрации на production coordinator с fake ports. Обновлены CMake, docs/06, docs/26 и regression-сценарии. Production adapters, аутентифицированный transport context и F13 composition-root integration остаются открытыми. |
 | 1.42 | 2026-11-14 | Укреплены fail-closed validators: отклоняются пробельные source/source_instance/registration_revision, некорректный Found cursor и успешное подтверждение при expected Error. StationEventPipeline выполняет F01/F02 до любых session-side effects и возвращает пустой session_status при раннем отказе; добавлены тесты точной передачи cursor в профиль и повторной проверки той же активной сессии. Синхронизированы интерфейсы Pipeline в docs/06, docs/26, docs/31 и docs/18; обновлены README и regression-инструкции. Production transport/verifier/storage остаются открытыми. |
+| 1.43 | 2026-11-14 | Добавлен явный отказ session-gated Pipeline для источников без source_instance; generic F04 без instance не считается разрешением обхода аутентификации. Документация legacy-совместимости уточнена. Полный CI run 43608617035 для HEAD 22933ce SUCCESS: 13/13 CTest, 31/31 C++ host programs, 134 pytest, Linux build, Gateway install/non-root/systemd checks, QML и shell/network tests. |
 
 **Ограничение:** это план. Функции не считаются реализованными до появления кода, проверок и, где требуется, аппаратных испытаний.
 
@@ -1021,12 +1022,12 @@ USB/UART, пины и формат кадров остаются открыты�
 
 ## 13. Результат полного host CI
 
-Полный workflow `.github/workflows/linux-cmake.yml` [43520279910](https://github.com/GooseRabbit/dockstation/actions/runs/43520279910) завершился SUCCESS на Ubuntu 24.04.5 x86_64 для коммита `e6367030fbabb3fea3a168dcbc6219c7475bf02e`.
+Полный workflow `.github/workflows/linux-cmake.yml` [43608617035](https://github.com/GooseRabbit/dockstation/actions/runs/43608617035) завершился SUCCESS на Ubuntu 24.04.5 x86_64 для HEAD `22933ce86484c45d47322ba3940a98119afb66d4`.
 
 | Проверка | Результат |
 |---|---:|
 | CMake configure и сборка всех Linux targets, включая C++ Gateway | PASS |
-| CTest с ASan/UBSan | 10/10 PASS |
+| CTest с ASan/UBSan | 13/13 PASS |
 | C++ host unit/contract программы StationStateManager и ConfigurationManager | 31/31 PASS |
 | Установочная раскладка C++ Gateway, unit и примера конфигурации | PASS |
 | `systemd-analyze verify` для установленного unit | PASS |
@@ -1034,7 +1035,7 @@ USB/UART, пины и формат кадров остаются открыты�
 | Запуск C++ Gateway от имени `dockstation`, health и diagnostics | PASS |
 | Listener ограничен `127.0.0.1:8080`; завершение по SIGTERM | PASS |
 | Python compileall | PASS |
-| Python pytest: Operator, Python Gateway и integration | 130 PASS |
+| Python pytest: Operator, Python Gateway и integration | 134 PASS |
 | QML package entry point и ресурсы | PASS |
 | Shell syntax/behavior и network helper tests | PASS |
 
