@@ -233,6 +233,7 @@ if(BUILD_TESTING)
                     test_controller_protocol
                     test_controller_codec
                     test_controller_frame_stream_decoder
+                    test_controller_link_session
                     test_local_api
                     test_source_cursor_reader
                     test_source_session_contract
@@ -276,6 +277,9 @@ if(BUILD_TESTING)
                 -fsanitize=address,undefined
             )
             target_link_options(test_controller_frame_stream_decoder PRIVATE
+                -fsanitize=address,undefined
+            )
+            target_link_options(test_controller_link_session PRIVATE
                 -fsanitize=address,undefined
             )
             target_link_options(test_local_api PRIVATE
