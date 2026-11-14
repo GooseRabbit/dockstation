@@ -926,17 +926,17 @@ Wire v1: magic `DS`, wire version 1, тип сообщения 1…6, uint16 lit
 
 | Функция / тип | Назначение |
 |---|---|
-| \`ControllerLinkSessionConfig\` | Локальные ID/instance, ожидаемый peer ID, точная версия протокола и настраиваемые интервалы handshake/heartbeat/timeout/retry. |
-| \`ControllerLinkSessionState\` / \`ControllerLinkSessionStatus\` / \`ControllerLinkSessionEvent\` | Состояния Stopped/AwaitingHelloAck/Established/LinkLost, причины отказа и события для вызывающего transport adapter. |
-| \`ControllerLinkSessionResult\` | Возвращает состояние/результат и, для исходящего HELLO/HEARTBEAT, логический envelope; тело для этих сообщений — EmptyControllerMessagePayload. |
-| \`ControllerLinkSession::start()\` | Начинает host-initiated handshake и формирует HELLO с локальными ID, версией и возрастающим sequence. |
-| \`ControllerLinkSession::poll()\` | Проверяет deadlines, формирует периодический HEARTBEAT, переводит связь в LinkLost и инициирует повторный HELLO. Время передаётся вызывающим слоем в monotonic milliseconds. |
-| \`ControllerLinkSession::handle_message()\` | Принимает уже декодированное сообщение после ControllerCodec; проверяет структуру, точную версию, ожидаемый peer ID/instance, разрешённый тип и строго возрастающий sequence. |
-| \`ControllerLinkSession::stop()\` | Останавливает автомат, не сбрасывая локальную последовательность и последнее наблюдавшееся состояние sequence peer в пределах жизни объекта. |
+| `ControllerLinkSessionConfig` | Локальные ID/instance, ожидаемый peer ID, точная версия протокола и настраиваемые интервалы handshake/heartbeat/timeout/retry. |
+| `ControllerLinkSessionState` / `ControllerLinkSessionStatus` / `ControllerLinkSessionEvent` | Состояния Stopped/AwaitingHelloAck/Established/LinkLost, причины отказа и события для вызывающего transport adapter. |
+| `ControllerLinkSessionResult` | Возвращает состояние/результат и, для исходящего HELLO/HEARTBEAT, логический envelope; тело для этих сообщений — EmptyControllerMessagePayload. |
+| `ControllerLinkSession::start()` | Начинает host-initiated handshake и формирует HELLO с локальными ID, версией и возрастающим sequence. |
+| `ControllerLinkSession::poll()` | Проверяет deadlines, формирует периодический HEARTBEAT, переводит связь в LinkLost и инициирует повторный HELLO. Время передаётся вызывающим слоем в monotonic milliseconds. |
+| `ControllerLinkSession::handle_message()` | Принимает уже декодированное сообщение после ControllerCodec; проверяет структуру, точную версию, ожидаемый peer ID/instance, разрешённый тип и строго возрастающий sequence. |
+| `ControllerLinkSession::stop()` | Останавливает автомат, не сбрасывая локальную последовательность и последнее наблюдавшееся состояние sequence peer в пределах жизни объекта. |
 
 Идентификаторы хранятся в фиксированных буферах до 128 байт, динамическое выделение памяти отсутствует. По умолчанию: handshake timeout 3000 мс, heartbeat interval 1000 мс, peer activity timeout 5000 мс, retry interval 1000 мс. Номер исходящего sequence считается занятым при формировании сообщения, не при успешной физической отправке; пропуски разрешены. Входящие номера должны строго возрастать в пределах одного peer instance, но не обязаны быть непрерывными.
 
-Проверка: \`verification/repka_gateway/test_controller_link_session.cpp\`; CTest — \`controller_link_session\`. Host-тесты проверяют реальный codec round-trip HELLO/HELLO_ACK, handshake, peer ID/version/instance, порядок sequence, heartbeat, потерю связи/retry, переполнение monotonic counter и некорректные конфигурации. Класс не реализует UART, физический обмен, аутентификацию, шифрование, durable anti-replay или команды оборудования. Established не означает authenticated.
+Проверка: `verification/repka_gateway/test_controller_link_session.cpp`; CTest — `controller_link_session`. Host-тесты проверяют реальный codec round-trip HELLO/HELLO_ACK, handshake, peer ID/version/instance, порядок sequence, heartbeat, потерю связи/retry, переполнение monotonic counter и некорректные конфигурации. Класс не реализует UART, физический обмен, аутентификацию, шифрование, durable anti-replay или команды оборудования. Established не означает authenticated.
 
 
 
