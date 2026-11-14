@@ -12,9 +12,7 @@ enum class ControllerFrameStreamStatus : std::uint8_t {
     NeedMoreData,
     FrameReady,
     FramePending,
-    NullInput,
-    BufferLimitExceeded,
-    NoFrameAvailable
+    NullInput
 };
 
 struct ControllerFrameStreamResult {
