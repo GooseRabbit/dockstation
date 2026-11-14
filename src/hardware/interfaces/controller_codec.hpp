@@ -9,6 +9,8 @@
 namespace dockstation::hardware::interfaces {
 
 // Wire framing constants are independent of UART, USB and ESP-IDF.
+inline constexpr std::uint8_t kControllerCodecMagicFirst = 0x44U;  // 'D'
+inline constexpr std::uint8_t kControllerCodecMagicSecond = 0x53U; // 'S'
 inline constexpr std::uint8_t kControllerCodecWireVersion = 1U;
 inline constexpr std::size_t kControllerCodecMaximumFrameSize = 2048U;
 inline constexpr std::size_t kControllerCodecMaximumMeasurements = 16U;
