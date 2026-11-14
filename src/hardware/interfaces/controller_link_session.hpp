@@ -47,6 +47,8 @@ enum class ControllerLinkSessionEvent : std::uint8_t {
 
 struct ControllerLinkSessionConfig {
     std::string_view local_controller_id{};
+    // Caller supplies a fresh instance ID for each controller process/boot.
+    // This is a sequence namespace, not an authentication credential.
     std::string_view local_controller_instance_id{};
     std::string_view peer_controller_id{};
     ControllerProtocolVersion protocol_version{1U, 0U};
