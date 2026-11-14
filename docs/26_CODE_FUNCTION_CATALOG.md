@@ -6,7 +6,7 @@
 
 > **Важно:** приведённые функции, их названия, расположение по файлам и их количество могут измениться по мере проектирования, выбора БАС, оборудования, платформы и протоколов. Это предварительный ориентир, а не окончательное техническое задание.
 
-Сигнатуры записаны в условном C++-подобном виде только для наглядности. Язык программирования не выбран. Типы вроде `Result<T>`, `Mission`, `Event`, `Status` и другие названия обозначают данные, структуру которых ещё предстоит определить. Функции со статусом **«уже есть»** присутствуют в текущем коде `main`; остальные — предполагаемые.
+Сигнатуры записаны в условном C++-подобном виде только для наглядности. Язык программирования не выбран. Типы вроде `Result<T>`, `Mission`, `Event`, `Status` и другие названия обозначают данные, структуру которых ещё предстоит определить. Функции со статусом **«уже есть»** присутствуют в текущем рабочем коде; остальные — предполагаемые.
 
 ---
 
@@ -38,7 +38,7 @@
 
 | Функция / интерфейс | Назначение |
 |---|---|
-| `SourceSessionVerifier::verify_source_session(const SourceSessionEvidence&) noexcept` **(логический порт реализован; production verifier отсутствует)** | Проверяет регистрацию источника, привязку peer identity и доказательство свежей сессии через внешний адаптер. Ядро не выбирает протокол или алгоритмы; все неуспешные статусы должны иметь пустой session payload. |
+| `SourceSessionVerifier::verify_source_session(const SourceSessionEvidence&) noexcept` **(логический порт реализован; production verifier отсутствует)** | Проверяет зарегистрированный source и привязку peer identity к текущему активному каналу. Повторная проверка в том же открытом канале должна быть идемпотентной; replay вне channel binding отклоняется. Все отрицательные статусы требуют пустого session payload. |
 | `SourceSessionRepository::confirm_source_session(const SourceCursorReadResult&, const VerifiedSourceSession&) noexcept` **(логический порт реализован; production adapter отсутствует)** | Транзакционно сравнивает полный ожидаемый cursor и ревизию ACTIVE-регистрации. Создаёт начальный cursor или атомарно заменяет source_instance с очисткой last_sequence; AlreadyCurrent сохраняет sequence. |
 | `is_valid_source_session_evidence()` / `is_valid_verified_source_session()` **(реализованы)** | Проверяют наличие обязательных полей источника, сессии, доказательства peer identity и ревизии регистрации. |
 | `is_valid_source_session_verification_result()` **(реализована)** | Проверяет точное совпадение Verified source/instance с исходным доказательством; отрицательные статусы обязаны иметь пустой payload; неизвестный статус отклоняется. |
@@ -63,9 +63,10 @@ Host harness SSR-01…SSR-18 вызывает production coordinator с fake ver
 
 | Элемент | Назначение |
 |---|---|
-| StationEventPipeline::StationEventPipeline(EventRepository&, EventProcessorPort&, EventProcessorPort&, EventProcessorPort&) noexcept | Создаёт стабильную таблицу из пяти согласованных пар для общего, operation и timeout профилей; ссылки на зависимости не владеются. |
+| StationEventPipeline::StationEventPipeline(EventRepository&, EventProcessorPort&, EventProcessorPort&, EventProcessorPort&, SourceSessionVerifier&, SourceCursorReader&, SourceSessionRepository&) noexcept | Создаёт таблицу из пяти согласованных пар и SourceSessionCoordinator; все зависимости передаются по невладеющим ссылкам и должны жить дольше pipeline. |
 | StationEventPipeline::is_configured() const noexcept | Сообщает о готовности внутреннего EventProcessorRouter до запуска приёма событий. |
-| StationEventPipeline::handle(const Event&, const EventValidationPolicy&, const SourceCursor&) noexcept (реализована; 28 контрактных проверок) | Вызывает F13 с внутренним маршрутизатором: F01–F04, затем ровно один профиль из пяти зарегистрированных пар. Курсор не изменяет; pipeline запрещено копировать/перемещать. Не создаёт реальные профили или адаптеры хранения. |
+| StationEventPipeline::handle(const Event&, const EventValidationPolicy&, const SourceSessionEvidence&) noexcept (реализована; 41 контрактная проверка в tests/) | Выполняет чистые F01/F02 preflight-проверки, затем подтверждает сессию через SourceSessionCoordinator; только Confirmed/AlreadyCurrent запускают F03/F04 и профиль. Не принимает произвольный SourceCursor и не продвигает sequence; pipeline запрещено копировать/перемещать. Реальные transport/storage adapters и production composition root отсутствуют. |
+| StationEventPipelineResult | Содержит optional session_status (пустой, если F01/F02 остановили событие до обращения к Coordinator) и optional event_result. |
 
 ### src/core/event_processor_router.cpp
 
