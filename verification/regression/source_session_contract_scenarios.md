@@ -1,7 +1,7 @@
 # Source-session confirmation: verification scenarios
 
 **Status:** approved architecture and scenario specification (2026-11-14).
-**Execution status:** host harness implemented in `test_source_session_contract.cpp`; CI execution is pending. The scenarios describe test-double expectations and do not claim that production source-session verification or persistence exists.
+**Execution status:** host harness invokes the production `SourceSessionCoordinator` with fake ports. This verifies core orchestration only; it does not claim that production source-session verification, a trusted registry, or persistence exists.
 
 ## Scope and test boundary
 
@@ -9,12 +9,13 @@ The scenarios cover orchestration between a trusted source registry,
 `SourceSessionVerifier`, `SourceCursorReader`, `SourceSessionRepository`,
 and the event adapter before F13.
 
-A future host harness may use deterministic fake verifier/repository ports to
-exercise status handling, cursor compare-and-set, registration-revision checks,
-and event/session binding. Such fakes can establish only software control-flow
-behavior. They cannot prove challenge-response cryptography, key protection,
-provisioning, actual device identity, database durability, process-crash
-recovery, or Repka/ESP32 transport behavior.
+The host harness uses deterministic fake verifier/reader/repository ports at
+the external adapter boundaries and invokes the real `SourceSessionCoordinator`.
+It exercises status handling, cursor compare-and-set, registration-revision
+checks, and event/evidence binding. The fakes establish only software
+control-flow behavior. They cannot prove challenge-response cryptography, key
+protection, provisioning, actual device identity, database durability,
+process-crash recovery, or Repka/ESP32 transport behavior.
 
 The existing `tests/` directory must remain untouched. New executable checks,
 when the public API is approved, belong under `verification/regression/` and
@@ -37,7 +38,7 @@ must be registered separately with CTest.
 | SSR-11 | Cursor changes after it was read but before confirmation commit | Repository returns `CursorChanged`; it does not overwrite the newer cursor. |
 | SSR-12 | Two session confirmations race using the same expected cursor snapshot | At most one CAS succeeds; the loser gets `CursorChanged`; no silent overwrite or blind retry. |
 | SSR-13 | Source is revoked/disabled or its registration revision changes after verification but before commit | Repository checks the current registry state inside the same transaction, returns `RegistrationChanged`, and leaves cursor unchanged. |
-| SSR-14 | Event source or source_instance differs from the authenticated channel context | Adapter rejects the event before F13; values in the event body cannot switch the session. |
+| SSR-14 | Event source or source_instance differs from the session evidence supplied by the trusted channel adapter | `SourceSessionCoordinator` returns `InvalidEvidence` before calling verifier, reader or repository; values in the event body cannot switch the session. |
 | SSR-15 | Delayed event from the previous source_instance arrives after a new session was confirmed | F04 reports `UNORDERED / SourceInstanceMismatch`; no profile commit. |
 | SSR-16 | Event from a session-capable source omits source_sequence | F04 reports `UNORDERED / SequenceMissing`; timestamp is not used as a fallback. |
 | SSR-17 | Repository returns `Error`, an unknown status, or contradictory result data | Fail closed; do not treat the session as confirmed and do not pass events to F13. |
@@ -68,11 +69,11 @@ must be registered separately with CTest.
 
 ## Open implementation decisions
 
-The scenario matrix does not select the C++ method signatures, memory ownership
-model, registry schema, database, provisioning process, hardware activation
-method, cryptographic algorithms, challenge-response protocol, protected
-transport, source_instance generation strategy, or Repka—ESP32 link. These must
-be resolved in the relevant design review before implementation.
+The C++ coordinator signature and its fail-closed execution order are approved
+and implemented. The matrix does not select the registry schema, database,
+provisioning process, hardware activation method, cryptographic algorithms,
+challenge-response protocol, protected transport, source_instance generation
+strategy, or Repka—ESP32 link. These remain separate design decisions.
 
 The host harness is registered as CTest target `source_session_contract` and
 reports its executed check count. This scenario specification itself is not
@@ -81,9 +82,10 @@ an executed test and is not evidence of production security.
 
 ## Implemented host harness boundary
 
-The CTest target `source_session_contract` uses fake ports and a test-only
-reference coordinator. It exercises all 18 scenario IDs and the public
-result validators. SSR-14 uses a test-local source/session binding predicate;
-there is not yet a production event adapter or F13 composition-root hook.
-The fake repository models the required compare-and-set and registration
-revision checks but is not evidence of a real transaction or durable storage.
+The CTest target `source_session_contract` exercises all 18 scenario IDs
+through the production `SourceSessionCoordinator`. SSR-14 verifies the
+coordinator rejects mismatched Event/evidence before the verifier, reader or
+repository is called. The fake repository models the required compare-and-set
+and registration-revision checks but is not evidence of a real transaction or
+durable storage. A production channel adapter and F13 composition-root
+integration remain open.

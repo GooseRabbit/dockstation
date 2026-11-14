@@ -44,7 +44,14 @@
 | `is_valid_source_session_verification_result()` **(реализована)** | Проверяет точное совпадение Verified source/instance с исходным доказательством; отрицательные статусы обязаны иметь пустой payload; неизвестный статус отклоняется. |
 | `is_valid_source_session_confirmation_result()` **(реализована)** | Проверяет семантику Confirmed/AlreadyCurrent относительно ожидаемого полного cursor; ошибки и конфликты обязаны возвращать пустой cursor. |
 
-Host-контрактные проверки SSR-01…SSR-18 используют fake verifier/reader/repository. Они не являются production verifier, storage adapter или проверкой физической аутентификации и защищённого канала.
+### src/core/source_session_coordinator.cpp
+
+| Функция / интерфейс | Назначение |
+|---|---|
+| `SourceSessionCoordinator::SourceSessionCoordinator(SourceSessionVerifier&, SourceCursorReader&, SourceSessionRepository&) noexcept` **(реализован)** | Сохраняет невладеющие ссылки на три порта; адаптеры должны жить дольше координатора. |
+| `SourceSessionCoordinator::confirm(const Event&, const SourceSessionEvidence&) noexcept` **(реализована)** | До обращения к портам проверяет точное совпадение Event.source/source_instance с evidence; затем вызывает verifier, читает текущий cursor и передаёт только VerifiedSourceSession в repository. Возвращает cursor только для Confirmed/AlreadyCurrent; прочие статусы закрывают обработку. |
+
+Host harness SSR-01…SSR-18 вызывает production coordinator с fake verifier/reader/repository. Fake ports проверяют только программные границы и моделируют CAS/revision; они не являются production verifier, storage adapter или доказательством физической аутентификации и защищённого канала.
 
 ### src/core/event_handling.cpp
 

@@ -160,6 +160,7 @@ if(BUILD_TESTING)
     add_executable(test_source_session_contract
         src/core/event_processing.cpp
         src/core/source_session.cpp
+        src/core/source_session_coordinator.cpp
         verification/regression/test_source_session_contract.cpp
     )
     target_include_directories(test_source_session_contract

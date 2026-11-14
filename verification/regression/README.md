@@ -45,14 +45,18 @@ Run from the repository root:
 ```sh
 g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -fno-exceptions -fno-rtti -Isrc \\
   src/core/event_processing.cpp src/core/source_session.cpp \
+  src/core/source_session_coordinator.cpp \
   verification/regression/test_source_session_contract.cpp -o source_session_contract
 ./source_session_contract
 ```
 
 The CTest target is `source_session_contract`. It covers SSR-01…SSR-18
-with fake verifier/reader/repository ports and result-shape validators. The
-fake repository models the required compare-and-set and registration-revision
-checks; it is not production persistence. The event/session binding scenario
-uses a test-local predicate because the production event-adapter binding and
-composition-root wiring are still open. No cryptography, provisioning,
-durability across process restart, or ESP32 transport is tested.
+through the production `SourceSessionCoordinator`, with fake verifier/reader/
+repository ports at the adapter boundaries. The coordinator checks that
+`Event.source` and `Event.source_instance` match the supplied evidence before
+calling any trust port, then verifies the session, reads the cursor and asks
+the repository to confirm it. The fake repository models compare-and-set and
+registration-revision checks; it is not production persistence. The transport
+adapter must still build Event and evidence from the authenticated channel
+context. No real cryptography, provisioning, durable storage across process
+restart, or ESP32 transport is tested.
