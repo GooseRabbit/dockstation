@@ -1,6 +1,7 @@
 #include "core/event_processing.hpp"
 #include "core/source_session.hpp"
 #include "core/source_session_coordinator.hpp"
+#include "source_session_test_support.hpp"
 
 #include <cstdint>
 #include <iostream>
@@ -11,6 +12,7 @@
 
 namespace {
 using namespace dockstation::core;
+using dockstation::verification::SourceSessionEvidenceTestAccess;
 
 int failures = 0;
 int checks = 0;
@@ -23,8 +25,13 @@ void expect(bool condition, std::string_view message) {
     }
 }
 
-SourceSessionEvidence evidence() {
-    return {"esp32/main", "boot-new", "trusted-peer", "fresh-proof"};
+SourceSessionEvidence evidence(
+    std::string_view source = "esp32/main",
+    std::string_view source_instance = "boot-new",
+    std::string_view peer_identity_evidence = "trusted-peer",
+    std::string_view session_proof = "fresh-proof") {
+    return SourceSessionEvidenceTestAccess::make(
+        source, source_instance, peer_identity_evidence, session_proof);
 }
 VerifiedSourceSession verified() {
     return {"esp32/main", "boot-new", "reg-7"};
@@ -37,8 +44,8 @@ public:
     SourceSessionVerificationResult verify_source_session(
         const SourceSessionEvidence& input) noexcept override {
         ++calls;
-        if (input.peer_identity_evidence != "trusted-peer" ||
-            input.session_proof != "fresh-proof") {
+        if (input.peer_identity_evidence() != "trusted-peer" ||
+            input.session_proof() != "fresh-proof") {
             return {SourceSessionVerificationStatus::Rejected, {}};
         }
         return result;
@@ -153,8 +160,8 @@ enum class Flow {
 
 Event event_for_evidence(const SourceSessionEvidence& input) {
     Event event{};
-    event.source = input.source;
-    event.source_instance = input.source_instance;
+    event.source = input.source()
+    event.source_instance = input.source_instance()
     return event;
 }
 
@@ -207,13 +214,13 @@ void ssr_02_disabled_revoked_source() {
 }
 void ssr_03_peer_mismatch() {
     FakeVerifier v; FakeReader r; FakeRepository p;
-    auto e = evidence(); e.peer_identity_evidence = "other-peer";
+    const auto e = evidence("esp32/main", "boot-new", "other-peer", "fresh-proof");
     expect(run_flow(e, v, r, p) == Flow::Rejected, "SSR-03 peer identity mismatch");
     expect(p.calls == 0, "SSR-03 no cursor mutation");
 }
 void ssr_04_replayed_proof() {
     FakeVerifier v; FakeReader r; FakeRepository p;
-    auto e = evidence(); e.session_proof = "replayed";
+    const auto e = evidence("esp32/main", "boot-new", "trusted-peer", "replayed");
     expect(run_flow(e, v, r, p) == Flow::Rejected, "SSR-04 replayed proof rejected");
     expect(p.calls == 0, "SSR-04 replay cannot reach repository");
 }
@@ -371,7 +378,7 @@ void ssr_17_bad_repository_results() {
            "SSR-17 contradictory successful cursor is rejected");
 }
 void ssr_18_no_session_identity_or_sequence() {
-    auto e = evidence(); e.source_instance = {};
+    const auto e = evidence("esp32/main", "", "trusted-peer", "fresh-proof");
     expect(!is_valid_source_session_evidence(e),
            "SSR-18 session verifier requires a non-empty source_instance");
 
@@ -409,12 +416,10 @@ void ssr_19_same_live_channel_can_confirm_multiple_events() {
 }
 
 void ssr_20_reject_blank_text_identifiers_and_error_cursor_success() {
-    auto blank_source = evidence();
-    blank_source.source = "  \t ";
+    const auto blank_source = evidence("  \t ", "boot-new", "trusted-peer", "fresh-proof");
     expect(!is_valid_source_session_evidence(blank_source),
            "SSR-20 whitespace-only source is rejected");
-    auto blank_instance = evidence();
-    blank_instance.source_instance = " \n";
+    const auto blank_instance = evidence("esp32/main", " \n", "trusted-peer", "fresh-proof");
     expect(!is_valid_source_session_evidence(blank_instance),
            "SSR-20 whitespace-only source_instance is rejected");
     const VerifiedSourceSession blank_revision{"esp32/main", "boot-new", " \t"};

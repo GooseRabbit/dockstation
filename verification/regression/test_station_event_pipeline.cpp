@@ -1,4 +1,5 @@
 #include "core/station_event_pipeline.hpp"
+#include "source_session_test_support.hpp"
 #include <cstdint>
 #include <iostream>
 #include <optional>
@@ -7,6 +8,7 @@
 
 namespace {
 using namespace dockstation::core;
+using dockstation::verification::SourceSessionEvidenceTestAccess;
 int failures = 0;
 int checks = 0;
 void expect(bool ok, std::string_view message) {
@@ -22,7 +24,7 @@ public:
         const SourceSessionEvidence& e) noexcept override {
         ++calls;
         if (status != SourceSessionVerificationStatus::Verified) return {status, {}};
-        return {status, {e.source, e.source_instance, "revision-1"}};
+        return {status, {e.source(), e.source_instance(), "revision-1"}};
     }
 };
 class CursorReader final : public SourceCursorReader {
@@ -91,7 +93,8 @@ Event event_value() {
     return e;
 }
 SourceSessionEvidence evidence_value() {
-    return {"sensor/esp32","boot-current","authenticated-peer","proof"};
+    return SourceSessionEvidenceTestAccess::make(
+        "sensor/esp32", "boot-current", "authenticated-peer", "proof");
 }
 void rejected_session_blocks_f13() {
     EventRepositoryFake events; Processor global, operation, timeout;

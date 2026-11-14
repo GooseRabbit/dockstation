@@ -5,9 +5,9 @@ namespace {
 
 bool event_matches_evidence(const Event& event,
                             const SourceSessionEvidence& evidence) noexcept {
-    return event.source == evidence.source &&
+    return event.source == evidence.source() &&
            event.source_instance.has_value() &&
-           *event.source_instance == evidence.source_instance;
+           *event.source_instance == evidence.source_instance();
 }
 
 SourceSessionCoordinatorResult failure(

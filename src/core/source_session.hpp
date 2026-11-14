@@ -5,13 +5,44 @@
 
 #include "event_processing.hpp"
 
+namespace dockstation::communications {
+class AuthenticatedEventTransportAdapter;
+}
+namespace dockstation::verification {
+class SourceSessionEvidenceTestAccess;
+}
+
 namespace dockstation::core {
 
-struct SourceSessionEvidence {
-    std::string_view source{};
-    std::string_view source_instance{};
-    std::string_view peer_identity_evidence{};
-    std::string_view session_proof{};
+// Opaque evidence. Ordinary application/API code cannot construct or mutate it.
+// This is an API boundary, not a sandbox against hostile native code in-process.
+class SourceSessionEvidence final {
+public:
+    SourceSessionEvidence(const SourceSessionEvidence&) noexcept = default;
+    SourceSessionEvidence& operator=(const SourceSessionEvidence&) noexcept = default;
+    SourceSessionEvidence(SourceSessionEvidence&&) noexcept = default;
+    SourceSessionEvidence& operator=(SourceSessionEvidence&&) noexcept = default;
+
+    [[nodiscard]] std::string_view source() const noexcept { return source_; }
+    [[nodiscard]] std::string_view source_instance() const noexcept { return source_instance_; }
+    [[nodiscard]] std::string_view peer_identity_evidence() const noexcept { return peer_identity_evidence_; }
+    [[nodiscard]] std::string_view session_proof() const noexcept { return session_proof_; }
+
+private:
+    friend class ::dockstation::communications::AuthenticatedEventTransportAdapter;
+    friend class ::dockstation::verification::SourceSessionEvidenceTestAccess;
+
+    SourceSessionEvidence(std::string_view source,
+                          std::string_view source_instance,
+                          std::string_view peer_identity_evidence,
+                          std::string_view session_proof) noexcept
+        : source_(source), source_instance_(source_instance),
+          peer_identity_evidence_(peer_identity_evidence), session_proof_(session_proof) {}
+
+    std::string_view source_{};
+    std::string_view source_instance_{};
+    std::string_view peer_identity_evidence_{};
+    std::string_view session_proof_{};
 };
 
 enum class SourceSessionVerificationStatus : std::uint8_t {

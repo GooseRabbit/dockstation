@@ -40,7 +40,7 @@
 |---|---|
 | `SourceSessionVerifier::verify_source_session(const SourceSessionEvidence&) noexcept` **(логический порт реализован; production verifier отсутствует)** | Проверяет зарегистрированный source и привязку peer identity к текущему активному каналу. Повторная проверка в том же открытом канале должна быть идемпотентной; replay вне channel binding отклоняется. Все отрицательные статусы требуют пустого session payload. |
 | `SourceSessionRepository::confirm_source_session(const SourceCursorReadResult&, const VerifiedSourceSession&) noexcept` **(логический порт реализован; production adapter отсутствует)** | Транзакционно сравнивает полный ожидаемый cursor и ревизию ACTIVE-регистрации. Создаёт начальный cursor или атомарно заменяет source_instance с очисткой last_sequence; AlreadyCurrent сохраняет sequence. |
-| `is_valid_source_session_evidence()` / `is_valid_verified_source_session()` **(реализованы)** | Проверяют наличие обязательных полей источника, сессии, доказательства peer identity и ревизии регистрации. |
+| `SourceSessionEvidence` **(непрозрачный тип реализован)** | Закрытый конструктор и поля, только read-only getters; обычный application/API код не может собрать evidence из payload. Единственный production friend зарезервирован за AuthenticatedEventTransportAdapter, реализация которого ещё отсутствует. |\n| `is_valid_source_session_evidence()` / `is_valid_verified_source_session()` **(реализованы)** | Проверяют наличие обязательных полей источника, сессии, доказательства peer identity и ревизии регистрации. |
 | `is_valid_source_session_verification_result()` **(реализована)** | Проверяет точное совпадение Verified source/instance с исходным доказательством; отрицательные статусы обязаны иметь пустой payload; неизвестный статус отклоняется. |
 | `is_valid_source_session_confirmation_result()` **(реализована)** | Проверяет семантику Confirmed/AlreadyCurrent относительно ожидаемого полного cursor; ошибки и конфликты обязаны возвращать пустой cursor. |
 
@@ -49,9 +49,9 @@
 | Функция / интерфейс | Назначение |
 |---|---|
 | `SourceSessionCoordinator::SourceSessionCoordinator(SourceSessionVerifier&, SourceCursorReader&, SourceSessionRepository&) noexcept` **(реализован)** | Сохраняет невладеющие ссылки на три порта; адаптеры должны жить дольше координатора. |
-| `SourceSessionCoordinator::confirm(const Event&, const SourceSessionEvidence&) noexcept` **(реализована)** | До обращения к портам проверяет точное совпадение Event.source/source_instance с evidence; затем вызывает verifier, читает текущий cursor и передаёт только VerifiedSourceSession в repository. Возвращает cursor только для Confirmed/AlreadyCurrent; прочие статусы закрывают обработку. |
+| `SourceSessionCoordinator::confirm(const Event&, const SourceSessionEvidence&) noexcept` **(реализована)** | До обращения к портам проверяет точное совпадение Event.source/source_instance с закрытыми getters evidence; затем вызывает verifier, читает текущий cursor и передаёт только VerifiedSourceSession в repository. Возвращает cursor только для Confirmed/AlreadyCurrent; прочие статусы закрывают обработку. |
 
-Host harness SSR-01…SSR-18 вызывает production coordinator с fake verifier/reader/repository. Fake ports проверяют только программные границы и моделируют CAS/revision; они не являются production verifier, storage adapter или доказательством физической аутентификации и защищённого канала.
+Host harness SSR-01…SSR-20 вызывает production coordinator с fake verifier/reader/repository; test-only SourceSessionEvidenceTestAccess создаёт тестовые фикстуры, а compile-time static_assert подтверждает отсутствие публичного конструктора и aggregate initialization. Fake ports проверяют только программные границы и моделируют CAS/revision; они не являются production verifier, storage adapter или доказательством физической аутентификации и защищённого канала.
 
 ### src/core/event_handling.cpp
 

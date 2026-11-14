@@ -5,8 +5,10 @@
 #include <string>
 #include <string_view>
 #include "core/station_event_pipeline.hpp"
+#include "../../verification/regression/source_session_test_support.hpp"
 
 using namespace dockstation::core;
+using dockstation::verification::SourceSessionEvidenceTestAccess;
 namespace {
 int checks=0, failures=0;
 void expect(bool ok,std::string_view msg){++checks;if(!ok){++failures;std::cout<<"FAIL: "<<msg<<'\n';}}
@@ -15,7 +17,8 @@ Event make_event(std::string_view id,std::string_view type,std::uint64_t seq){
  e.received_at="receiver-time";e.source_sequence=seq;e.payload="opaque-payload";
  e.quality_status="VALID";e.schema_version="1";return e;
 }
-SourceSessionEvidence evidence(){return {"station-events","boot-1","authenticated-peer","session-proof"};}
+SourceSessionEvidence evidence(){return SourceSessionEvidenceTestAccess::make(
+ "station-events","boot-1","authenticated-peer","session-proof");}
 class Events final:public EventRepository{
 public: EventRepositoryLookupStatus status{EventRepositoryLookupStatus::NotFound};Event stored{};int calls{0};
  EventRepositoryLookupResult find_by_id(std::string_view id)noexcept override{
@@ -28,7 +31,7 @@ class Verifier final:public SourceSessionVerifier{
 public:SourceSessionVerificationStatus status{SourceSessionVerificationStatus::Verified};int calls{0};
  SourceSessionVerificationResult verify_source_session(const SourceSessionEvidence&e)noexcept override{
   ++calls;if(status!=SourceSessionVerificationStatus::Verified)return{status,{}};
-  return{status,{e.source,e.source_instance,"registration-revision-1"}};
+  return{status,{e.source(),e.source_instance(),"registration-revision-1"}};
  }
 };
 class CursorReader final:public SourceCursorReader{

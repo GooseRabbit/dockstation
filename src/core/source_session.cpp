@@ -48,10 +48,10 @@ bool is_valid_source_session_evidence(
     const SourceSessionEvidence& evidence) noexcept {
     // Identifiers are text and must contain a non-whitespace character.
     // Proof/evidence are opaque byte strings: only their presence is required.
-    return has_non_whitespace(evidence.source) &&
-           has_non_whitespace(evidence.source_instance) &&
-           !evidence.peer_identity_evidence.empty() &&
-           !evidence.session_proof.empty();
+    return has_non_whitespace(evidence.source()) &&
+           has_non_whitespace(evidence.source_instance()) &&
+           !evidence.peer_identity_evidence().empty() &&
+           !evidence.session_proof().empty();
 }
 
 bool is_valid_verified_source_session(
@@ -71,8 +71,8 @@ bool is_valid_source_session_verification_result(
     switch (result.status) {
         case SourceSessionVerificationStatus::Verified:
             return is_valid_verified_source_session(result.session) &&
-                   result.session.source == evidence.source &&
-                   result.session.source_instance == evidence.source_instance;
+                   result.session.source == evidence.source() &&
+                   result.session.source_instance == evidence.source_instance();
         case SourceSessionVerificationStatus::UnknownSource:
         case SourceSessionVerificationStatus::Rejected:
         case SourceSessionVerificationStatus::Unavailable:

@@ -1,7 +1,7 @@
 # Полный план реализации программного комплекса DockStation на Repka Pi 5
 
 **Статус:** мастер-план реализации; последовательность разработки согласована, открытые платформенные, сетевые, серверные и аппаратные детали требуют отдельной проверки и решения.  
-**Редакция:** 1.43.  
+**Редакция:** 1.44.  
 **Дата:** 2026-11-14.  
 **Вычислительная платформа:** Repka Pi 5.  
 **Предполагаемая ОС:** официальная Repka OS; образ и версия проверяются перед развёртыванием.
@@ -472,11 +472,18 @@ Verifier отвечает за проверку доказательства и 
 **Утверждённые публичные сигнатуры и реализованный логический контракт:**
 
 ```cpp
-struct SourceSessionEvidence {
-    std::string_view source;
-    std::string_view source_instance;
-    std::string_view peer_identity_evidence;
-    std::string_view session_proof;
+class SourceSessionEvidence final {
+public:
+    SourceSessionEvidence(const SourceSessionEvidence&) noexcept = default;
+    SourceSessionEvidence& operator=(const SourceSessionEvidence&) noexcept = default;
+    [[nodiscard]] std::string_view source() const noexcept;
+    [[nodiscard]] std::string_view source_instance() const noexcept;
+    [[nodiscard]] std::string_view peer_identity_evidence() const noexcept;
+    [[nodiscard]] std::string_view session_proof() const noexcept;
+private:
+    friend class dockstation::communications::AuthenticatedEventTransportAdapter;
+    SourceSessionEvidence(std::string_view, std::string_view,
+                          std::string_view, std::string_view) noexcept;
 };
 
 enum class SourceSessionVerificationStatus : std::uint8_t {
@@ -601,6 +608,35 @@ SourceSessionVerifier вызывается для каждого события.
 Не выбираются и не реализуются: схема и физическое хранилище реестра; формат аппаратной идентичности; способ хранения ключей; онлайн/офлайн provisioning; физическая кнопка, перемычка или сервисный ключ активации; challenge-response wire format; TLS/mTLS или иной конкретный защищённый канал; криптографические алгоритмы; транспорт Repka—ESP32; формат и генератор `source_instance`; production adapter и composition-root wiring. Эти решения нельзя подменять тестовыми заглушками или выводить из текущего VM Gateway.
 
 **Проверка:** host harness `verification/regression/test_source_session_contract.cpp` покрывает SSR-01…SSR-18 через production `SourceSessionCoordinator`. Fake verifier/reader/repository моделируют только внешние адаптеры, CAS и ревизию регистрации; они не доказывают реальную криптографию, provisioning, постоянство данных после отключения питания или работу ESP32. Подробная матрица ограничений остаётся в `verification/regression/source_session_contract_scenarios.md`.
+
+### 5.4.3. Доверенная граница входа событий
+
+**Статус: ограничение API-типа реализовано; production ingress и transport отсутствуют.**
+
+Аудит текущего дерева показал:
+
+- C++ `LocalApiServer` принимает HTTP-запросы без тела и обслуживает только GET health/system diagnostics. Это read-only диагностика, не вход событий.
+- Python Gateway по умолчанию также read-only. Его отдельно включаемый тестовый route принимает только PING и возвращает `physical_action_performed=false`; это не production event/command channel.
+- `src/hardware/interfaces/controller_protocol.hpp` задаёт только логическую структуру сообщений Repka/ESP32. Wire representation и физический транспорт не определены; декодера входящих байтов и receive path нет.
+- Нормализованный `Event` не создаётся текущим communications runtime. `StationEventPipeline` пока используется в host verification/contract tests; production composition root, связывающий transport → Event → session evidence → F13, отсутствует.
+
+Следовательно, HTTP-заголовок, JSON payload, `Event.source`, `source_instance`, client timestamp или обычный TCP peer address не являются доказательством доверия. Это только входные значения, пока их происхождение не связано с отдельно подтверждённым аутентифицированным каналом. `received_at` — время приёма, а не средство аутентификации.
+
+**Изменение границы C++ API:** `SourceSessionEvidence` стал непрозрачным final value object с закрытыми полями и закрытым конструктором. Обычный application/API код может только читать значения через getters; он не может создавать объект через aggregate initialization или default construction. Единственный production friend зарезервирован за `dockstation::communications::AuthenticatedEventTransportAdapter`. Этот класс пока не реализован: он обозначает точку расширения для будущего доверенного receive adapter, а не имитирует аутентификацию. Host tests создают фикстуры через отдельный `verification::SourceSessionEvidenceTestAccess`; compile-time `static_assert` фиксирует отсутствие public default constructor и aggregate initialization. C++ access control защищает от случайного вызова/неправильного использования API, но не является песочницей против вредоносного native-кода, уже исполняющегося в том же процессе.
+
+**Контракт будущего ingress adapter:**
+
+1. Один владеющий объект receive frame/session context удерживает исходные байты и строки до полного возврата `StationEventPipeline::handle()`. Нельзя создавать временные `string_view` на локальный JSON buffer и освобождать его до окончания F13.
+2. Event и SourceSessionEvidence формируются из одного принятого сообщения и одного контекста конкретного активного канала. Не должно быть независимого публичного API вида `handle(event_from_json, evidence_from_json)`.
+3. `source` и `source_instance` связываются с уже аутентифицированной идентичностью/сессией канала. Значения из payload можно сверить с каналом, но нельзя принимать их как самостоятельное доказательство.
+4. `peer_identity_evidence` и `session_proof` должны происходить из транспортного handshake/channel context, а не из строки, присланной самим Event.
+5. Adapter вызывает Pipeline синхронно, пока receive context и backing storage действительны. При асинхронной обработке кадр и все backing buffers передаются как владеющий объект.
+6. Закрытие канала, повторное подключение, новое challenge/session establishment и lifetime peer identity должны быть видимы verifier-у. Повторная проверка внутри одного непрерывно открытого канала допустима; повтор proof на новом канале — нет.
+7. Transport decoder сначала проверяет framing, размер, encoding и структуру сообщения, затем формирует нормализованный Event. Payload не может подменить состояние канала или напрямую создать VerifiedSourceSession.
+
+**Не делать сейчас:** не подключать LocalApiServer/Python test route к StationEventPipeline; не принимать evidence из HTTP или пользовательского JSON; не считать loopback, SSH port-forward или source ID самостоятельной аутентификацией устройства; не выбирать TLS/mTLS, алгоритмы, challenge format или физический Repka—ESP32 транспорт без отдельного решения по docs/24 и docs/07.
+
+**Следующий реальный срез:** после выбора физического канала и wire protocol спроектировать receive adapter/decoder и только затем реализовать его как production friend. Отдельно подключить production verifier/registry/storage и composition root. До этого Pipeline остаётся логически проверенным на fake ports, но не принимает реальные события со станции.
 
 ### 5.5. Выбор физического хранилища
 
@@ -1014,7 +1050,7 @@ USB/UART, пины и формат кадров остаются открыты�
 | 1.40 | 2026-11-14 | Владелец утвердил публичные SourceSessionVerifier/SourceSessionRepository сигнатуры. Добавлены src/core/source_session.hpp/.cpp и fail-closed validators для evidence, Verified session и confirmation result. Добавлен CTest host harness SSR-01…SSR-18 на fake verifier/reader/repository; документация 06/26 и regression README обновлена. Production registry/verifier/storage, composition-root/event-adapter wiring, криптография, provisioning и аппаратная проверка остаются открытыми. |
 | 1.41 | 2026-11-14 | Реализован утверждённый SourceSessionCoordinator: проверка привязки Event к evidence, последовательность verifier → cursor reader → transactional repository, fail-closed статусы и возврат cursor только при Confirmed/AlreadyCurrent. SSR-01…SSR-18 переведены с тестовой копии оркестрации на production coordinator с fake ports. Обновлены CMake, docs/06, docs/26 и regression-сценарии. Production adapters, аутентифицированный transport context и F13 composition-root integration остаются открытыми. |
 | 1.42 | 2026-11-14 | Укреплены fail-closed validators: отклоняются пробельные source/source_instance/registration_revision, некорректный Found cursor и успешное подтверждение при expected Error. StationEventPipeline выполняет F01/F02 до любых session-side effects и возвращает пустой session_status при раннем отказе; добавлены тесты точной передачи cursor в профиль и повторной проверки той же активной сессии. Синхронизированы интерфейсы Pipeline в docs/06, docs/26, docs/31 и docs/18; обновлены README и regression-инструкции. Production transport/verifier/storage остаются открытыми. |
-| 1.43 | 2026-11-14 | Добавлен явный отказ session-gated Pipeline для источников без source_instance; generic F04 без instance не считается разрешением обхода аутентификации. Документация legacy-совместимости уточнена. Полный CI run 43608617035 для HEAD 22933ce SUCCESS: 13/13 CTest, 31/31 C++ host programs, 134 pytest, Linux build, Gateway install/non-root/systemd checks, QML и shell/network tests. |
+| 1.43 | 2026-11-14 | Добавлен явный отказ session-gated Pipeline для источников без source_instance; generic F04 без instance не считается разрешением обхода аутентификации. Документация legacy-совместимости уточнена. Полный CI run 43608617035 для HEAD 22933ce SUCCESS: 13/13 CTest, 31/31 C++ host programs, 134 pytest, Linux build, Gateway install/non-root/systemd checks, QML и shell/network tests. |\n| 1.44 | 2026-11-14 | Проведён аудит фактического входного пути: C++ LocalApiServer read-only, Python test route принимает только PING, ControllerProtocol не задаёт wire format/transport, production Event ingress/composition root отсутствуют. SourceSessionEvidence стал opaque final type с закрытым конструктором; создание зарезервировано за будущим AuthenticatedEventTransportAdapter. Добавлены test-only factory и compile-time ограничения. Документирован контракт ingress adapter и запрет принимать доверие из Event/API payload; реальная аутентификация и transport остаются отдельными будущими задачами. |
 
 **Ограничение:** это план. Функции не считаются реализованными до появления кода, проверок и, где требуется, аппаратных испытаний.
 
