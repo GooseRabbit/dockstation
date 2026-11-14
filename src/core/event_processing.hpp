@@ -89,7 +89,8 @@ enum class EventFreshnessReason : std::uint8_t {
 // Курсор одного конкретного источника событий и его текущей сессии.
 // source обязателен даже до появления первого номера; пустой/чужой источник
 // не позволяет установить порядок. string_view не владеет памятью: исходные
-// строки должны жить до завершения вызова.
+// строки должны оставаться действительными до завершения обработки события
+// и профильного commit, использующего этот курсор.
 // Для подтверждённой новой сессии вызывающий слой сбрасывает last_sequence и
 // заранее записывает новый source_instance, затем передаёт первое событие сессии.
 struct SourceCursor {
@@ -97,6 +98,39 @@ struct SourceCursor {
     std::optional<std::string_view> source_instance{};  // Идентификатор запуска/сессии, если источник его передаёт.
     std::optional<std::uint64_t> last_sequence{};  // Последний принятый Event::source_sequence.
 };
+
+// Статус read-only поиска сохранённого курсора источника.
+enum class SourceCursorReadStatus : std::uint8_t {
+    Found,    // Для source есть сохранённый курсор.
+    NotFound, // Для source нет сохранённой записи.
+    Error     // Чтение не удалось или результат нельзя подтвердить.
+};
+
+// Один согласованный снимок source/source_instance/last_sequence.
+// При NotFound и Error поле cursor должно оставаться пустым.
+struct SourceCursorReadResult {
+    SourceCursorReadStatus status{SourceCursorReadStatus::Error};
+    SourceCursor cursor{};
+};
+
+// Read-only порт загрузки курсора по точному непустому source.
+// Не создаёт, не сбрасывает и не продвигает курсор. Реализация обязана хранить
+// строки string_view до завершения обработки события и профильного commit;
+// параллельное чтение не должно инвалидировать уже возвращённый снимок.
+class SourceCursorReader {
+public:
+    virtual ~SourceCursorReader() = default;
+
+    [[nodiscard]] virtual SourceCursorReadResult read_source_cursor(
+        std::string_view source) noexcept = 0;
+};
+
+// Проверяет согласованность формы ответа до использования cursor вызывающим слоем.
+// Error является допустимым результатом чтения только с пустым cursor и всё равно
+// блокирует обработку события. Неизвестный статус или противоречивый payload отклоняется.
+[[nodiscard]] bool is_valid_source_cursor_read_result(
+    std::string_view requested_source,
+    const SourceCursorReadResult& result) noexcept;
 
 struct EventFreshnessResult {
     EventFreshnessStatus status{EventFreshnessStatus::Unordered};

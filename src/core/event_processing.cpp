@@ -48,6 +48,12 @@ bool is_empty_event(const Event& event) noexcept {
            !event.reason_text.has_value();
 }
 
+bool is_empty_source_cursor(const SourceCursor& cursor) noexcept {
+    return cursor.source.empty() &&
+           !cursor.source_instance.has_value() &&
+           !cursor.last_sequence.has_value();
+}
+
 }  // namespace
 
 DuplicateEventResult check_duplicate_event(
@@ -79,6 +85,31 @@ DuplicateEventResult check_duplicate_event(
 
     // Неизвестное значение статуса репозитория нельзя считать NEW.
     return {DuplicateEventStatus::RepositoryError};
+}
+
+
+bool is_valid_source_cursor_read_result(
+    std::string_view requested_source,
+    const SourceCursorReadResult& result) noexcept {
+    // Пустой ключ не может идентифицировать запись постоянного хранилища.
+    if (requested_source.empty()) {
+        return false;
+    }
+
+    switch (result.status) {
+        case SourceCursorReadStatus::Found:
+            // Найденный снимок обязан относиться ровно к тому source, который запросили.
+            return !result.cursor.source.empty() &&
+                   result.cursor.source == requested_source;
+
+        case SourceCursorReadStatus::NotFound:
+        case SourceCursorReadStatus::Error:
+            // Отсутствие записи и ошибка чтения не должны переносить частичные данные.
+            return is_empty_source_cursor(result.cursor);
+    }
+
+    // Неизвестный enum нельзя считать ни найденной, ни отсутствующей записью.
+    return false;
 }
 
 

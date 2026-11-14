@@ -1,7 +1,7 @@
 # Каталог предполагаемых функций DockStation
 
 **Статус:** предварительный рабочий каталог.  
-**Дата:** 2026-11-13.  
+**Дата:** 2026-11-14.  
 **Назначение:** показать, на какие отдельные функции может быть разбито программное обеспечение станции и совместно разрабатываемая бортовая часть.
 
 > **Важно:** приведённые функции, их названия, расположение по файлам и их количество могут измениться по мере проектирования, выбора БАС, оборудования, платформы и протоколов. Это предварительный ориентир, а не окончательное техническое задание.
@@ -23,13 +23,15 @@
 | `bool is_known_quality_status(std::string_view value) noexcept` **(уже есть)** | Проверяет, входит ли статус качества данных в предусмотренный перечень. |
 | `EventValidationResult validate_event(const Event& event, const EventValidationPolicy& policy = {}) noexcept` **(уже есть)** | Проверяет обязательные поля события, статусы качества и согласованность необязательных пар полей. |
 
-### src/core/event_processing.cpp
+### src/core/event_processing.hpp / src/core/event_processing.cpp
 
 | Функция | Назначение |
 |---|---|
 | `EventCategory classify_event(const Event& event) noexcept` **(уже есть)** | По точному `event_type` определяет одну из шести категорий из §2.1 документа `06`; неизвестный тип возвращает `Unknown`. Не меняет событие и не выполняет побочных действий. |
 | `DuplicateEventResult check_duplicate_event(const Event& event, EventRepository& repository) noexcept` **(уже есть)** | Проверяет сохранённое событие по `event_id`: NEW, DUPLICATE, CONFLICT или REPOSITORY_ERROR. `NOT_FOUND` допускается только с полностью пустым представлением Event; заполненный Event при этом статусе считается ошибкой репозитория. Сравнение точное, кроме поля `received_at`, назначаемого принимающей стороной; репозиторий только читается. Не резервирует ID и не сохраняет результат обработки. |
 | `EventFreshnessResult check_event_freshness(const Event& event, const SourceCursor& cursor) noexcept` **(реализована)** | Сравнивает source_sequence в пределах одного источника/сессии; не использует календарное время, не меняет курсор. При новой сессии вызывающий слой предварительно подтверждает её и сбрасывает курсор. |
+| `SourceCursorReadResult SourceCursorReader::read_source_cursor(std::string_view source) noexcept` **(read-only порт реализован; production adapter отсутствует)** | Читает единый снимок source/source_instance/last_sequence по точному source. Ничего не создаёт, не сбрасывает и не продвигает; строки результата должны жить до завершения профильной обработки и commit. |
+| `bool is_valid_source_cursor_read_result(std::string_view requested_source, const SourceCursorReadResult& result) noexcept` **(реализована)** | Проверяет непустой ключ, точное совпадение source для FOUND, пустой payload для NOT_FOUND/ERROR и отклоняет неизвестный статус. ERROR остаётся ошибкой и блокирует обработку. |
 
 
 ### src/core/event_handling.cpp

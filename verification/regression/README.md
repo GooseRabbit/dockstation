@@ -9,14 +9,28 @@ g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -fno-exceptions -fno-rtti -Isrc 
 ./repository_contract_edges
 ```
 
-The harness verifies two fail-closed edge cases without modifying the existing
-`tests/` programs or `tools/` runner:
+The repository-contract edge harness verifies two fail-closed cases without
+modifying the existing `tests/` programs or `tools/` runner:
 
 - `check_duplicate_event()` accepts `NOT_FOUND` as `NEW` only when the
   repository's returned `Event` is completely empty.
 - `load_configuration()` treats a non-null data pointer or non-zero record
   length accompanying `UNAVAILABLE` or `READ_ERROR` as a contradictory
   repository result.
+
+A separate `test_source_cursor_reader.cpp` harness is registered with CTest as
+`source_cursor_reader`. It runs 25 host checks against a test-only reader that
+owns its string storage. It covers Found/NotFound/Error, response-shape
+validation, unknown statuses, exact source matching and string-view lifetime.
+It is not a production storage adapter and does not test persistence across
+process restarts or transaction commits.
+
+Run it manually from the repository root:
+
+```sh
+g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -fno-exceptions -fno-rtti -Isrc verification/regression/test_source_cursor_reader.cpp src/core/event_processing.cpp -o source_cursor_reader_contract
+./source_cursor_reader_contract
+```
 
 The CFG-F05 and CFG-F06 symbols are focused test doubles solely to satisfy
 linkage. The test cases return on the repository status and never invoke them.
