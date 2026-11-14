@@ -3,6 +3,16 @@
 namespace dockstation::core {
 namespace {
 
+bool has_non_whitespace(std::string_view value) noexcept {
+    for (const char ch : value) {
+        if (ch != ' ' && ch != '\\t' && ch != '\\n' &&
+            ch != '\\r' && ch != '\\f' && ch != '\\v') {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool is_empty_session(const VerifiedSourceSession& session) noexcept {
     return session.source.empty() &&
            session.source_instance.empty() &&
@@ -36,17 +46,19 @@ bool same_session(const SourceCursorReadResult& expected,
 
 bool is_valid_source_session_evidence(
     const SourceSessionEvidence& evidence) noexcept {
-    return !evidence.source.empty() &&
-           !evidence.source_instance.empty() &&
+    // Identifiers are text and must contain a non-whitespace character.
+    // Proof/evidence are opaque byte strings: only their presence is required.
+    return has_non_whitespace(evidence.source) &&
+           has_non_whitespace(evidence.source_instance) &&
            !evidence.peer_identity_evidence.empty() &&
            !evidence.session_proof.empty();
 }
 
 bool is_valid_verified_source_session(
     const VerifiedSourceSession& session) noexcept {
-    return !session.source.empty() &&
-           !session.source_instance.empty() &&
-           !session.registration_revision.empty();
+    return has_non_whitespace(session.source) &&
+           has_non_whitespace(session.source_instance) &&
+           has_non_whitespace(session.registration_revision);
 }
 
 bool is_valid_source_session_verification_result(
@@ -76,7 +88,9 @@ bool is_valid_source_session_confirmation_result(
     const SourceSessionConfirmationResult& result) noexcept {
     if (!is_valid_verified_source_session(verified_session) ||
         !is_valid_source_cursor_read_result(verified_session.source,
-                                            expected_cursor)) {
+                                            expected_cursor) ||
+        (expected_cursor.status != SourceCursorReadStatus::Found &&
+         expected_cursor.status != SourceCursorReadStatus::NotFound)) {
         return false;
     }
 

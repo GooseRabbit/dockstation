@@ -7,9 +7,8 @@
 namespace dockstation::core {
 
 struct StationEventPipelineResult {
-    SourceSessionCoordinatorStatus session_status{
-        SourceSessionCoordinatorStatus::VerificationError
-    };
+    // Empty when F01/F02 rejects the event before session state can be changed.
+    std::optional<SourceSessionCoordinatorStatus> session_status{};
     std::optional<EventHandlingResult> event_result{};
 };
 

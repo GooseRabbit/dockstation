@@ -391,6 +391,52 @@ void ssr_18_no_session_identity_or_sequence() {
            "SSR-18 no sequence remains unordered");
 }
 
+void ssr_19_same_live_channel_can_confirm_multiple_events() {
+    FakeVerifier v; FakeReader r; FakeRepository p;
+    p.set("esp32/main", std::string{"boot-new"}, 73U);
+    r.status = SourceCursorReadStatus::Found;
+    r.instance = "boot-new";
+    r.sequence = 73U;
+    const auto first = run_coordinator(event_for_evidence(evidence()), evidence(), v, r, p);
+    const auto second = run_coordinator(event_for_evidence(evidence()), evidence(), v, r, p);
+    expect(first.status == SourceSessionCoordinatorStatus::AlreadyCurrent &&
+           second.status == SourceSessionCoordinatorStatus::AlreadyCurrent,
+           "SSR-19 repeated events on the same live authenticated channel remain valid");
+    expect(v.calls == 2 && r.calls == 2 && p.calls == 2,
+           "SSR-19 each event rechecks the live channel and current registration/cursor");
+    expect(second.cursor.last_sequence == std::optional<std::uint64_t>{73U},
+           "SSR-19 revalidation does not reset the current sequence");
+}
+
+void ssr_20_reject_blank_text_identifiers_and_error_cursor_success() {
+    auto blank_source = evidence();
+    blank_source.source = "  \\t ";
+    expect(!is_valid_source_session_evidence(blank_source),
+           "SSR-20 whitespace-only source is rejected");
+    auto blank_instance = evidence();
+    blank_instance.source_instance = " \\n";
+    expect(!is_valid_source_session_evidence(blank_instance),
+           "SSR-20 whitespace-only source_instance is rejected");
+    const VerifiedSourceSession blank_revision{"esp32/main", "boot-new", " \\t"};
+    expect(!is_valid_verified_source_session(blank_revision),
+           "SSR-20 whitespace-only registration revision is rejected");
+
+    const SourceCursorReadResult failed_read{SourceCursorReadStatus::Error, {}};
+    const VerifiedSourceSession trusted{"esp32/main", "boot-new", "reg-7"};
+    const SourceSessionConfirmationResult forged_success{
+        SourceSessionConfirmationStatus::Confirmed,
+        {"esp32/main", std::string_view{"boot-new"}, std::nullopt}};
+    expect(!is_valid_source_session_confirmation_result(
+               failed_read, trusted, forged_success),
+           "SSR-20 Error cursor result cannot validate a successful confirmation");
+
+    const SourceCursorReadResult blank_instance_cursor{
+        SourceCursorReadStatus::Found,
+        {"esp32/main", std::string_view{"  "}, 10U}};
+    expect(!is_valid_source_cursor_read_result("esp32/main", blank_instance_cursor),
+           "SSR-20 Found cursor rejects present-but-blank source_instance");
+}
+
 }  // namespace
 
 int main() {
@@ -412,6 +458,8 @@ int main() {
     ssr_16_missing_sequence();
     ssr_17_bad_repository_results();
     ssr_18_no_session_identity_or_sequence();
+    ssr_19_same_live_channel_can_confirm_multiple_events();
+    ssr_20_reject_blank_text_identifiers_and_error_cursor_success();
 
     if (failures != 0) {
         std::cerr << failures << " of " << checks << " checks failed.\n";

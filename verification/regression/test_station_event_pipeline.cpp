@@ -68,9 +68,18 @@ public:
 class Processor final : public EventProcessorPort {
 public:
     int calls{0};
+    std::string cursor_source;
+    std::optional<std::string> cursor_instance;
+    std::optional<std::uint64_t> cursor_sequence;
     EventProcessorStatus process(const Event&, EventCategory,
-                                 const SourceCursor&) noexcept override {
-        ++calls; return EventProcessorStatus::Processed;
+                                 const SourceCursor& cursor) noexcept override {
+        ++calls;
+        cursor_source = std::string{cursor.source};
+        cursor_instance = cursor.source_instance
+            ? std::optional<std::string>{std::string{*cursor.source_instance}}
+            : std::nullopt;
+        cursor_sequence = cursor.last_sequence;
+        return EventProcessorStatus::Processed;
     }
 };
 Event event_value() {
@@ -106,6 +115,51 @@ void confirmed_session_reaches_f13() {
     expect(events.calls==1 && global.calls==1 && operation.calls==0 && timeout.calls==0,
            "exact profile route invoked once");
 }
+void invalid_event_is_rejected_before_session_mutation() {
+    EventRepositoryFake events; Processor global, operation, timeout;
+    Verifier verifier; CursorReader reader; SessionRepository sessions;
+    StationEventPipeline pipeline{events,global,operation,timeout,verifier,reader,sessions};
+    Event invalid = event_value();
+    invalid.event_id = "   ";
+    const auto r = pipeline.handle(invalid,{true,true,false},evidence_value());
+    expect(!r.session_status &&
+           r.event_result && r.event_result->status==EventHandlingStatus::InvalidEvent,
+           "invalid envelope is rejected before session confirmation");
+    expect(verifier.calls==0 && reader.calls==0 && sessions.calls==0 &&
+           events.calls==0 && global.calls==0,
+           "invalid envelope causes no verifier, cursor, repository or profile call");
+
+    Event unknown = event_value();
+    unknown.event_type = "UNREGISTERED_EVENT_TYPE";
+    const auto u = pipeline.handle(unknown,{true,true,false},evidence_value());
+    expect(!u.session_status &&
+           u.event_result && u.event_result->status==EventHandlingStatus::UnknownEventType,
+           "unknown event type is rejected before session confirmation");
+    expect(verifier.calls==0 && reader.calls==0 && sessions.calls==0 &&
+           events.calls==0 && global.calls==0,
+           "unknown event type cannot mutate the source-session cursor");
+}
+
+void already_current_session_passes_exact_cursor_to_profile() {
+    EventRepositoryFake events; Processor global, operation, timeout;
+    Verifier verifier; CursorReader reader;
+    reader.status=SourceCursorReadStatus::Found;
+    reader.sequence=41U;
+    SessionRepository sessions;
+    StationEventPipeline pipeline{events,global,operation,timeout,verifier,reader,sessions};
+    Event next = event_value();
+    next.source_sequence=42U;
+    const auto r=pipeline.handle(next,{true,true,false},evidence_value());
+    expect(r.session_status==SourceSessionCoordinatorStatus::AlreadyCurrent,
+           "same active session is confirmed without resetting its cursor");
+    expect(r.event_result && r.event_result->status==EventHandlingStatus::Processed,
+           "event is processed after same-session confirmation");
+    expect(global.cursor_source=="sensor/esp32" &&
+           global.cursor_instance==std::optional<std::string>{"boot-current"} &&
+           global.cursor_sequence==std::optional<std::uint64_t>{41U},
+           "profile receives the exact preserved cursor from SourceSessionCoordinator");
+}
+
 void old_instance_is_blocked() {
     EventRepositoryFake events; Processor global, operation, timeout;
     Verifier verifier; CursorReader reader; SessionRepository sessions;
@@ -142,6 +196,8 @@ void cursor_and_registration_errors_block() {
 int main() {
     rejected_session_blocks_f13();
     confirmed_session_reaches_f13();
+    invalid_event_is_rejected_before_session_mutation();
+    already_current_session_passes_exact_cursor_to_profile();
     old_instance_is_blocked();
     cursor_and_registration_errors_block();
     if (failures) { std::cerr<<failures<<" of "<<checks<<" checks failed.\n"; return 1; }

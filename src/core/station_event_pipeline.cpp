@@ -29,6 +29,28 @@ StationEventPipelineResult StationEventPipeline::handle(
     const Event& event,
     const EventValidationPolicy& validation_policy,
     const SourceSessionEvidence& evidence) noexcept {
+    // F01/F02 are pure preflight checks. Reject malformed/unknown events before
+    // session confirmation can create or replace a persistent source cursor.
+    const EventValidationResult validation =
+        validate_event(event, validation_policy);
+    if (!validation.valid) {
+        return {std::nullopt,
+                EventHandlingResult{EventHandlingStatus::InvalidEvent,
+                                    EventCategory::Unknown,
+                                    validation.error,
+                                    EventFreshnessReason::SequenceMissing}};
+    }
+
+    const EventCategory category = classify_event(event);
+    if (category == EventCategory::Unknown) {
+        return {std::nullopt,
+                EventHandlingResult{EventHandlingStatus::UnknownEventType,
+                                    category,
+                                    EventValidationError::None,
+                                    EventFreshnessReason::SequenceMissing}};
+    }
+
+    // handle_event() repeats F01/F02 defensively before F03/F04 and dispatch.
     const SourceSessionCoordinatorResult session =
         session_coordinator_.confirm(event, evidence);
     if (session.status != SourceSessionCoordinatorStatus::Confirmed &&

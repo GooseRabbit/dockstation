@@ -52,8 +52,15 @@ public:SourceSessionConfirmationStatus forced{SourceSessionConfirmationStatus::C
 class Processor final:public EventProcessorPort{
 public:EventProcessorStatus result{EventProcessorStatus::Processed};int calls{0};
  const Event* last{nullptr};std::string_view type{};EventCategory category{EventCategory::Unknown};
- EventProcessorStatus process(const Event&e,EventCategory c,const SourceCursor&)noexcept override{
-  ++calls;last=&e;type=e.event_type;category=c;return result;
+ std::string cursor_source;std::optional<std::string> cursor_instance;
+ std::optional<std::uint64_t> cursor_sequence;
+ EventProcessorStatus process(const Event&e,EventCategory c,const SourceCursor&cursor)noexcept override{
+  ++calls;last=&e;type=e.event_type;category=c;
+  cursor_source=std::string{cursor.source};
+  cursor_instance=cursor.source_instance
+   ? std::optional<std::string>{std::string{*cursor.source_instance}}:std::nullopt;
+  cursor_sequence=cursor.last_sequence;
+  return result;
  }
 };
 struct Fixture{
@@ -78,18 +85,31 @@ int main(){
  for(const auto&c:cases){f.seq(n-1);auto r=f.handle(make_event(c.id,c.type,n));
   expect(r.session_status==SourceSessionCoordinatorStatus::AlreadyCurrent,"authenticated current session confirmed");
   expect(r.event_result&&r.event_result->status==c.expected,"event reaches expected F13 result");
-  expect(f.global.calls==c.g&&f.operation.calls==c.o&&f.timeout.calls==c.t,"exactly one selected profile called");++n;}
+  expect(f.global.calls==c.g&&f.operation.calls==c.o&&f.timeout.calls==c.t,"exactly one selected profile called");
+  const Processor& selected = c.t ? f.timeout : (c.o ? f.operation : f.global);
+  expect(selected.cursor_source=="station-events" &&
+         selected.cursor_instance==std::optional<std::string>{"boot-1"} &&
+         selected.cursor_sequence==std::optional<std::uint64_t>{n-1},
+         "selected profile receives the exact cursor confirmed by the session coordinator");
+  ++n;}
  expect(f.global.last&&f.global.type=="SELF_TEST_COMPLETED"&&f.global.category==EventCategory::Subsystem,"startup events route to global profile");
  expect(f.operation.last&&f.operation.type=="OPERATION_STATUS_UPDATED"&&f.operation.category==EventCategory::Operation,"operation event routes correctly");
  expect(f.timeout.last&&f.timeout.type=="OPERATION_TIMEOUT"&&f.timeout.category==EventCategory::Timer,"timeout event routes correctly");
  // F01: session must pass first, then invalid envelope is stopped before event lookup/profile.
- {f.seq(5);Event e=make_event("invalid","OPERATION_TIMEOUT",6);e.event_id="   ";int before=f.events.calls,pc=f.timeout.calls;
-  auto r=f.handle(e);expect(r.event_result&&r.event_result->status==EventHandlingStatus::InvalidEvent,"F01 rejects invalid envelope");
-  expect(f.events.calls==before&&f.timeout.calls==pc,"F01 prevents event lookup/profile");}
+ {f.seq(5);Event e=make_event("invalid","OPERATION_TIMEOUT",6);e.event_id="   ";
+  int before=f.events.calls,pc=f.timeout.calls,vc=f.verifier.calls,rc=f.reader.calls,sc=f.sessions.calls;
+  auto r=f.handle(e);expect(!r.session_status&&r.event_result&&r.event_result->status==EventHandlingStatus::InvalidEvent,
+       "F01 rejects invalid envelope before session confirmation");
+  expect(f.events.calls==before&&f.timeout.calls==pc&&f.verifier.calls==vc&&
+         f.reader.calls==rc&&f.sessions.calls==sc,
+       "F01 prevents all downstream reads, session mutation and profile calls");}
  // F02 unknown event.
- {f.seq(5);int before=f.events.calls;auto r=f.handle(make_event("unknown","SOMETHING_NEW",6));
-  expect(r.event_result&&r.event_result->status==EventHandlingStatus::UnknownEventType,"F02 rejects unknown type");
-  expect(f.events.calls==before,"F02 precedes duplicate lookup");}
+ {f.seq(5);int before=f.events.calls,vc=f.verifier.calls,rc=f.reader.calls,sc=f.sessions.calls;
+  auto r=f.handle(make_event("unknown","SOMETHING_NEW",6));
+  expect(!r.session_status&&r.event_result&&r.event_result->status==EventHandlingStatus::UnknownEventType,
+         "F02 rejects unknown type before session confirmation");
+  expect(f.events.calls==before&&f.verifier.calls==vc&&f.reader.calls==rc&&f.sessions.calls==sc,
+         "F02 prevents session mutation and duplicate lookup");}
  // F03 duplicate and repository error.
  {f.seq(5);auto e=make_event("duplicate","OPERATION_TIMEOUT",6);f.events.status=EventRepositoryLookupStatus::Found;f.events.stored=e;
   int before=f.timeout.calls;auto r=f.handle(e);expect(r.event_result&&r.event_result->status==EventHandlingStatus::Duplicate,"F03 detects duplicate");

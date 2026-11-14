@@ -48,6 +48,16 @@ bool is_empty_event(const Event& event) noexcept {
            !event.reason_text.has_value();
 }
 
+bool has_non_whitespace(std::string_view value) noexcept {
+    for (const char ch : value) {
+        if (ch != ' ' && ch != '\\t' && ch != '\\n' &&
+            ch != '\\r' && ch != '\\f' && ch != '\\v') {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool is_empty_source_cursor(const SourceCursor& cursor) noexcept {
     return cursor.source.empty() &&
            !cursor.source_instance.has_value() &&
@@ -92,15 +102,17 @@ bool is_valid_source_cursor_read_result(
     std::string_view requested_source,
     const SourceCursorReadResult& result) noexcept {
     // Пустой ключ не может идентифицировать запись постоянного хранилища.
-    if (requested_source.empty()) {
+    if (!has_non_whitespace(requested_source)) {
         return false;
     }
 
     switch (result.status) {
         case SourceCursorReadStatus::Found:
             // Найденный снимок обязан относиться ровно к тому source, который запросили.
-            return !result.cursor.source.empty() &&
-                   result.cursor.source == requested_source;
+            return has_non_whitespace(result.cursor.source) &&
+                   result.cursor.source == requested_source &&
+                   (!result.cursor.source_instance.has_value() ||
+                    has_non_whitespace(*result.cursor.source_instance));
 
         case SourceCursorReadStatus::NotFound:
         case SourceCursorReadStatus::Error:
