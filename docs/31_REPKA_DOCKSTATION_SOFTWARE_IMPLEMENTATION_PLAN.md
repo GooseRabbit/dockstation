@@ -1,7 +1,7 @@
 # Полный план реализации программного комплекса DockStation на Repka Pi 5
 
 **Статус:** мастер-план реализации; последовательность разработки согласована, открытые платформенные, сетевые, серверные и аппаратные детали требуют отдельной проверки и решения.  
-**Редакция:** 1.51.  
+**Редакция:** 1.52.  
 **Дата:** 2026-11-14.  
 **Вычислительная платформа:** Repka Pi 5.  
 **Предполагаемая ОС:** официальная Repka OS; образ и версия проверяются перед развёртыванием.
@@ -760,7 +760,13 @@ Host-проверка `verification/repka_gateway/test_controller_codec.cpp` з�
 
 **Отдельный каталог ESP32 firmware создан:** `firmware/esp32/README.md` фиксирует границу будущего ESP-IDF проекта. Linux Gateway остаётся в корневом CMake; ESP32 будет собираться отдельным проектом в `firmware/esp32/`. Переносимые исходники ControllerProtocol/ControllerCodec/stream decoder остаются общими в `src/hardware/interfaces/` и будут подключаться к ESP-IDF через небольшой компонент без копирования исходников и без Linux-only зависимостей. Сам ESP-IDF project skeleton, `main/`, board profile и `sdkconfig` пока не создаются до подтверждения точного ESP32 target, Flash size и GPIO.
 
-**Ограничения:** ControllerFrameStreamDecoder выделяет candidate frames, но не выполняет UART I/O, транспортные тайм-ауты или криптографическую проверку. Linux/ESP-IDF UART adapters, аутентификация/конфиденциальность и контроль порядка/повторов sequence number ещё не реализованы. CRC лишь обнаруживает случайное повреждение и не заменяет требования безопасности docs/24. GPIO конкретной ESP32-платы и ESP-IDF target ещё не подтверждены; тесты не являются физическим обменом.
+**ControllerLinkSession реализован:** \`src/hardware/interfaces/controller_link_session.hpp/.cpp\` содержит bounded конечный автомат логической сессии Repka—ESP32. По команде caller он формирует HELLO, ожидает HELLO_ACK от ожидаемого peer ID, запоминает peer instance, после handshake принимает HEARTBEAT/TELEMETRY_SNAPSHOT/ERROR с точной версией и строго возрастающим sequence. \`poll()\` управляет handshake timeout, heartbeat interval, peer activity timeout и retry; время приходит извне как monotonic milliseconds. Идентификаторы хранятся в фиксированных буферах до 128 байт, динамическое выделение памяти не требуется. Выходные HELLO/HEARTBEAT envelope кодируются существующим ControllerCodec; физическая отправка остаётся ответственностью будущего transport adapter.
+
+Host-тест \`verification/repka_gateway/test_controller_link_session.cpp\` зарегистрирован как CTest \`controller_link_session\`. Он покрывает round-trip HELLO/HELLO_ACK через production ControllerCodec, handshake, точные peer ID/version, смену peer instance, порядок sequence, heartbeat, timeout/retry, конфигурационные ошибки и переполнение монотонного счётчика. Последовательность исходящего sequence расходуется при формировании сообщения; возможные пропуски после неудачного encode/send разрешены. Входящие номера должны строго возрастать только в пределах одного peer instance и не обязаны быть непрерывными.
+
+**Ограничения и безопасность:** \`ControllerLinkSession::Established\` означает только согласованный логический HELLO/HELLO_ACK обмен, а не аутентифицированную или защищённую сессию. Класс не реализует UART I/O, challenge-response, ключи, шифрование, защищённый verifier, persistent anti-replay, команды оборудования или физические действия. До появления отдельного защищённого transport/session verifier по docs/07 и docs/24 его нельзя считать достаточной защитой для управляющих команд. CRC лишь обнаруживает случайное повреждение и не заменяет требования безопасности. GPIO конкретной ESP32-платы и ESP-IDF target ещё не подтверждены; host tests не являются физическим обменом.
+
+
 
 ## Этап 8. Физические подсистемы
 
@@ -1094,6 +1100,7 @@ Host-проверка `verification/repka_gateway/test_controller_codec.cpp` з�
 | 1.49 | 2026-11-14 | GitHub Actions run 43627836035 SUCCESS для HEAD `f3397fd99c3acdf1294cc89358aaf70405170610`: CMake build, 14/14 CTest с ASan/UBSan, 31/31 C++ host tests, 134 pytest, QML/package, Gateway install/non-root/systemd и shell/network checks. ControllerCodec отмечен как реализованный и частично проверенный на host; ESP32 target и физический транспорт не подтверждены.
 | 1.50 | 2026-11-14 | Добавлен bounded ControllerFrameStreamDecoder для сборки кадров из произвольных частей байтового потока, split magic, отбрасывания шума и повторной синхронизации; добавлены CMake/CTest host-проверки. Создан `firmware/esp32/README.md` как отдельная граница будущего ESP-IDF проекта; ESP-IDF skeleton намеренно отложен до подтверждения target/Flash/GPIO. Результат CI для актуального кода после добавления stream decoder фиксируется после завершения run.
 | 1.51 | 2026-11-14 | GitHub Actions run 43629000530 SUCCESS для кодового HEAD `455663b6356361bf0417a78327d33f2d8fc69fb1`: 15/15 CTest с ASan/UBSan, 31/31 C++ host tests, 134 pytest, QML/package и Gateway/systemd/shell/network checks. Потоковый декодер отмечен как реализованный и частично проверенный на host. ESP-IDF project и физический UART остаются будущими этапами.
+| 1.52 | 2026-11-14 | Добавлен ControllerLinkSession: логический HELLO/HELLO_ACK, heartbeat, sequence tracking, peer-instance binding, timeout и retry; зарегистрированы CMake/CTest host tests и сквозная проверка envelopes через ControllerCodec. Пересмотрены контракты ControllerProtocol и синхронизированы docs/06, docs/18, docs/26. Полный CI для итогового HEAD фиксируется после завершающей проверки; физический UART, аутентификация/криптография и ESP-IDF firmware остаются открытыми.
 
 **Ограничение:** это план. Функции не считаются реализованными до появления кода, проверок и, где требуется, аппаратных испытаний.
 
