@@ -230,6 +230,7 @@ int main() {
            "rejects malformed UTF-8 instead of transmitting ambiguous text");
 
     std::array<char, kControllerCodecMaximumFrameSize> oversized_text{};
+    oversized_text.fill('A');
     invalid_envelope = hello_envelope;
     invalid_envelope.controller_id = std::string_view{
         oversized_text.data(), oversized_text.size()};
