@@ -1,7 +1,7 @@
 # Полный план реализации программного комплекса DockStation на Repka Pi 5
 
 **Статус:** мастер-план реализации; последовательность разработки согласована, открытые платформенные, сетевые, серверные и аппаратные детали требуют отдельной проверки и решения.  
-**Редакция:** 1.38.  
+**Редакция:** 1.40.  
 **Дата:** 2026-11-14.  
 **Вычислительная платформа:** Repka Pi 5.  
 **Предполагаемая ОС:** официальная Repka OS; образ и версия проверяются перед развёртыванием.
@@ -371,7 +371,7 @@ F03 выполняет предварительный read-only поиск event
 
 ### 5.4. Пробелы контрактов, которые нужно закрыть до реализации адаптера
 
-1. **Чтение сохранённого cursor.** Порт `SourceCursorReader` и проверка формы результата согласованы и добавлены в `src/core/event_processing.hpp/.cpp`; интерфейс остаётся read-only. Production adapter постоянного хранения и подключение reader к composition root ещё не реализованы. Ключ чтения — точный непустой `source`; подтверждение первой/новой сессии и смена `source_instance` остаются отдельной доверенной процедурой и не должны выводиться из входящего события автоматически.
+1. **Чтение сохранённого cursor и доверенное подтверждение source session.** Read-only порт `SourceCursorReader` и проверка формы результата уже реализованы (§5.4.1). Отдельный контракт `SourceSessionVerifier` + `SourceSessionRepository` согласован на уровне архитектуры и описан в §5.4.2. Production-адаптеры постоянного хранения, реестр зарегистрированных источников, composition-root wiring и атомарная реализация пока отсутствуют. Ключ чтения — точный непустой `source`; первая/новая сессия подтверждается отдельно и никогда не выводится из входящего события.
 2. **Полный список незавершённых операций.** F15 получает массив `unfinished_operations` во входе `RecoveryReports`, но текущий `RecoveryRepository` не предоставляет метода чтения такого списка. Нужен согласованный read-контракт, вероятно связанный с будущим OperationRepository.
 3. **Завершение recovery.** F14 умеет устойчиво установить RECOVERY_IN_PROGRESS, а F15 только возвращает результат сверки. Сейчас нет порта/функции, которая атомарно фиксирует итог успешной сверки и снимает/закрывает recovery marker. До реализации нужно определить допустимые исходы, правила для неполных/небезопасных отчётов и связь с согласованным переходом SSM; нельзя просто очищать маркер по тайм-ауту или по факту запуска процесса.
 4. **Сбор отчётов для F15.** `RecoveryReportRequester::request_fresh_reports()` подтверждает только принятие запроса; фактический агрегатор полных `RecoveryReports` и его связь с `unfinished_operations` являются отдельной интеграционной частью.
@@ -439,6 +439,121 @@ public:
 6. Смена source_instance без отдельного подтверждения остаётся UNORDERED; отсутствие source_sequence остаётся UNORDERED.
 
 Этот срез закрывает только публичный read-only порт и проверку формы его ответа. Он не создаёт production adapter, не подключает чтение cursor к F13/composition root и не решает регистрацию неизвестного источника, подтверждение новой сессии, декодирование payload, транспорт, формат ID или выбор физического хранилища. Продвижение cursor по-прежнему выполняют только атомарные F09/F10 commit-порты.
+
+### 5.4.2. Доверенная регистрация источника и подтверждение source session
+
+**Статус: архитектура и публичные C++-сигнатуры согласованы владельцем 2026-11-14. Логические порты и fail-closed проверки формы результатов реализованы; production adapters и интеграция не выполнены.**
+
+#### Разделение идентификаторов
+
+В обработке событий различаются три независимых значения:
+
+- **Station ID** — постоянный идентификатор физической станции. Он не является секретом, паролем или самостоятельным доказательством подлинности устройства.
+- **source** — логический идентификатор зарегистрированного источника данных внутри станции, например контроллера ESP32.
+- **source_instance** — идентификатор одного конкретного запуска/сеанса этого источника. Он должен оставаться стабильным в пределах сеанса и изменяться при новом запуске, если источник поддерживает такую идентичность.
+
+`source_instance` не является ключом, сертификатом или доказательством подлинности. Простая подмена этого поля во входящем событии не подтверждает новую сессию.
+
+#### Два разных этапа доверия
+
+**1. Регистрация источника.** До приёма событий логический `source` должен существовать в доверенном реестре и быть связан с конкретным Station ID и доверенной ссылкой на аппаратную/криптографическую идентичность контроллера. Для записи источника учитываются состояние `ACTIVE`, `DISABLED` или `REVOKED` и ревизия регистрации. Первое входящее событие не создаёт регистрацию и не может самостоятельно добавить неизвестный контроллер в доверенный список.
+
+Создание регистрации, привязка ключа/сертификата, физическое подтверждение владения устройством и аудит относятся к процессу provisioning из docs/24 и docs/25. Конкретная процедура, алгоритмы, носитель ключа и физический механизм активации остаются открытыми.
+
+**2. Подтверждение текущей сессии.** После установления канала отдельный verifier проверяет, что источник зарегистрирован и активен, предъявленная идентичность соответствует привязке регистрации, доказательство владения действительно для этого источника, а challenge/session proof свежий и не воспроизводит ранее принятую сессию. Точный протокол challenge-response, криптография и транспорт не выбираются этим контрактом.
+
+Для этих двух обязанностей предусмотрены отдельные логические порты:
+
+- **`SourceSessionVerifier`** — проверяет доверие к источнику и конкретной новой сессии. Кандидатные статусы результата: `Verified`, `UnknownSource`, `Rejected`, `Unavailable`, `Error`. При `Verified` возвращается подтверждённая связка `source`, `source_instance` и ревизия регистрации, для которой выполнялась проверка. Результат не извлекается из тела Event и не может быть создан по одному лишь значению Station ID или `source`. `VerifiedSourceSession` является внутренним доверенным значением, но не bearer credential; только доверенный координатор передаёт его в repository непосредственно из результата verifier-а. Его нельзя принимать из Event, API или пользовательского ввода.
+- **`SourceSessionRepository`** — фиксирует уже подтверждённую сессию и её стартовый cursor. Кандидатные статусы: `Confirmed`, `AlreadyCurrent`, `CursorChanged`, `RegistrationChanged`, `Error`. Метод принимает ожидаемый результат `SourceCursorReader` (`Found` либо `NotFound`) и подтверждённые verifier-ом данные. `Error`, неизвестный статус или структурно некорректный результат чтения блокируют фиксацию.
+
+Verifier отвечает за проверку доказательства и связывание peer identity с регистрацией. Repository отвечает за согласованную транзакцию и не реализует криптографию. Типы выше описывают границы ответственности; точные C++-сигнатуры, владение строками и способ представления подтверждённого результата подлежат отдельному согласованию до изменения публичного API.
+
+**Утверждённые публичные сигнатуры и реализованный логический контракт:**
+
+```cpp
+struct SourceSessionEvidence {
+    std::string_view source;
+    std::string_view source_instance;
+    std::string_view peer_identity_evidence;
+    std::string_view session_proof;
+};
+
+enum class SourceSessionVerificationStatus : std::uint8_t {
+    Verified, UnknownSource, Rejected, Unavailable, Error
+};
+
+// Trusted verifier output, not a bearer credential.
+// Only the trusted coordinator passes it to SourceSessionRepository.
+struct VerifiedSourceSession {
+    std::string_view source;
+    std::string_view source_instance;
+    std::string_view registration_revision;
+};
+
+struct SourceSessionVerificationResult {
+    SourceSessionVerificationStatus status{
+        SourceSessionVerificationStatus::Error
+    };
+    VerifiedSourceSession session{};
+};
+
+class SourceSessionVerifier {
+public:
+    virtual ~SourceSessionVerifier() = default;
+    [[nodiscard]] virtual SourceSessionVerificationResult
+    verify_source_session(
+        const SourceSessionEvidence& evidence) noexcept = 0;
+};
+
+enum class SourceSessionConfirmationStatus : std::uint8_t {
+    Confirmed, AlreadyCurrent, CursorChanged, RegistrationChanged, Error
+};
+
+struct SourceSessionConfirmationResult {
+    SourceSessionConfirmationStatus status{
+        SourceSessionConfirmationStatus::Error
+    };
+    SourceCursor cursor{};
+};
+
+class SourceSessionRepository {
+public:
+    virtual ~SourceSessionRepository() = default;
+    [[nodiscard]] virtual SourceSessionConfirmationResult
+    confirm_source_session(
+        const SourceCursorReadResult& expected_cursor,
+        const VerifiedSourceSession& verified_session) noexcept = 0;
+};
+```
+
+Результат `Confirmed` возвращает новый cursor с подтверждённым instance и пустым last_sequence. `AlreadyCurrent` возвращает без изменений полный прежний cursor, включая last_sequence. При CursorChanged, RegistrationChanged и Error payload пуст. `is_valid_source_session_verification_result()` и `is_valid_source_session_confirmation_result()` проверяют согласованность status/payload и точную привязку к исходному доказательству/ожидаемому cursor. Все строки являются невладеющими `string_view`; verifier и repository обязаны обеспечивать их действительность на срок использования результата.
+
+#### Атомарные правила фиксации cursor
+
+`SourceSessionRepository` обязан в одной транзакции проверить актуальность регистрации и сравнить ожидаемое состояние cursor:
+
+1. Для ожидаемого `NotFound` запись cursor должна всё ещё отсутствовать. Только при активной регистрации и `Verified`-сессии создаётся начальная запись: точный `source`, подтверждённый `source_instance`, `last_sequence` отсутствует.
+2. Для `Found` сравнивается весь снимок: `source`, `source_instance` и `last_sequence`. Одного совпадения `source` недостаточно.
+3. Если сохранённый `source_instance` совпадает с подтверждённым, результат — `AlreadyCurrent`. Существующий `last_sequence` сохраняется без сброса. Повторное подтверждение того же сеанса не должно возвращать sequence к начальному значению.
+4. Если verifier подтвердил другую свежую `source_instance`, результат — `Confirmed`: новая instance устанавливается, а `last_sequence` очищается атомарно в той же транзакции.
+5. Если реестр изменил ревизию или источник больше не `ACTIVE` между проверкой verifier-а и фиксацией, repository возвращает `RegistrationChanged` и не меняет cursor.
+6. Если ожидаемый cursor изменился конкурентно, возвращается `CursorChanged`. Нельзя перезаписывать новое значение или выполнять слепой retry. Координатор должен перечитать состояние и заново выполнить проверку/подтверждение в соответствии с политикой.
+7. `Unavailable`, `Error`, неизвестные статусы, ошибки транзакции и любые противоречивые результаты закрывают обработку события. Они не трактуются как `NotFound`, `Confirmed` или успешная сессия.
+
+Для источника, который не предоставляет `source_instance`, автоматический сброс sequence по этому механизму невозможен. Для источника без `source_sequence` F04 продолжает возвращать `UNORDERED / SequenceMissing`; календарное время не используется как замена порядкового номера. Формат sequence, начальное значение, запрет/обработка переполнения и способ генерации свежего `source_instance` (случайный boot token либо стойкий счётчик) остаются предметом отдельного выбора.
+
+#### Привязка событий к подтверждённому каналу
+
+После `Confirmed` или допустимого `AlreadyCurrent` адаптер входящего канала должен связывать Event с контекстом подтверждённой сессии. Значения `event.source` и `event.source_instance` сверяются с этим контекстом до F13; тело события не может сменить источник, зарегистрировать устройство или объявить новую сессию. События прежней сессии после подтверждённого переключения остаются `UNORDERED / SourceInstanceMismatch` и не достигают профильного commit.
+
+`SourceSessionVerifier`/`SourceSessionRepository` не заменяют `validate_event()`, `check_event_freshness()`, duplicate check или атомарный compare-and-advance F09/F10. Подтверждение сессии устанавливает границу текущего источника; номера событий продвигаются только существующими commit-портами.
+
+#### Не входит в этот срез
+
+Не выбираются и не реализуются: схема и физическое хранилище реестра; формат аппаратной идентичности; способ хранения ключей; онлайн/офлайн provisioning; физическая кнопка, перемычка или сервисный ключ активации; challenge-response wire format; TLS/mTLS или иной конкретный защищённый канал; криптографические алгоритмы; транспорт Repka—ESP32; формат и генератор `source_instance`; production adapter и composition-root wiring. Эти решения нельзя подменять тестовыми заглушками или выводить из текущего VM Gateway.
+
+**Проверка:** host harness `verification/regression/test_source_session_contract.cpp` покрывает SSR-01…SSR-18. Fake verifier/reader/repository проверяют только тестовую координацию, статусы, CAS, ревизию регистрации и fail-closed validators; они не доказывают реальную криптографию, provisioning, постоянство данных после отключения питания или работу ESP32. Подробная матрица ограничений остаётся в `verification/regression/source_session_contract_scenarios.md`.
 
 ### 5.5. Выбор физического хранилища
 
@@ -786,7 +901,7 @@ USB/UART, пины и формат кадров остаются открыты�
 2. **Systemd deployment проверен вручную в Ubuntu VM.** После CMake install и `systemd-analyze verify` выполнены `systemctl enable --now`, restart, stop и start; служба работала как `dockstation:dockstation`, health и diagnostics вернули HTTP 200, listener был ограничен `127.0.0.1:8080`, журнал содержал запуск API. После reboot служба имела `enabled` и `active`, а journal текущей загрузки подтвердил запуск unit; Windows Operator снова показывал Connected без ручного ввода учётных данных во время проверки. Автоматический CI run 43520279910 независимо подтвердил install layout и запуск от непривилегированного пользователя, но не выполняет systemd manager lifecycle. Production-хранилища, реальные источники событий, Timer, composition root и адаптеры устройств остаются отдельными задачами.
 3. Первый безопасный сквозной VM-запрос через Operator → временный Python Gateway → TestRequestService → TestRequestAdapter → Operator реализован и покрыт host integration test (DEC-061); test-adapter подтверждает только приём PING, не физическое выполнение. C++ loopback-only read-only API прошёл актуальный CI run 43516203836 (10/10 CTest, 31/31 C++ host programs, 130 pytest) и отдельную ручную VM-проверку с Windows Operator. C++ API не содержит test-only PING и физических/управляющих маршрутов.
 4. Визуальное направление и структура Windows Operator согласованы владельцем 2026-11-13: семь вкладок — Подключение, Климат, Датчики, Сеть, Логи, Камера и Система (docs/23 rev 0.21). Реализован PySide6/QML shell с мостом к SSH/API; вкладка «Система» отображает только опубликованные системные показатели из Gateway API: CPU/SoC temperature при наличии явно маркированного датчика, RAM, корневую файловую систему и load average. Владелец вручную проверил экран с C++ Gateway: значения RAM и корневой файловой системы совпали с API после округления. Недоступная температура остаётся `UNAVAILABLE`; физические датчики и камера показывают отсутствие данных до появления соответствующего API и оборудования. Проверка выполнена в VM и не является проверкой Repka Pi 5 или аппаратной интеграцией.
-5. Карта интеграции StationStateManager/ConfigurationManager с постоянным хранением зафиксирована в этапе 5. Порт SourceCursorReader и проверка формы результата реализованы в §5.4.1, добавлен отдельный CTest с 25 host-проверками. Production adapter, подключение к F13/composition root, доверенная регистрация/смена source_instance и проверки cursor совместно с F09/F10 commit остаются открытыми. Выбор backend — отдельный следующий шаг по критериям §5.5.
+5. Карта интеграции StationStateManager/ConfigurationManager с постоянным хранением зафиксирована в этапе 5. Порт SourceCursorReader и его CTest (25 host-проверок), а также логические SourceSessionVerifier/SourceSessionRepository с validators и SSR-01…SSR-18 host harness реализованы. Production registry/verifier/storage adapters, подключение к F13/composition root, привязка события к аутентифицированному каналу и транзакционные проверки совместно с F09/F10 commit остаются открытыми. Выбор backend — отдельный следующий шаг по критериям §5.5.
 6. Продолжить подключение реальных ESP32 и аппаратных подсистем после утверждения интерфейсов и наличия оборудования.
 7. Отдельно провести исследование варианта встроенного VPN/защищённой overlay-сети; реализацию не начинать до выбора архитектуры и согласования владельцем.
 
@@ -847,6 +962,8 @@ USB/UART, пины и формат кадров остаются открыты�
 | 1.35 | 2026-11-14 | Зафиксирована ручная проверка полного systemd lifecycle C++ Gateway в Ubuntu 24.04.5 LTS x86_64 VM: установка, enable/start, restart, stop/start, active/running под dockstation, HTTP 200 health/diagnostics, loopback-only bind, journal и автозапуск после reboot (enabled/active, journal текущей загрузки). Windows Operator после загрузки снова отображал Connected. ARM64/Repka Pi 5 и аппаратные проверки остаются открытыми. |
 | 1.36 | 2026-11-14 | Развёрнута карта интеграции существующих портов SSM/ConfigurationManager с постоянным хранилищем: атомарные единицы F07/F09/F10/F11/F14, read-порты F16/F17/CFG-F07, границы EventRepository, идентификаторы, курсоры и Timer. Явно выделены отсутствующие контракты чтения cursor, списка незавершённых операций и завершения recovery; сохранены открытыми backend, формат ID, запись конфигурации и политика таймеров после reboot. Добавлены последовательность небольших срезов и критерии adapter-level тестов; код и публичные интерфейсы не менялись. |
 | 1.38 | 2026-11-14 | SourceCursorReader согласован владельцем и добавлен в `src/core/event_processing.hpp`: read-only статусы Found/NotFound/Error и стабильный снимок SourceCursor; добавлена fail-closed проверка формы результата в `event_processing.cpp`. В CTest зарегистрирован отдельный verification harness с 25 проверками. Обновлены docs/06 и docs/26. Production adapter, интеграция с F13/composition root, транзакционные проверки с F09/F10 и доверенная процедура первой/новой source_instance остаются открытыми. |
+| 1.39 | 2026-11-14 | По согласованию владельца добавлен §5.4.2: разделены постоянная регистрация logical source и доверенное подтверждение source session через SourceSessionVerifier/SourceSessionRepository; описаны статусы, атомарные правила обновления cursor, проверка ревизии регистрации и привязка событий к подтверждённому каналу. Добавлена спецификация SSR-01…SSR-18 в verification/regression. Публичные C++-сигнатуры требуют отдельного согласования; код, production adapters, криптографический протокол и аппаратная проверка не выполнялись. |
+| 1.40 | 2026-11-14 | Владелец утвердил публичные SourceSessionVerifier/SourceSessionRepository сигнатуры. Добавлены src/core/source_session.hpp/.cpp и fail-closed validators для evidence, Verified session и confirmation result. Добавлен CTest host harness SSR-01…SSR-18 на fake verifier/reader/repository; документация 06/26 и regression README обновлена. Production registry/verifier/storage, composition-root/event-adapter wiring, криптография, provisioning и аппаратная проверка остаются открытыми. |
 
 **Ограничение:** это план. Функции не считаются реализованными до появления кода, проверок и, где требуется, аппаратных испытаний.
 

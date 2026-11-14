@@ -157,6 +157,17 @@ if(BUILD_TESTING)
     dockstation_apply_compile_policy(test_source_cursor_reader)
     add_test(NAME source_cursor_reader COMMAND test_source_cursor_reader)
 
+    add_executable(test_source_session_contract
+        src/core/event_processing.cpp
+        src/core/source_session.cpp
+        verification/regression/test_source_session_contract.cpp
+    )
+    target_include_directories(test_source_session_contract
+        PRIVATE "${PROJECT_SOURCE_DIR}/src"
+    )
+    dockstation_apply_compile_policy(test_source_session_contract)
+    add_test(NAME source_session_contract COMMAND test_source_session_contract)
+
     if(DOCKSTATION_ENABLE_SANITIZERS)
         if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
             foreach(target_name
@@ -172,7 +183,8 @@ if(BUILD_TESTING)
                     test_runtime_config_file
                     test_controller_protocol
                     test_local_api
-                    test_source_cursor_reader)
+                    test_source_cursor_reader
+                    test_source_session_contract)
                 target_compile_options(${target_name} PRIVATE
                     -fsanitize=address,undefined
                     -fno-omit-frame-pointer
@@ -212,6 +224,9 @@ if(BUILD_TESTING)
                 -fsanitize=address,undefined
             )
             target_link_options(test_source_cursor_reader PRIVATE
+                -fsanitize=address,undefined
+            )
+            target_link_options(test_source_session_contract PRIVATE
                 -fsanitize=address,undefined
             )
         else()

@@ -34,6 +34,18 @@
 | `bool is_valid_source_cursor_read_result(std::string_view requested_source, const SourceCursorReadResult& result) noexcept` **(реализована)** | Проверяет непустой ключ, точное совпадение source для FOUND, пустой payload для NOT_FOUND/ERROR и отклоняет неизвестный статус. ERROR остаётся ошибкой и блокирует обработку. |
 
 
+### src/core/source_session.cpp
+
+| Функция / интерфейс | Назначение |
+|---|---|
+| `SourceSessionVerifier::verify_source_session(const SourceSessionEvidence&) noexcept` **(логический порт реализован; production verifier отсутствует)** | Проверяет регистрацию источника, привязку peer identity и доказательство свежей сессии через внешний адаптер. Ядро не выбирает протокол или алгоритмы; все неуспешные статусы должны иметь пустой session payload. |
+| `SourceSessionRepository::confirm_source_session(const SourceCursorReadResult&, const VerifiedSourceSession&) noexcept` **(логический порт реализован; production adapter отсутствует)** | Транзакционно сравнивает полный ожидаемый cursor и ревизию ACTIVE-регистрации. Создаёт начальный cursor или атомарно заменяет source_instance с очисткой last_sequence; AlreadyCurrent сохраняет sequence. |
+| `is_valid_source_session_evidence()` / `is_valid_verified_source_session()` **(реализованы)** | Проверяют наличие обязательных полей источника, сессии, доказательства peer identity и ревизии регистрации. |
+| `is_valid_source_session_verification_result()` **(реализована)** | Проверяет точное совпадение Verified source/instance с исходным доказательством; отрицательные статусы обязаны иметь пустой payload; неизвестный статус отклоняется. |
+| `is_valid_source_session_confirmation_result()` **(реализована)** | Проверяет семантику Confirmed/AlreadyCurrent относительно ожидаемого полного cursor; ошибки и конфликты обязаны возвращать пустой cursor. |
+
+Host-контрактные проверки SSR-01…SSR-18 используют fake verifier/reader/repository. Они не являются production verifier, storage adapter или проверкой физической аутентификации и защищённого канала.
+
 ### src/core/event_handling.cpp
 
 | Функция | Назначение |
