@@ -880,14 +880,14 @@ PlatformLogger обслуживает технические сообщения 
 | Функция / тип | Назначение |
 |---|---|
 | `ControllerMessageType` | Типизированный перечень HELLO, HELLO_ACK, HEARTBEAT, REQUEST_SNAPSHOT, TELEMETRY_SNAPSHOT и ERROR. |
-| `ControllerProtocolVersion` | Пара major/minor без фиксации текущей версии протокола или правил совместимости. |
+| `ControllerProtocolVersion` | Пара major/minor; точное совпадение настроенной версии применяется `ControllerLinkSession`, без автоматического negotiation. |
 | `ControllerMessageEnvelope` | Невладеющее представление общих метаданных сообщения: тип, версия, controller_id, controller_instance_id, sequence_number и sent_at. |
 | `SensorQualityStatus` | Шесть статусов телеметрии из docs/06 §3 и §25.1: OK, STALE, INVALID, UNAVAILABLE, NOT_CONFIGURED и UNKNOWN. ERROR не является качеством измерения. |
 | `EmptyControllerMessagePayload` | Пустое тело для HELLO, HELLO_ACK, HEARTBEAT и REQUEST_SNAPSHOT; тип сообщения задаёт смысл операции. |
 | `ControllerTelemetryMeasurement` / `ControllerTelemetrySnapshotPayload` | Caller-owned список измерений со sensor_id, variant-значением, единицей, качеством и отдельным временем измерения. |
 | `ControllerErrorPayload` / `ControllerErrorSeverity` | Структурированная ошибка с кодом, серьёзностью, описанием и необязательной известной причиной. |
 | `ControllerMessagePayload` | Типизированный variant логических тел; это не wire-сериализация. |
-| `validate_controller_message()` | Fail-closed проверка типа и наличия обязательных полей общего конверта. Не проверяет совместимость версий, порядок/повторы последовательности и формат временной метки. |
+| `validate_controller_message()` | Fail-closed проверка типа и наличия обязательных полей общего конверта. Не проверяет политику версии/sequence и формат временной метки; версия и строгий порядок sequence применяются в `ControllerLinkSession`. |
 | `validate_controller_message_payload()` | Проверяет соответствие типа сообщения телу, обязательные поля измерений и ошибок, известность quality/severity и конечность вещественных значений. |
 
 Проверка: `verification/repka_gateway/test_controller_protocol.cpp`; CTest — `controller_protocol`. Логические тела и валидаторы реализованы.
@@ -904,7 +904,7 @@ PlatformLogger обслуживает технические сообщения 
 
 Wire v1: magic `DS`, wire version 1, тип сообщения 1…6, uint16 little-endian body length, общий envelope, typed payload и CRC-32/ISO-HDLC по header + body. Максимальный кадр 2048 байт, максимум 16 измерений. Подробная таблица полей — docs/06 §16.3.
 
-Проверка: `verification/repka_gateway/test_controller_codec.cpp`; CTest — `controller_codec`. Host-тесты проверяют round-trip HELLO/telemetry/ERROR, все типы значений, границы целых чисел, нулевой snapshot, UTF-8, размеры, повреждённую CRC и malformed frames. Кодек не накапливает потоковые данные и не открывает UART. CRC не является аутентификацией/шифрованием. UART-драйвер, потоковый frame assembler, протокол аутентификации/криптографии и ESP-IDF firmware target остаются отдельными задачами.
+Проверка: `verification/repka_gateway/test_controller_codec.cpp`; CTest — `controller_codec`. Host-тесты проверяют round-trip HELLO/telemetry/ERROR, все типы значений, границы целых чисел, нулевой snapshot, UTF-8, размеры, повреждённую CRC и malformed frames. Кодек декодирует один полный кадр; накопление потока выполняет `ControllerFrameStreamDecoder`. CRC не является аутентификацией/шифрованием. UART-драйвер, защищённый transport/session verifier и ESP-IDF firmware target остаются отдельными задачами.
 
 ### src/hardware/interfaces/controller_frame_stream_decoder.hpp/.cpp
 
@@ -921,6 +921,23 @@ Wire v1: magic `DS`, wire version 1, тип сообщения 1…6, uint16 lit
 Парсер проверяет только magic/version/type/ограниченную длину; CRC и структуру тела проверяет ControllerCodec. После FrameReady caller должен декодировать кадр; при успехе вызвать consume_frame(), при ошибке — reject_frame(). Не использовать frame_data() после изменения внутреннего буфера.
 
 Проверка: `verification/repka_gateway/test_controller_frame_stream_decoder.cpp`; CTest — `controller_frame_stream_decoder`. Покрываются неполные куски, split magic, шум/повторная синхронизация, чрезмерная длина, последовательные кадры, CRC rejection и восстановление. Потоковый парсер не открывает UART и не является аппаратной эмуляцией.
+
+### src/hardware/interfaces/controller_link_session.hpp/.cpp
+
+| Функция / тип | Назначение |
+|---|---|
+| \`ControllerLinkSessionConfig\` | Локальные ID/instance, ожидаемый peer ID, точная версия протокола и настраиваемые интервалы handshake/heartbeat/timeout/retry. |
+| \`ControllerLinkSessionState\` / \`ControllerLinkSessionStatus\` / \`ControllerLinkSessionEvent\` | Состояния Stopped/AwaitingHelloAck/Established/LinkLost, причины отказа и события для вызывающего transport adapter. |
+| \`ControllerLinkSessionResult\` | Возвращает состояние/результат и, для исходящего HELLO/HEARTBEAT, логический envelope; тело для этих сообщений — EmptyControllerMessagePayload. |
+| \`ControllerLinkSession::start()\` | Начинает host-initiated handshake и формирует HELLO с локальными ID, версией и возрастающим sequence. |
+| \`ControllerLinkSession::poll()\` | Проверяет deadlines, формирует периодический HEARTBEAT, переводит связь в LinkLost и инициирует повторный HELLO. Время передаётся вызывающим слоем в monotonic milliseconds. |
+| \`ControllerLinkSession::handle_message()\` | Принимает уже декодированное сообщение после ControllerCodec; проверяет структуру, точную версию, ожидаемый peer ID/instance, разрешённый тип и строго возрастающий sequence. |
+| \`ControllerLinkSession::stop()\` | Останавливает автомат, не сбрасывая локальную последовательность и последнее наблюдавшееся состояние sequence peer в пределах жизни объекта. |
+
+Идентификаторы хранятся в фиксированных буферах до 128 байт, динамическое выделение памяти отсутствует. По умолчанию: handshake timeout 3000 мс, heartbeat interval 1000 мс, peer activity timeout 5000 мс, retry interval 1000 мс. Номер исходящего sequence считается занятым при формировании сообщения, не при успешной физической отправке; пропуски разрешены. Входящие номера должны строго возрастать в пределах одного peer instance, но не обязаны быть непрерывными.
+
+Проверка: \`verification/repka_gateway/test_controller_link_session.cpp\`; CTest — \`controller_link_session\`. Host-тесты проверяют реальный codec round-trip HELLO/HELLO_ACK, handshake, peer ID/version/instance, порядок sequence, heartbeat, потерю связи/retry, переполнение monotonic counter и некорректные конфигурации. Класс не реализует UART, физический обмен, аутентификацию, шифрование, durable anti-replay или команды оборудования. Established не означает authenticated.
+
 
 
 ---
