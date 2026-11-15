@@ -1,7 +1,7 @@
 # Полный план реализации программного комплекса DockStation на Repka Pi 5
 
 **Статус:** мастер-план реализации; последовательность разработки согласована, открытые платформенные, сетевые, серверные и аппаратные детали требуют отдельной проверки и решения.  
-**Редакция:** 1.74.  
+**Редакция:** 1.76.  
 **Дата:** 2026-11-15.  
 **Вычислительная платформа:** Repka Pi 5.  
 **Предполагаемая ОС:** официальная Repka OS; образ и версия проверяются перед развёртыванием.
@@ -1113,6 +1113,8 @@ SQLite остаётся кандидатом, не решением. Сравн�
 
 **Read-only Repka preflight:** добавлены `repka/check_target_platform.sh` и host-тест с подменёнными системными источниками. Скрипт не изменяет ОС; проверяет ARM64/64-bit, toolchain CMake/C++17, заголовки OpenSSL 3.x, systemd, установленные unit-файлы и кандидаты UART с сопоставлением `console=`. Физический pinmux, контакт разъёма, электрические уровни и UART↔ESP32 обмен не имитируются и остаются аппаратной приёмкой.
 
+**Target deployment:** `repka/install_gateway.sh` собирает Release Gateway-only, устанавливает оба systemd unit и начальную конфигурацию, сохраняя существующую. Активный UART instance обновляется без смены режима; при заданном controller_uart_device без активного UART unit базовая служба не стартует. Staging mode позволяет проверить install layout без изменений host accounts/systemd. Установщик не использует apt и не меняет boot, pinmux, device permissions или PSK.
+
 ## 12. История изменений
 
 | Редакция | Дата | Изменения |
@@ -1208,6 +1210,8 @@ SQLite остаётся кандидатом, не решением. Сравн�
 | 1.73 | 2026-11-15 | Добавлен read-only `repka/check_target_platform.sh`: проверка ARM64/64-bit, CMake, C++17, OpenSSL 3 headers, systemd, установленных Gateway unit-файлов, обнаружение UART character devices и сопоставление с kernel `console=`. Скрипт не запускает пакетный менеджер и не меняет boot/pinmux/права/службы. Добавлен host-тест с fake OS/devices/commands; физическая Repka OS, UART header mapping и электрический интерфейс остаются непроверенными. |
 | 1.74 | 2026-11-15 | Исправлена несогласованность RuntimeEnvironment/SystemDiagnostics: доступность CPU-температуры теперь вычисляется через тот же `read_cpu_temperature()`, который выбирает и валидирует явно размеченные CPU/SoC/package thermal zones; фиксированная проверка `thermal_zone0/temp` удалена. Добавлена регрессионная проверка parity статуса; README/каталог/реестр модулей описывают единый контракт. Предыдущие платформенные CI: run 43730599989 SUCCESS (UART unit + native ARM64), run 43730790585 SUCCESS (SQLite optional, Gateway-only ARM64 build), run 43731200878 SUCCESS (read-only preflight + host test, оба Linux/ARM64 jobs). Физическая Repka OS и UART остаются непроверенными до наличия платы. |
 | 1.75 | 2026-11-15 | Зафиксированы результаты предыдущих платформенных работ: GitHub Actions run 43730599989 и 43730790585 — SUCCESS для x64/ARM64, 23/23 CTest на каждой архитектуре; run 43731200878 — SUCCESS для ARM64/x64 и read-only platform preflight; run 43731476237 — SUCCESS после исправления thermal availability, 23/23 CTest на обеих архитектурах, 141 pytest и все network/platform shell checks. ARM64 Ubuntu CI и package/unit проверки не заменяют испытание официальной Repka OS 5 и физического UART. README обновлён: результаты больше не отмечены как ожидающие. |
+
+| 1.76 | 2026-11-15 | Добавлен `repka/install_gateway.sh`: Release Gateway-only сборка без SQLite, read-only preflight, CMake install, создание непривилегированной учётной записи, сохранение конфигурации, systemd verification и включение только базового loopback read-only service. Активный UART instance обновляется без смены режима; при заданном controller_uart_device без активного UART unit базовый профиль не запускается. Добавлен staging mode без изменения host accounts/systemd и shell acceptance test. Скрипт не использует apt и не меняет boot/pinmux/права/PSK. Физическая Repka OS ещё не проверялась. |
 
 **Ограничение:** это план. Функции не считаются реализованными до появления кода, проверок и, где требуется, аппаратных испытаний.
 

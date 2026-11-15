@@ -145,6 +145,32 @@ CI не заменяет ручное испытание systemd manager. Про
 потребовалось явно выполнить `cmake --build build --target preinstall --parallel`.
 Этот шаг формирует relink-артефакт, на который ссылается \`cmake_install.cmake\`.
 
+### Установка целевого C++ Gateway одной командой
+
+После checkout репозитория и read-only preflight установку на целевую ARM64 Repka OS
+можно выполнить так:
+
+\`\`\`sh
+sudo bash repka/install_gateway.sh
+\`\`\`
+
+Сценарий собирает Release Gateway без SQLite development dependency, устанавливает
+бинарные файлы и оба systemd unit-файла, создаёт системную группу и непривилегированного
+пользователя \`dockstation\`, сохраняет существующую конфигурацию, проверяет unit-файлы
+и запускает только loopback read-only Gateway. Если уже работает UART instance, он
+обновляется и перезапускается без смены аппаратного режима. Если в конфигурации задан
+\`controller_uart_device\`, а UART unit не активен, базовый профиль не запускается.
+
+Установщик не вызывает \`apt\`, не скачивает или обновляет пакеты, не меняет загрузочную
+конфигурацию, Device Tree, pinmux, права UART и не создаёт PSK. CMake, C++17 и OpenSSL 3
+development headers должны быть доступны заранее. При их отсутствии сценарий
+остановится на preflight/build, не меняя пакетную конфигурацию ОС. GPIO, камера и UART
+не включаются автоматически.
+
+Для CI/package staging предусмотрен \`DOCKSTATION_INSTALL_ROOT=/путь\`. В этом режиме
+файлы устанавливаются в staging-каталог, а системные учётные записи и systemd manager
+хоста не затрагиваются; на самой плате этот режим не используется.
+
 ### Отдельный профиль для одного UART-устройства
 
 Обычный \`dockstation-gateway.service\` намеренно использует \`PrivateDevices=true\`:
