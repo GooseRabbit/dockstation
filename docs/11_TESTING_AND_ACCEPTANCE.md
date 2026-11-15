@@ -1,7 +1,7 @@
 # Испытания и приёмка
 
 **Статус:** предварительный план.  
-**Редакция:** 3.0.
+**Редакция:** 3.1.
 **Дата актуализации:** 2026-11-15.
 
 ## 1. Назначение
@@ -655,8 +655,9 @@ Workflow \`.github/workflows/linux-cmake.yml\`, run [43499328759](https://github
 | TEST-SW-131 | Повторный обычный запуск или `--replace` при повреждённом/небезопасном старом credential-файле | Обычный запуск отказывается от перезаписи; `--replace` отклоняет старые credentials, если loader не подтверждает их допустимость; исходный файл остаётся неизменным |
 | TEST-SW-132 | Успешный `--replace` и обработка временного файла | Локальный файл заменяется атомарно, временные файлы удаляются, секреты не выводятся в stdout/stderr и не попадают в журнал; ESP32 при этом не считается автоматически обновлённым |
 | TEST-SW-133 | Межстековый OpenSSL↔Mbed TLS handshake на точном ESP32 target | Подтверждены TLS 1.3 PSK-DHE, совместимые identity/cipher/group callbacks, отказ запрещённых режимов и отсутствие plaintext fallback; только host BIO test не засчитывается |
+| TEST-SW-134 | Linux `ControllerUartPort` на POSIX pseudo-terminal | Проверены absolute character-device path, raw 115200 8N1 без flow control, non-blocking I/O, точный учёт partial transfer, invalid arguments, закрытый порт и hard I/O disconnect; PTY test не подтверждает электрическую линию Repka—ESP32 |
 
 **TEST-HW-008 — физическая линия Repka—ESP32:** после определения точной платы/SoC выполнить target build и обмен по UART 3,3 В, 115200 8N1; измерить handshake latency и peak heap, проверить частичные чтения/записи, потерю/восстановление линии, отказ неверного PSK и отсутствие открытых прикладных данных. Этот критерий не пройден и не может быть закрыт host CI.
 
-**Текущее покрытие:** CTest проверяет host TLS client; privileged acceptance script проверяет локальное создание, no-overwrite, защиту от небезопасного `--replace` и атомарную локальную замену. ESP32 provisioning, TEST-SW-133 и TEST-HW-008 остаются открытыми.
+**Текущее покрытие:** CTest проверяет host TLS client и Linux UART adapter через POSIX pseudo-terminal; UART-тест проверяет только host OS API/termios и не имитирует ESP32 либо электрическую линию. Privileged acceptance script проверяет локальное создание, no-overwrite, защиту от небезопасного `--replace` и атомарную локальную замену. ESP32 provisioning, TEST-SW-133 и TEST-HW-008 остаются открытыми. Неблокирующее пустое чтение tty не позволяет надёжно распознать тихий физический обрыв; это контролирует будущий transport manager по heartbeat/состоянию линии.
 

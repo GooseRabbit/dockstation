@@ -938,6 +938,17 @@ Wire v1: magic `DS`, wire version 1, тип сообщения 1…6, uint16 lit
 
 Host-проверка: `verification/repka_gateway/test_controller_psk_tls_client.cpp`; CTest — `controller_psk_tls_client`. 13 проверок используют OpenSSL TLS peer и BIO transport pairs. Это проверка TLS state machine на host, а не эмуляция UART/ESP32 и не межстековая проверка с Mbed TLS. Адаптер не подключён к текущему C++ Gateway runtime до появления controller transport manager; физический UART, Mbed TLS firmware, secure provisioning/storage и аппаратная приёмка остаются открытыми.
 
+### src/platform/linux/controller_uart_port.hpp/.cpp
+
+| Функция / тип | Назначение |
+|---|---|
+| `ControllerUartStatus` / `ControllerUartIoResult` | Типизированный результат открытия, неблокирующего чтения/записи и hard I/O errors; errno возвращается вызывающему слою без записи в журнал. |
+| `ControllerUartPort::open()` / `close()` | Открывает абсолютный путь к символьному tty-устройству с `O_NOCTTY`, `O_NONBLOCK`, `O_CLOEXEC`; настраивает raw 115200 8N1, `CLOCAL|CREAD`, без software/hardware flow control. |
+| `ControllerUartPort::read_bytes()` / `write_bytes()` | Переносит только непрозрачные байты, возвращает фактическое число переданных байтов и различает `WouldBlock`, `NotOpen`, `Disconnected` и `Failed`. TLS, буферизация, polling, кадрирование и retry policy остаются уровнем выше. |
+| `ControllerUartPort::is_open()` | Позволяет composition/transport manager проверить состояние владения файловым дескриптором. |
+
+Проверка: `verification/repka_gateway/test_controller_uart_port.cpp`; CTest — `controller_uart_port`. 21 host assertion используют POSIX pseudo-terminal: termios profile, raw byte I/O, non-blocking empty read, partial write accounting, invalid paths/buffers/lengths, regular-file rejection, close and hard peer I/O error. PTY не является эмулятором ESP32 и не доказывает электрическую/физическую работу UART. При `VMIN=0/VTIME=0` пустое чтение возвращает `WouldBlock`, поэтому тихий физический обрыв обнаруживается верхним heartbeat/line-monitor, а не этим низкоуровневым классом.
+
 ### src/platform/linux/controller_psk_credential_store.hpp/.cpp
 
 | Функция / тип | Назначение |
