@@ -111,11 +111,11 @@ constexpr char kMigrationSql[] =
            trusted_schema == 0;
 }
 
-[[nodiscard]] bool has_user_tables(sqlite3* database, sqlite3_int64& count) noexcept {
+[[nodiscard]] bool has_user_schema_objects(sqlite3* database, sqlite3_int64& count) noexcept {
     return query_int64(
         database,
         "SELECT count(*) FROM sqlite_schema "
-        "WHERE type='table' AND name NOT LIKE 'sqlite_%';",
+        "WHERE name NOT LIKE 'sqlite_%';",
         count);
 }
 
@@ -149,12 +149,17 @@ constexpr char kMigrationSql[] =
 }  // namespace
 
 SqliteDatabase::~SqliteDatabase() {
-    close();
+    if (!close() && database_ != nullptr) {
+        (void)sqlite3_close_v2(database_);
+        database_ = nullptr;
+    }
 }
 
 SqliteDatabaseResult SqliteDatabase::open(
     const SqliteDatabaseConfig& config) noexcept {
-    close();
+    if (!close()) {
+        return {SqliteDatabaseStatus::CloseFailed, last_sqlite_status_, 0};
+    }
     last_sqlite_status_ = SQLITE_OK;
 
     if (!valid_database_path(config.database_path)) {
@@ -180,9 +185,9 @@ SqliteDatabaseResult SqliteDatabase::open(
     }
 
     (void)sqlite3_extended_result_codes(database_, 1);
-    if (!configure_connection(database_, config.busy_timeout_ms)) {
+    if (sqlite3_busy_timeout(database_, config.busy_timeout_ms) != SQLITE_OK) {
         last_sqlite_status_ = sqlite3_extended_errcode(database_);
-        close();
+        (void)close();
         return {SqliteDatabaseStatus::SettingsFailed, last_sqlite_status_, 0};
     }
 
@@ -191,36 +196,56 @@ SqliteDatabaseResult SqliteDatabase::open(
     if (!query_int64(database_, "PRAGMA application_id;", application_id) ||
         !query_int64(database_, "PRAGMA user_version;", stored_version)) {
         last_sqlite_status_ = sqlite3_extended_errcode(database_);
-        close();
+        (void)close();
         return {SqliteDatabaseStatus::SchemaInvalid, last_sqlite_status_, 0};
     }
 
     if (application_id != 0 && application_id != kDockStationApplicationId) {
         last_sqlite_status_ = SQLITE_NOTADB;
-        close();
+        (void)close();
         return {SqliteDatabaseStatus::ApplicationIdMismatch, last_sqlite_status_, 0};
     }
     if (stored_version < 0 ||
         stored_version > static_cast<sqlite3_int64>(kCurrentSchemaVersion)) {
         last_sqlite_status_ = SQLITE_SCHEMA;
-        close();
+        (void)close();
         return {SqliteDatabaseStatus::SchemaVersionUnsupported,
                 last_sqlite_status_, 0};
     }
 
-    if (application_id == 0 || stored_version == 0) {
-        sqlite3_int64 existing_tables = 0;
-        if (stored_version != 0 ||
-            !has_user_tables(database_, existing_tables) ||
-            existing_tables != 0) {
+    const bool uninitialized_database =
+        application_id == 0 && stored_version == 0;
+    const bool incomplete_database =
+        application_id == kDockStationApplicationId && stored_version == 0;
+    if (application_id == 0 && stored_version != 0) {
+        last_sqlite_status_ = SQLITE_SCHEMA;
+        (void)close();
+        return {SqliteDatabaseStatus::ApplicationIdMismatch,
+                last_sqlite_status_, 0};
+    }
+    if (uninitialized_database || incomplete_database) {
+        sqlite3_int64 existing_objects = 0;
+        if (!has_user_schema_objects(database_, existing_objects) ||
+            existing_objects != 0) {
             last_sqlite_status_ = SQLITE_SCHEMA;
-            close();
+            (void)close();
             return {SqliteDatabaseStatus::ApplicationIdMismatch,
                     last_sqlite_status_, 0};
         }
+    }
+
+    // Validate the file identity/version before changing journal or connection settings.
+    // This prevents an unrelated SQLite database from being silently converted out of WAL.
+    if (!configure_connection(database_, config.busy_timeout_ms)) {
+        last_sqlite_status_ = sqlite3_extended_errcode(database_);
+        (void)close();
+        return {SqliteDatabaseStatus::SettingsFailed, last_sqlite_status_, 0};
+    }
+
+    if (uninitialized_database || incomplete_database) {
         if (!initialize_schema(database_)) {
             last_sqlite_status_ = sqlite3_extended_errcode(database_);
-            close();
+            (void)close();
             return {SqliteDatabaseStatus::SchemaMigrationFailed,
                     last_sqlite_status_, 0};
         }
@@ -232,7 +257,7 @@ SqliteDatabaseResult SqliteDatabase::open(
         stored_version != kInitialSchemaVersion ||
         !has_initial_migration(database_)) {
         last_sqlite_status_ = SQLITE_SCHEMA;
-        close();
+        (void)close();
         return {SqliteDatabaseStatus::SchemaInvalid, last_sqlite_status_, 0};
     }
 
@@ -241,12 +266,22 @@ SqliteDatabaseResult SqliteDatabase::open(
     return {SqliteDatabaseStatus::Ready, SQLITE_OK, schema_version_};
 }
 
-void SqliteDatabase::close() noexcept {
-    if (database_ != nullptr) {
-        (void)sqlite3_close_v2(database_);
-        database_ = nullptr;
+bool SqliteDatabase::close() noexcept {
+    if (database_ == nullptr) {
+        schema_version_ = 0;
+        return true;
     }
+
+    const int status = sqlite3_close(database_);
+    if (status != SQLITE_OK) {
+        last_sqlite_status_ = sqlite3_extended_errcode(database_);
+        return false;
+    }
+
+    database_ = nullptr;
     schema_version_ = 0;
+    last_sqlite_status_ = SQLITE_OK;
+    return true;
 }
 
 bool SqliteDatabase::is_open() const noexcept {
