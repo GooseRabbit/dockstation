@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string_view>
 
 #include "platform/logging/logger.hpp"
 
@@ -29,7 +30,7 @@ bool contains_null_byte(const std::string& value) {
 
 bool valid_controller_uart_path(const std::string& value) {
     if (value.size() < 6U || value.size() > 255U ||
-        value.compare(0U, 5U, "/dev/") != 0 ||
+        value.compare(0U, 5U, "/dev/") != 0 || value.back() == '/' ||
         contains_null_byte(value)) {
         return false;
     }
