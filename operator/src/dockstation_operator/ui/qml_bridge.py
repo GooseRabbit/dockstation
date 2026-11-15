@@ -288,6 +288,95 @@ class QmlOperatorBridge(QObject):
         return " · ".join(str(value) for value in (os_name, os_version, kernel, architecture, uptime_text) if value not in (None, ""))
 
     @Property("QVariantMap", notify=viewChanged)
+    def hardwarePlatformInfo(self) -> dict[str, object]:
+        snapshot = self.model.snapshot
+        platform = snapshot.get("platform", {}) if isinstance(snapshot, dict) else {}
+        capabilities = platform.get("capabilities", {}) if isinstance(platform, dict) else {}
+        if not isinstance(capabilities, dict):
+            capabilities = {}
+        device_tree = capabilities.get("device_tree", {})
+        if not isinstance(device_tree, dict):
+            device_tree = {}
+        profile = str(capabilities.get("profile", "UNKNOWN"))
+        profile_labels = {
+            "GENERIC_LINUX": "Общий Linux",
+            "REPKA_PI5": "Repka Pi 5",
+            "UNKNOWN": "Не определён",
+        }
+        model = device_tree.get("model")
+        compatible = device_tree.get("compatible")
+        return {
+            "available": bool(capabilities),
+            "profile": profile,
+            "profile_label": profile_labels.get(profile, "Неизвестный профиль"),
+            "model": str(model) if isinstance(model, str) and model else "Не опубликована",
+            "compatible": str(compatible) if isinstance(compatible, str) and compatible else "Не опубликован",
+            "freshness": "Снимок устарел" if self.model.stale and snapshot is not None else (
+                "Данные ещё не получены" if snapshot is None else "Текущий снимок"
+            ),
+        }
+
+    @Property("QVariantList", notify=viewChanged)
+    def hardwareInterfaces(self) -> list[dict[str, object]]:
+        snapshot = self.model.snapshot
+        platform = snapshot.get("platform", {}) if isinstance(snapshot, dict) else {}
+        capabilities = platform.get("capabilities", {}) if isinstance(platform, dict) else {}
+        interfaces = capabilities.get("interfaces", {}) if isinstance(capabilities, dict) else {}
+        if not isinstance(interfaces, dict):
+            return []
+        names = (
+            ("uart", "UART"),
+            ("gpio", "GPIO"),
+            ("i2c", "I2C"),
+            ("spi", "SPI"),
+            ("pwm", "PWM"),
+            ("camera", "Камера / V4L2"),
+        )
+        status_labels = {
+            "AVAILABLE": "Проверка прав пройдена",
+            "DETECTED": "Обнаружен, доступ ограничен",
+            "NOT_CONFIGURED": "Контроллер найден, узел не настроен",
+            "UNAVAILABLE": "Не обнаружен",
+            "UNKNOWN": "Недостаточно данных",
+        }
+        status_colors = {
+            "AVAILABLE": "#46A982",
+            "DETECTED": "#D6A34A",
+            "NOT_CONFIGURED": "#D6A34A",
+            "UNAVAILABLE": "#8796A4",
+            "UNKNOWN": "#D6A34A",
+        }
+        result: list[dict[str, object]] = []
+        for key, name in names:
+            item = interfaces.get(key, {})
+            if not isinstance(item, dict):
+                continue
+            status = str(item.get("status", "UNKNOWN"))
+            device_nodes = item.get("device_nodes", 0)
+            accessible_nodes = item.get("accessible_device_nodes", 0)
+            sysfs_controllers = item.get("sysfs_controllers", 0)
+            console_conflicts = item.get("kernel_console_conflicts", 0)
+            summary = (
+                f"Узлов: {device_nodes}; проверка R/W: {accessible_nodes}; "
+                f"контроллеров sysfs: {sysfs_controllers}"
+            )
+            if console_conflicts:
+                summary += f"; конфликт с kernel console=: {console_conflicts}"
+            candidate = item.get("candidate_device_path")
+            result.append({
+                "name": name,
+                "status": status,
+                "status_label": status_labels.get(status, "Неизвестный статус"),
+                "status_color": status_colors.get(status, "#D6A34A"),
+                "summary": summary,
+                "candidate": (
+                    f"Кандидат (не выбран): {candidate}"
+                    if isinstance(candidate, str) and candidate else ""
+                ),
+            })
+        return result
+
+    @Property("QVariantMap", notify=viewChanged)
     def systemMetrics(self) -> dict[str, str]:
         snapshot = self.model.snapshot
         platform = snapshot.get("platform", {}) if isinstance(snapshot, dict) else {}

@@ -1426,6 +1426,103 @@ ApplicationWindow {
                                 }
                             }
                         }
+                        Panel {
+                            objectName: "system.hardware-platform"
+                            Layout.fillWidth: true
+                            implicitHeight: hardwarePlatformPanel.implicitHeight + 40
+                            ColumnLayout {
+                                id: hardwarePlatformPanel
+                                anchors.fill: parent
+                                anchors.margins: 20
+                                spacing: 12
+                                Text {
+                                    text: "Аппаратные возможности Linux"
+                                    color: root.primaryText
+                                    font.pixelSize: 16
+                                    font.bold: true
+                                }
+                                Text {
+                                    text: bridge.hardwarePlatformInfo.available
+                                          ? "Профиль: " + bridge.hardwarePlatformInfo.profile_label
+                                            + " · " + bridge.hardwarePlatformInfo.freshness
+                                          : "Аппаратные сведения пока не получены."
+                                    color: root.secondaryText
+                                    wrapMode: Text.WordWrap
+                                    Layout.fillWidth: true
+                                }
+                                Text {
+                                    visible: bridge.hardwarePlatformInfo.available
+                                    text: "Device Tree: " + bridge.hardwarePlatformInfo.model
+                                          + " · compatible: " + bridge.hardwarePlatformInfo.compatible
+                                    color: root.muted
+                                    wrapMode: Text.WordWrap
+                                    Layout.fillWidth: true
+                                }
+                                GridLayout {
+                                    Layout.fillWidth: true
+                                    columns: width >= 780 ? 2 : 1
+                                    rowSpacing: 8
+                                    columnSpacing: 10
+                                    Repeater {
+                                        model: bridge.hardwareInterfaces
+                                        delegate: Panel {
+                                            required property string name
+                                            required property string status
+                                            required property string status_label
+                                            required property string status_color
+                                            required property string summary
+                                            required property string candidate
+                                            Layout.fillWidth: true
+                                            implicitHeight: interfaceDetails.implicitHeight + 20
+                                            ColumnLayout {
+                                                id: interfaceDetails
+                                                anchors.fill: parent
+                                                anchors.margins: 10
+                                                spacing: 5
+                                                RowLayout {
+                                                    Layout.fillWidth: true
+                                                    Text {
+                                                        text: name
+                                                        color: root.primaryText
+                                                        font.pixelSize: 13
+                                                        font.bold: true
+                                                        Layout.fillWidth: true
+                                                    }
+                                                    Text {
+                                                        text: status_label
+                                                        color: status_color
+                                                        font.pixelSize: 10
+                                                        horizontalAlignment: Text.AlignRight
+                                                    }
+                                                }
+                                                Text {
+                                                    text: summary
+                                                    color: root.secondaryText
+                                                    font.pixelSize: 10
+                                                    wrapMode: Text.WordWrap
+                                                    Layout.fillWidth: true
+                                                }
+                                                Text {
+                                                    visible: candidate.length > 0
+                                                    text: candidate
+                                                    color: root.muted
+                                                    font.pixelSize: 10
+                                                    wrapMode: Text.WordWrap
+                                                    Layout.fillWidth: true
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                Text {
+                                    text: "Диагностика пассивная: проверяются узлы устройств и права текущего процесса R/W. Это не проверка физического обмена, распиновки или электрической исправности. Путь-кандидат не выбирается автоматически."
+                                    color: root.muted
+                                    font.pixelSize: 11
+                                    wrapMode: Text.WordWrap
+                                    Layout.fillWidth: true
+                                }
+                            }
+                        }
                         Text { text: bridge.freshnessText; color: root.secondaryText; wrapMode: Text.WordWrap }
                     }
                 }

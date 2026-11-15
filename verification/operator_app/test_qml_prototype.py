@@ -77,6 +77,7 @@ def test_qml_prototype_loads_with_the_seven_approved_tabs():
             "system.storage",
             "system.load-average",
             "system.platform-info",
+            "system.hardware-platform",
         ):
             assert roots[0].findChild(QObject, panel_name) is not None, panel_name
         assert bridge.freshnessText == "Данные ещё не получены"

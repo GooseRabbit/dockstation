@@ -65,6 +65,55 @@ def test_qml_bridge_formats_system_metrics_and_marks_stale_snapshot():
         bridge.shutdown()
 
 
+
+
+def test_qml_bridge_exposes_platform_capabilities_without_selecting_device_paths():
+    bridge = QmlOperatorBridge()
+    try:
+        bridge.model.apply_diagnostics({
+            "platform": {
+                "capabilities": {
+                    "profile": "REPKA_PI5",
+                    "device_tree": {
+                        "model": "Repka Pi 5",
+                        "compatible": "repka,repka-pi5;rockchip,rk3588",
+                        "model_available": True,
+                        "compatible_available": True,
+                        "kernel_cmdline_available": True,
+                    },
+                    "interfaces": {
+                        "uart": {
+                            "status": "AVAILABLE", "device_nodes": 2,
+                            "accessible_device_nodes": 1, "sysfs_controllers": 2,
+                            "kernel_console_conflicts": 1,
+                            "candidate_device_path": "/dev/ttyS0", "candidate_only": True,
+                        },
+                        "gpio": {
+                            "status": "NOT_CONFIGURED", "device_nodes": 0,
+                            "accessible_device_nodes": 0, "sysfs_controllers": 1,
+                            "kernel_console_conflicts": 0,
+                            "candidate_device_path": None, "candidate_only": True,
+                        },
+                    },
+                }
+            }
+        })
+        info = bridge.hardwarePlatformInfo
+        assert info["available"] is True
+        assert info["profile_label"] == "Repka Pi 5"
+        assert info["model"] == "Repka Pi 5"
+        rows = bridge.hardwareInterfaces
+        uart = next(item for item in rows if item["name"] == "UART")
+        gpio = next(item for item in rows if item["name"] == "GPIO")
+        assert uart["status"] == "AVAILABLE"
+        assert "R/W: 1" in uart["summary"]
+        assert "kernel console" in uart["summary"]
+        assert uart["candidate"] == "Кандидат (не выбран): /dev/ttyS0"
+        assert gpio["status"] == "NOT_CONFIGURED"
+        assert gpio["candidate"] == ""
+    finally:
+        bridge.shutdown()
+
 def test_empty_port_drafts_resolve_to_defaults_and_invalid_text_stays_invalid():
     bridge = QmlOperatorBridge()
     try:
