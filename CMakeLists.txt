@@ -11,6 +11,7 @@ include(GNUInstallDirs)
 
 find_package(Threads REQUIRED)
 find_package(OpenSSL 3.0 REQUIRED COMPONENTS SSL Crypto)
+find_package(SQLite3 REQUIRED)
 
 option(DOCKSTATION_ENABLE_SANITIZERS
        "Enable AddressSanitizer and UndefinedBehaviorSanitizer for verification" OFF)
@@ -252,6 +253,16 @@ if(BUILD_TESTING)
     dockstation_apply_compile_policy(test_controller_link_service)
     add_test(NAME controller_link_service COMMAND test_controller_link_service)
 
+    # Backend-evaluation probe only: this does not add SQLite to the production runtime.
+    add_executable(test_sqlite_persistence_probe
+        verification/repka_gateway/test_sqlite_persistence_probe.cpp
+    )
+    target_link_libraries(test_sqlite_persistence_probe
+        PRIVATE SQLite::SQLite3
+    )
+    dockstation_apply_compile_policy(test_sqlite_persistence_probe)
+    add_test(NAME sqlite_persistence_probe COMMAND test_sqlite_persistence_probe)
+
     add_executable(test_controller_psk_credential_store
         verification/repka_gateway/test_controller_psk_credential_store.cpp
     )
@@ -336,6 +347,7 @@ if(BUILD_TESTING)
                     test_controller_uart_port
                     test_controller_transport_manager
                     test_controller_link_service
+                    test_sqlite_persistence_probe
                     test_controller_psk_credential_store
                     test_local_api
                     test_source_cursor_reader
@@ -398,6 +410,9 @@ if(BUILD_TESTING)
                 -fsanitize=address,undefined
             )
             target_link_options(test_controller_link_service PRIVATE
+                -fsanitize=address,undefined
+            )
+            target_link_options(test_sqlite_persistence_probe PRIVATE
                 -fsanitize=address,undefined
             )
             target_link_options(test_controller_psk_credential_store PRIVATE
