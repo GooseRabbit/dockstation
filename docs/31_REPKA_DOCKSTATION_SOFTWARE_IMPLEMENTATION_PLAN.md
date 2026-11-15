@@ -1,7 +1,7 @@
 # Полный план реализации программного комплекса DockStation на Repka Pi 5
 
 **Статус:** мастер-план реализации; последовательность разработки согласована, открытые платформенные, сетевые, серверные и аппаратные детали требуют отдельной проверки и решения.  
-**Редакция:** 1.69.  
+**Редакция:** 1.70.  
 **Дата:** 2026-11-15.  
 **Вычислительная платформа:** Repka Pi 5.  
 **Предполагаемая ОС:** официальная Repka OS; образ и версия проверяются перед развёртыванием.
@@ -394,7 +394,7 @@ Host-тест `verification/repka_gateway/test_controller_link_session.cpp` за
 
 **Цель:** подключить реальные адаптеры хранения к уже реализованным логическим контрактам StationStateManager и ConfigurationManager, не переписывая их чистую бизнес-логику. Обеспечить атомарность записей, защиту от повторной обработки, сохранение курсоров источников и безопасное восстановление после перезапуска.
 
-**Фактическая граница на редакцию 1.36:** логические функции F01–F17 и CFG-F00…CFG-F08, а также перечисленные ниже интерфейсы портов уже существуют и покрыты host-тестами с fake-адаптерами. Production-адаптеров постоянного хранилища пока нет: каталога `src/platform/persistence/` в текущем дереве ещё нет. SQLite остаётся кандидатом, но не утверждённым выбором.
+**Фактическая граница на редакцию 1.70:** логические функции F01–F17 и CFG-F00…CFG-F08, а также перечисленные ниже интерфейсы портов существуют и покрыты host-тестами с fake-адаптерами. В изолированной кандидатной ветке добавлен первый Linux backend foundation src/platform/persistence/sqlite_database.hpp/.cpp и отдельная CMake-цель dockstation_persistence_sqlite. Он открывает/проверяет файл, фиксирует профиль SQLite, создаёт миграцию schema_migrations и не подключён к Gateway runtime или SSM/CFG repository-портам. Реальных таблиц событий, snapshot, истории, операций, курсоров и конфигурации ещё нет. SQLite описан только как предложение DEC-068, не как утверждённое владельцем решение.
 
 ### 5.1. Карта архитектурных слоёв
 
@@ -418,10 +418,22 @@ Persistence adapters / Clock / Timer / ID providers
 
 Ядро не должно знать, используется ли внутри SQLite, другой движок или файловый адаптер. Один физический адаптер может реализовать несколько логических портов, чтобы связанные изменения фиксировались одной транзакцией. Это не требует объединять публичные интерфейсы ядра или создавать один монолитный класс.
 
-**Планируемые файлы адаптера (пока не созданы):** `src/platform/persistence/database.hpp/.cpp`, `schema_migrations.hpp/.cpp`, адаптеры репозиториев для событий/состояния/операций/recovery/configuration; `src/platform/time/system_clock.hpp/.cpp`, `monotonic_clock.hpp/.cpp`, `timer_service.hpp/.cpp`; реализация поставщиков ID в `src/platform/ids/`. Это ориентир для будущих минимальных файлов, а не утверждение, что каталоги или классы уже существуют.
+**Фактически созданная основа:** src/platform/persistence/sqlite_database.hpp/.cpp содержит SqliteDatabase, отдельный от Linux Gateway runtime. CMakeLists.txt требует SQLite >= 3.31 для SQLITE_OPEN_NOFOLLOW, создаёт отдельную static library dockstation_persistence_sqlite и CTest sqlite_persistence_probe; GitHub Actions устанавливает libsqlite3-dev. Это только фундамент соединения/версии схемы, а не production repository adapter. Остальные минимальные файлы — read/write adapters для событий/состояния/операций/recovery/configuration, миграции доменной схемы, clocks/timer и устойчивые ID providers — остаются планируемыми.
 
 Системный журнал Gateway (stderr → journald) остаётся отдельным от долговременных данных SSM. `EventRepository` хранит нормализованные события, необходимые для дедупликации и доказательства изменений; он не становится хранилищем сырых сетевых/аппаратных логов. Конфигурация процесса Linux Gateway из `/etc/dockstation/gateway.conf` (порт и параметры журналирования) также не является конфигурацией станции CFG-F00…CFG-F08.
 
+### 5.1.1. Кандидат SQLite (DEC-068 — предложение, не утверждено)
+
+**Статус:** технический spike реализован и прошёл host CI; выбор SQLite, файловый путь и deployment-политика ожидают явного утверждения владельца.
+
+- Backend-кандидат — SQLite для небольшого локального структурированного состояния станции и транзакционных SSM/CFG repository-портов. Он не предназначен для хранения видео/крупных материалов; для них остаётся отдельный LocalStorageManager/backend по DEC-057.
+- Начальный профиль — rollback journal DELETE, synchronous=EXTRA, foreign_keys=ON, trusted_schema=OFF; WAL не включается. Одна композиционная точка владеет соединением и сериализует repository-вызовы; FULLMUTEX является дополнительной защитой, но не заменяет эту политику.
+- Кандидатный SqliteDatabase::open() проверяет абсолютный нормализованный путь, запрещает symlink в конечном компоненте, проверяет database application_id/user_version, ограничивает версию схемы и выполняет начальную миграцию в BEGIN EXCLUSIVE. Сейчас создаётся только служебная таблица schema_migrations; SQL-схема SSM/CFG и repository adapters отсутствуют.
+- Файл данных предлагается размещать в /var/lib/dockstation/station.sqlite3 через systemd StateDirectory=dockstation и StateDirectoryMode=0750, сохраняя существующий ProtectSystem=strict. Текущий systemd unit ещё не изменён, файл БД не создаётся Gateway и не используется службой. Родительский каталог и его владельцы должны быть отдельно проверены на целевой Repka OS; проверка конечного symlink не заменяет безопасное создание родительского каталога.
+- CMake требует SQLite >=3.31 (для SQLITE_OPEN_NOFOLLOW); CI Ubuntu 24.04 использовал системный SQLite. Точную версию и возможности библиотеки на Repka OS ещё требуется проверить до production-развёртывания.
+- CTest sqlite_persistence_probe проверяет реальный on-disk файл, настройки PRAGMA, начальную schema migration, отклонение относительного пути и final symlink, отказ чужой БД без изменения её WAL-режима, отказ закрытия при незавершённом statement, rollback/commit нескольких связанных строк, close/reopen, crash recovery после _exit(), integrity_check и блокировку конкурирующего writer.
+- Полный GitHub Actions run 43699555707 завершился SUCCESS для candidate HEAD 53f3289bb58d1fd9dc0f67111299a546aaf7b49e: 23/23 CTest с ASan/UBSan, 31/31 C++ host-программ и 141 pytest; прошли QML/package, Python compileall, Gateway/systemd/non-root и shell/network checks. Это host-проверка на Ubuntu 24.04.5 x86_64: завершение процесса до COMMIT не является испытанием внезапного отключения питания или отказа реального накопителя.
+- SQLite пока не включён в dockstation_linux_runtime, Gateway не открывает файл БД и не сохраняет реальные station events. При последующей интеграции отсутствие/ошибка локального хранилища должны выдавать явный UNAVAILABLE/ERROR для persistence-зависимых операций; Gateway и диагностика, не требующие записи, не должны заявлять несуществующий commit.
 ### 5.2. Карта существующих портов и требуемых адаптеров
 
 | Область | Существующий логический контракт | Что должен обеспечить постоянный адаптер |
@@ -1093,7 +1105,7 @@ SQLite остаётся кандидатом, не решением. Сравн�
 
 Контракты DiagnosticsManager согласованы владельцем проекта (DEC-058/059; docs/21 и docs/22). Это подготовительный результат и не меняет очередность мастер-плана: реализацию DiagnosticsManager, включая первый вертикальный срез SDA-F00 и последующие функции, начинать только на предусмотренном этапе после выполнения предшествующих зависимостей. Открытые аппаратные/режимные параметры не закрываются этим согласованием.
 
-Ближайшая последовательность: host-сборка и компонентные проверки защищённого моста Repka—ESP32 пройдены; следующим программным шагом подключить production-постоянное хранение и интегрировать подтверждённые station/controller events через доверенную границу SourceSessionEvidence, не публикуя неподтверждённые значения. Затем связать проверенную телеметрию со станционным ядром и DiagnosticsManager; после появления плат провести OpenSSL↔Mbed TLS interop и физическую UART-приёмку. Далее реализовать и испытать все станционные механизмы, камеру, питание, сервер, аккаунты и Operator; после этого провести полную приёмку наземного прототипа. Только затем переходить к этапу 14 — интеграции конкретного БАС. ARM64-сборка и проверка systemd на Repka OS обязательны до признания наземного прототипа принятым. Текущая ручная проверка systemd относится только к Ubuntu 24.04.5 LTS x86_64 VM и не заменяет приёмку целевой платы.
+Ближайшая последовательность: host-сборка и компонентные проверки защищённого моста Repka—ESP32 пройдены. Для постоянного хранения подготовлен кандидат SQLite и проверен отдельный on-disk/transaction/crash-recovery probe; сначала требуется согласовать DEC-068 и подтвердить целевую версию SQLite/место хранения на Repka OS. После этого реализовать read-only snapshot/history/event/cursor adapters, затем атомарные F10/F09/F11 commit-порты и recovery, интегрируя события только через доверенную границу SourceSessionEvidence, не публикуя неподтверждённые значения. Затем связать проверенную телеметрию со станционным ядром и DiagnosticsManager; после появления плат провести OpenSSL↔Mbed TLS interop и физическую UART-приёмку. Далее реализовать и испытать все станционные механизмы, камеру, питание, сервер, аккаунты и Operator; после этого провести полную приёмку наземного прототипа. Только затем переходить к этапу 14 — интеграции конкретного БАС. ARM64-сборка и проверка systemd на Repka OS обязательны до признания наземного прототипа принятым. Текущая ручная проверка systemd относится только к Ubuntu 24.04.5 LTS x86_64 VM и не заменяет приёмку целевой платы.
 
 ## 12. История изменений
 
@@ -1184,10 +1196,15 @@ SQLite остаётся кандидатом, не решением. Сравн�
 | 1.67 | 2026-11-15 | В ControllerLinkSession добавлен `request_snapshot()`: после Established формируется read-only REQUEST_SNAPSHOT с общим возрастающим исходящим sequence; до handshake и при неверном timestamp запрос отклоняется. Добавлены host-проверки запрета раннего запроса и round-trip через ControllerCodec. Полный CI для нового среза ожидается. |
 | 1.68 | 2026-11-15 | Добавлен `ControllerLinkService`: Gateway config, loader credentials, объединение UART/TLS/FrameStreamDecoder/Codec/LinkSession, read-only REQUEST_SNAPSHOT/heartbeat, read-only API `/api/v1/controller/link` и диагностический признак аутентифицированного соединения. Без параметров или provisioning канал остаётся NOT_CONFIGURED без отказа Gateway; входящая телеметрия валидируется и учитывается, но ещё не публикуется в SSM/DiagnosticsManager/хранилище. Добавлены host-проверки конфигурации и NOT_CONFIGURED/API; CI для кандидата и аппаратная проверка ещё не выполнены. |
 | 1.69 | 2026-11-15 | Кандидат ControllerLinkService перенесён в `chore/flatten-repka-directories`. Полный GitHub Actions run 43698392221 — SUCCESS для HEAD `71b7ee30b8308243283e9f10c0970d28dc0c4665`: сборка всех Linux targets, 22/22 CTest с ASan/UBSan, 31/31 C++ host-программ и 141 pytest; прошли QML, Python compileall, Gateway/systemd/non-root, credential acceptance и shell/network checks. Подтверждены host-сборка и component tests; end-to-end TLS peer → ControllerLinkService → TELEMETRY_SNAPSHOT, публикация измерений, Mbed TLS interop и физическая Repka/ESP32 проверка остаются открытыми. |
+| 1.70 | 2026-11-15 | В отдельной ветке work/sqlite-persistence-evaluation добавлена кандидатная основа SQLite: SqliteDatabase, CMake target, версия схемы и начальная миграция. Проверены DELETE journal/EXTRA, foreign keys, trusted_schema=OFF, final symlink/foreign DB protection, transaction rollback/commit, close/reopen, process-crash recovery и serialization competing writers. GitHub Actions run 43699555707 SUCCESS для HEAD 53f3289bb58d1fd9dc0f67111299a546aaf7b49e: 23/23 CTest, 31/31 C++ host-программ и 141 pytest. SQLite и расположение /var/lib/dockstation оформлены только предложением DEC-068; production repository adapters, Gateway wiring, target Repka package/power-loss tests остаются открытыми. |
 
 **Ограничение:** это план. Функции не считаются реализованными до появления кода, проверок и, где требуется, аппаратных испытаний.
 
 
+
+## 14. Проверка кандидата SQLite persistence foundation
+
+GitHub Actions [run 43699555707](https://github.com/GooseRabbit/dockstation/actions/runs/43699555707) завершился SUCCESS для SHA 53f3289bb58d1fd9dc0f67111299a546aaf7b49e на Ubuntu 24.04.5 x86_64: CMake configure/build, 23/23 CTest с ASan/UBSan (включая sqlite_persistence_probe), 31/31 C++ host-программ, Python compileall, 141 pytest, QML/package, systemd/non-root Gateway, credential acceptance и shell/network checks. Probe подтверждает поведение SQLite в host-условиях, в том числе rollback после аварийного завершения процесса; он не доказывает сохранность при внезапной потере питания, корректность SD/eMMC на Repka, работу конкретной Repka OS или пригодность к production-нагрузке. Candidate branch не перенесена в chore/flatten-repka-directories; main не изменён.
 
 ## 13. Результат последнего полного host CI
 
