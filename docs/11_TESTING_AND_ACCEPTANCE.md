@@ -1,7 +1,7 @@
 # Испытания и приёмка
 
 **Статус:** предварительный план.  
-**Редакция:** 3.4.
+**Редакция:** 3.5.
 **Дата актуализации:** 2026-11-15.
 
 ## 1. Назначение
@@ -660,9 +660,19 @@ Workflow \`.github/workflows/linux-cmake.yml\`, run [43499328759](https://github
 | TEST-SW-136 | Gateway запускается без настроенного внутреннего контроллерного канала | GET /api/v1/controller/link возвращает NOT_CONFIGURED; health/diagnostics и остальной read-only Gateway продолжают работать; отсутствие PSK не выдаётся за успешное подключение |
 | TEST-SW-137 | Контроллерная конфигурация задана частично или с ошибочным UART path/ID | Значения отклоняются до открытия UART/чтения credentials; Gateway остаётся запущенным, статус канала показывает ERROR без утечки секретов |
 | TEST-SW-138 | Внутренний канал проходит TLS и логический handshake | REQUEST_SNAPSHOT отправляется только после обоих рукопожатий; sequence общий с HELLO/HEARTBEAT; telemetry/error frames проходят codec/session validation; физические команды отсутствуют |
+| TEST-SW-139 | SqliteDatabase открывает или отклоняет файл БД | Принимается только абсолютный нормализованный путь; отклоняются относительный путь, финальный symlink, чужой application_id/schema и неподдерживаемая версия. При отказе чужая WAL-БД сохраняет исходный journal_mode |
+| TEST-SW-140 | Начальная SQLite schema и профиль соединения | Подтверждены DELETE rollback journal, synchronous=EXTRA, foreign_keys=ON, trusted_schema=OFF, application_id/user_version и атомарная начальная migration; связанные probe-строки COMMIT/ROLLBACK изменяются совместно |
+| TEST-SW-141 | Повторное открытие и аварийное завершение процесса с незавершённой транзакцией | После process crash подтверждённые строки остаются, незавершённые отсутствуют, integrity_check=ok; конкурентный BEGIN IMMEDIATE второго writer получает BUSY. Этот тест не заменяет внезапное отключение питания и power-loss испытания на Repka |
 
 
 **TEST-HW-008 — физическая линия Repka—ESP32:** после определения точной платы/SoC выполнить target build и обмен по UART 3,3 В, 115200 8N1; измерить handshake latency и peak heap, проверить частичные чтения/записи, потерю/восстановление линии, отказ неверного PSK и отсутствие открытых прикладных данных. Этот критерий не пройден и не может быть закрыт host CI.
 
 **Текущее покрытие:** полный GitHub Actions run 43698392221 завершился SUCCESS для HEAD `71b7ee30b8308243283e9f10c0970d28dc0c4665`: 22/22 CTest с ASan/UBSan, 31/31 C++ host-программ и 141 pytest; также прошли QML/package, Python compileall, Gateway install/systemd/non-root, privileged credential provisioning/store acceptance и shell/network checks. CTest `controller_link_service` проверяет безопасный NOT_CONFIGURED, частичную конфигурацию и ошибочный UART path; runtime config/parser и LocalApi tests проверяют настройки и read-only статус. Это не полный end-to-end обмен `ControllerLinkService` с TLS peer и `TELEMETRY_SNAPSHOT`: TEST-SW-138 пока не закрыт. Наличие CI PASS не доказывает работу ESP32, Mbed TLS или электрической линии. Значения датчиков пока не публикуются. ESP32 provisioning, TEST-SW-133 и TEST-HW-008 остаются открытыми.
 
+## 19. Проверка кандидатной SQLite persistence foundation
+
+GitHub Actions [run 43699555707](https://github.com/GooseRabbit/dockstation/actions/runs/43699555707) завершился SUCCESS для кандидата SHA 53f3289bb58d1fd9dc0f67111299a546aaf7b49e: 23/23 CTest с ASan/UBSan, включая sqlite_persistence_probe; 31/31 C++ host-программ; 141 pytest; QML/package, Python compileall, Gateway/systemd/non-root и shell/network checks.
+
+Probe использует временную on-disk SQLite БД и проверяет начальную schema_migrations, профиль DELETE/EXTRA, foreign keys/trusted schema, final symlink и защиту чужой WAL-БД от изменения, close при незавершённом statement, транзакции связанных строк, close/reopen, восстановление после process exit до COMMIT, integrity_check и конфликт двух writers. Это host-проверка поведения библиотеки и файловой системы Linux; она не является испытанием снятия питания, SD/eMMC или целевой Repka OS.
+
+SQLite, /var/lib/dockstation и systemd StateDirectory пока только предложены в DEC-068. Production SSM/CFG repository adapters, Gateway database wiring, backup/restore, retention и recovery на физическом накопителе не реализованы.
