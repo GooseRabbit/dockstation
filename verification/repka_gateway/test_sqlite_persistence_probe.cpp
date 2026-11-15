@@ -170,6 +170,43 @@ int main() {
     expect(invalid_path.status == SqliteDatabaseStatus::InvalidPath,
            "rejects relative database paths before opening a file");
 
+    const std::string foreign_path = directory + "/foreign.sqlite3";
+    sqlite3* foreign = nullptr;
+    const bool foreign_created =
+        sqlite3_open_v2(foreign_path.c_str(), &foreign,
+            SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr) == SQLITE_OK;
+    std::string foreign_journal_mode;
+    const bool foreign_wal =
+        foreign_created &&
+        execute(foreign, "PRAGMA journal_mode=WAL;") &&
+        query_text(foreign, "PRAGMA journal_mode;", foreign_journal_mode) &&
+        foreign_journal_mode == "wal" &&
+        execute(foreign, "CREATE TABLE unrelated_data(id INTEGER PRIMARY KEY);");
+    if (foreign != nullptr) {
+        (void)sqlite3_close(foreign);
+        foreign = nullptr;
+    }
+    SqliteDatabase foreign_storage{};
+    const auto foreign_open = foreign_wal
+        ? foreign_storage.open(SqliteDatabaseConfig{foreign_path, 50})
+        : dockstation::platform::persistence::SqliteDatabaseResult{};
+    sqlite3* foreign_check = nullptr;
+    std::string journal_after_rejection;
+    const bool foreign_preserved =
+        foreign_open.status == SqliteDatabaseStatus::ApplicationIdMismatch &&
+        sqlite3_open_v2(foreign_path.c_str(), &foreign_check,
+            SQLITE_OPEN_READWRITE, nullptr) == SQLITE_OK &&
+        query_text(foreign_check, "PRAGMA journal_mode;", journal_after_rejection) &&
+        journal_after_rejection == "wal";
+    if (foreign_check != nullptr) {
+        (void)sqlite3_close(foreign_check);
+    }
+    expect(foreign_wal && foreign_preserved,
+           "rejects an unrelated WAL database without changing its journal mode");
+    (void)std::remove((foreign_path + "-wal").c_str());
+    (void)std::remove((foreign_path + "-shm").c_str());
+    (void)std::remove(foreign_path.c_str());
+
     SqliteDatabase storage{};
     const bool opened = open_database(storage, path);
     expect(opened && storage.schema_version() == SqliteDatabase::kCurrentSchemaVersion,
@@ -180,6 +217,21 @@ int main() {
     }
 
     sqlite3* database = storage.native_handle();
+    sqlite3_stmt* outstanding_statement = nullptr;
+    const bool statement_prepared =
+        sqlite3_prepare_v2(database, "SELECT 1;", -1,
+                           &outstanding_statement, nullptr) == SQLITE_OK;
+    const bool close_refused_open_statement =
+        statement_prepared && !storage.close() && storage.is_open();
+    if (outstanding_statement != nullptr) {
+        (void)sqlite3_finalize(outstanding_statement);
+    }
+    const bool close_after_finalize = storage.close();
+    expect(close_refused_open_statement && close_after_finalize &&
+               open_database(storage, path),
+           "close reports outstanding statements and succeeds after finalization");
+    database = storage.native_handle();
+
     std::string journal_mode;
     sqlite3_int64 synchronous = 0;
     sqlite3_int64 foreign_keys = 0;
@@ -202,6 +254,16 @@ int main() {
                application_id == 0x4453544E && user_version == 1 &&
                migration_count == 1,
            "verifies DELETE/EXTRA, foreign keys, trusted schema and database identity/version");
+
+    const std::string symlink_path = directory + "/station-link.sqlite3";
+    const bool symlink_created = ::symlink(path.c_str(), symlink_path.c_str()) == 0;
+    SqliteDatabase symlink_storage{};
+    const auto symlink_open = symlink_created
+        ? symlink_storage.open(SqliteDatabaseConfig{symlink_path, 50})
+        : dockstation::platform::persistence::SqliteDatabaseResult{};
+    expect(symlink_created && symlink_open.status == SqliteDatabaseStatus::OpenFailed,
+           "rejects a final-component symbolic link to the database");
+    (void)::unlink(symlink_path.c_str());
 
     const bool schema_created = settings_verified && create_probe_schema(database);
     expect(schema_created, "creates two related tables for atomic transaction testing");
