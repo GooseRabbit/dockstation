@@ -256,10 +256,17 @@ for binary in "${BINARIES[@]}"; do
     else
         expected_dependency_names=("${PROVISIONER_BUILD_DEPENDENCIES[@]}")
     fi
-    for expected_dependency in "${expected_dependency_names[@]}"; do
-        grep -Fqx -- "$expected_dependency" <<< "$actual_dependency_names" ||
-            fail "$binary is missing a build-recorded runtime SONAME on this target: $expected_dependency"
-    done
+    if [[ "${DOCKSTATION_REQUIRE_EXACT_RUNTIME_SONAMES:-0}" == "1" ]]; then
+        expected_names_sorted="$(printf '%s\\n' "${expected_dependency_names[@]}" | sort -u)"
+        actual_names_sorted="$(printf '%s\\n' "$actual_dependency_names" | sort -u)"
+        [[ "$actual_names_sorted" == "$expected_names_sorted" ]] ||
+            fail "$binary runtime SONAME set differs from the build inventory."
+    else
+        for expected_dependency in "${expected_dependency_names[@]}"; do
+            grep -Fqx -- "$expected_dependency" <<< "$actual_dependency_names" ||
+                fail "$binary is missing a build-recorded runtime SONAME on this target: $expected_dependency"
+        done
+    fi
 done
 
 for expected_file in \
