@@ -283,6 +283,14 @@ gzip без timestamp/original filename. CI повторно упаковыва�
 готового дерева; отдельная проверка воспроизводимости компиляции из двух чистых
 build directories пока не заявляется.
 
+**Результат аудита (GitHub Actions run 43744455212):** SUCCESS на x64 и ARM64.
+На каждой архитектуре прошли 23/23 CTest; x64 также прошёл 31 host-программу,
+141 Python-тест, QML/e2e и полный Repka shell-test loop. ARM64 job подтвердил
+manifest/source commit, exact build SONAME inventory, ABI ceilings, ldd,
+побайтно идентичное повторное создание архива и два запуска bundle installer
+в isolated staging с CMake=/bin/false. Новый artifact ID: 14173668321;
+срок хранения — 30 дней. Это проверка Ubuntu 24.04 ARM64, не физической Repka OS.
+
 ### Отдельный профиль для одного UART-устройства
 
 Обычный \`dockstation-gateway.service\` намеренно использует \`PrivateDevices=true\`:
