@@ -949,6 +949,18 @@ Host-проверка: `verification/repka_gateway/test_controller_psk_tls_clien
 
 Проверка: `verification/repka_gateway/test_controller_uart_port.cpp`; CTest — `controller_uart_port`. 21 host assertion используют POSIX pseudo-terminal: termios profile, raw byte I/O, non-blocking empty read, partial write accounting, invalid paths/buffers/lengths, regular-file rejection, close and hard peer I/O error. PTY не является эмулятором ESP32 и не доказывает электрическую/физическую работу UART. При `VMIN=0/VTIME=0` пустое чтение возвращает `WouldBlock`, поэтому тихий физический обрыв обнаруживается верхним heartbeat/line-monitor, а не этим низкоуровневым классом.
 
+### src/platform/linux/controller_transport_manager.hpp/.cpp
+
+| Функция / тип | Назначение |
+|---|---|
+| `ControllerTransportStatus` / `ControllerTransportResult` | Отражают состояние старта, продвижения, `WouldBlock`, завершения TLS handshake и фатальных ошибок UART/TLS с кодами errno/OpenSSL. |
+| `ControllerTransportManager::start()` / `close()` | Открывает один UART и инициализирует TLS 1.3 PSK client с переданными вызывающим слоем credentials; не читает credential file и очищает внутренние буферы при закрытии. |
+| `ControllerTransportManager::poll()` | Выполняет ограниченный неблокирующий цикл UART ciphertext → TLS BIO → TLS progress → UART ciphertext; хранит смещения частичных входных/выходных операций и закрывает обе стороны при фатальной ошибке. |
+| `write_application_data()` / `read_application_data()` | Предоставляют application data только через TLS; caller обязан повторно передавать только непринятый остаток, а зашифрованный поток физически переносится следующим `poll()`. |
+| `negotiated_tls_version()` / `negotiated_cipher_name()` / `negotiated_group_id()` | Возвращают параметры только после полного PSK-DHE handshake. |
+
+Фиксированные буферы ciphertext — по 4096 байт; одна итерация `poll()` ограничена 12 проходами, чтобы не монополизировать event loop. Проверка: `verification/repka_gateway/test_controller_transport_manager.cpp`, CTest `controller_transport_manager`, 20 assertions. OpenSSL server peer подключён через POSIX PTY; проверяются handshake, plaintext gate, двусторонний application data, 64-KiB поток с backpressure, неверный PSK, недоступное устройство и потеря UART peer. Это host-проверка Linux/PTY/OpenSSL; manager пока не интегрирован с credential loader, Gateway, ControllerCodec или ControllerLinkSession. ESP32, Mbed TLS interop и физическая линия остаются открытыми.
+
 ### src/platform/linux/controller_psk_credential_store.hpp/.cpp
 
 | Функция / тип | Назначение |

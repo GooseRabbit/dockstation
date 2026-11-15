@@ -1,7 +1,7 @@
 # Полный план реализации программного комплекса DockStation на Repka Pi 5
 
 **Статус:** мастер-план реализации; последовательность разработки согласована, открытые платформенные, сетевые, серверные и аппаратные детали требуют отдельной проверки и решения.  
-**Редакция:** 1.62.  
+**Редакция:** 1.64.  
 **Дата:** 2026-11-15.  
 **Вычислительная платформа:** Repka Pi 5.  
 **Предполагаемая ОС:** официальная Repka OS; образ и версия проверяются перед развёртыванием.
@@ -51,7 +51,7 @@ Windows-клиент не обращается к GPIO, драйверам и с
 | API первого прототипа | REST/HTTP + JSON через SSH-туннель | Предложение |
 | Рабочий API | Защищённый API с проверкой идентичности и полномочий | Обязательно; реализация требует решений docs/24 |
 | Локальная БД | Абстрактный интерфейс; SQLite — кандидат | Требует оценки |
-| Repka—ESP32 | Проводной UART 3,3 В point-to-point, 115200 8N1 без RTS/CTS (DEC-062); Linux raw UART adapter реализован отдельно от TLS | Физический тип канала выбран; device path и board-specific GPIO требуют проверки на целевом оборудовании |
+| Repka—ESP32 | Проводной UART 3,3 В point-to-point, 115200 8N1 без RTS/CTS (DEC-062); Linux raw UART и TLS объединены host-side `ControllerTransportManager` | Физический тип канала выбран; device path и board-specific GPIO требуют проверки на целевом оборудовании; ESP32/Mbed TLS interop открыт |
 | Обновление данных | Периодический опрос сначала; SSE/WebSocket при необходимости | Предварительный порядок |
 | Сервер | Отдельный backend/API | Технология не выбрана |
 
@@ -713,7 +713,11 @@ SQLite остаётся кандидатом, не решением. Сравн�
 
 **Планируемые границы файлов (имена адаптеров предварительные):** общие контракты/реализации `src/hardware/interfaces/controller_transport.hpp`, `controller_protocol.hpp`, `controller_codec.hpp/.cpp`, `controller_frame_stream_decoder.hpp/.cpp`, `controller_link_session.hpp/.cpp`; raw UART и OpenSSL adapter для Repka — в `src/platform/linux/`; ESP-IDF `main/`, UART driver и Mbed TLS adapter — только внутри `firmware/esp32/` и его собственных components. Портируемые файлы протокола не копируются в прошивку и не получают Linux-only dependencies. `verification/integration/controller_test_adapter/` допускается только как host contract adapter; он не имитирует GPIO/UART/ESP32 и не выполняет физические действия.
 
-**Реализованный Linux UART host-срез:** `src/platform/linux/controller_uart_port.hpp/.cpp` содержит `ControllerUartPort` — независимый от TLS POSIX адаптер символьного tty-устройства. Он принимает только абсолютный device path, требует character device, использует `O_NOCTTY|O_NONBLOCK|O_CLOEXEC`, настраивает raw 115200 8N1 без software/hardware flow control, возвращает точное число частично переданных байтов и hard I/O errors. CMake выделяет отдельную библиотеку `dockstation_controller_transport`; CTest `controller_uart_port` содержит 21 assertion на POSIX pseudo-terminal. Это host-проверка Linux API/termios, не физическая линия, не ESP32 и не доказательство бесшумного обнаружения обрыва: heartbeat/line monitoring принадлежат будущему controller transport manager. Адаптер не буферизует данные, не реализует TLS, polling или retry и пока не подключён к Gateway.
+**Реализованный Linux UART host-срез:** `src/platform/linux/controller_uart_port.hpp/.cpp` содержит `ControllerUartPort` — POSIX адаптер символьного tty-устройства. Он принимает только абсолютный device path, требует character device, использует `O_NOCTTY|O_NONBLOCK|O_CLOEXEC`, настраивает raw 115200 8N1 без software/hardware flow control, возвращает точное число частично переданных байтов и hard I/O errors. CTest `controller_uart_port` содержит 21 assertion на POSIX pseudo-terminal; это host-проверка Linux API/termios, не физическая линия и не ESP32.
+
+**Реализованный Linux transport manager host-срез:** `src/platform/linux/controller_transport_manager.hpp/.cpp` объединяет один `ControllerUartPort` и один `ControllerPskTlsClient`. `start()` получает credentials от caller (не читает файл и не пишет секреты в лог); `poll()` выполняет ограниченный неблокирующий pump ciphertext, удерживает частичные операции в двух фиксированных буферах по 4096 байт и ограничивает работу 12 проходами за вызов. `write_application_data()`/`read_application_data()` доступны только через TLS после успешного handshake; caller сохраняет непринятый остаток приложения. Менеджер не содержит heartbeat/deadline/reconnect, не читает credentials, не разбирает ControllerCodec и не вызывает ControllerLinkSession; он не подключён к C++ Gateway composition root.
+
+CTest `controller_transport_manager` содержит 20 host assertions: OpenSSL TLS 1.3 PSK-DHE server peer обменивается байтами с менеджером через POSIX PTY, включая двусторонние application data, 64-KiB поток с backpressure, запрет plaintext до handshake, отказ неверного PSK и teardown при потере UART peer. Изолированная CMake/CTest сборка прошла под GCC Debug ASan/UBSan, Clang Debug ASan/UBSan и GCC Release. Это host Linux/PTY/OpenSSL проверка, не Mbed TLS interoperability, ESP32 target или физическая линия.
 
 **Реализованный Linux host-срез:** `src/platform/linux/controller_psk_tls_client.hpp/.cpp` содержит `ControllerPskTlsClient` на OpenSSL 3.x; отдельная CMake-библиотека `dockstation_controller_tls` и CTest `controller_psk_tls_client` регистрируются в корневой сборке. Клиент принимает credentials от caller, создаёт TLS 1.3 external-PSK client, закрепляет host candidate suite `TLS_AES_128_GCM_SHA256` и группу `P-256`, требует выбранной PSK-сессии и проверяет, что handshake использовал эфемерную группу. C++ Gateway runtime пока не линкуется с этим адаптером: его будет подключать будущий controller transport manager. Host peer test использует OpenSSL BIO pairs, не открывает UART, не имитирует плату и не доказывает Mbed TLS interop.
 
@@ -1131,7 +1135,8 @@ Host-тест `verification/repka_gateway/test_controller_link_session.cpp` за
 
 | 1.61 | 2026-11-15 | Добавлена standalone CLI dockstation-credential-provision: CSPRNG для PSK[32]/identity[16], безопасный временный файл root-only, права root:dockstation 0640, atomic no-overwrite install и explicit --replace только после проверки старого файла loader-ом; CMake install/CTest и privileged acceptance script покрывают создание, отказ от перезаписи, ошибки mode/ACL и локальную замену. Документы 06/07/11/12/24/26 синхронизированы. ESP32 provisioning/coordinated rotation, Gateway integration, Mbed TLS interop, физический UART и аппаратная приёмка остаются открытыми. |
 | 1.62 | 2026-11-15 | Полная синхронизация статуса с CI run 43646438975 для HEAD `192b154e1d0d7b3d2afed36bd41b8b2e1045af9a`: 19/19 CTest, 31/31 дополнительных C++ host tests, 134 pytest, credential acceptance и Gateway/systemd/QML/shell checks. В документации добавлен REQ-SEC-014, acceptance-критерии TEST-SW-128…133 и TEST-HW-008; исправлена нумерация §12 docs/17 и дополнен реестр модулей. Аппаратная интеграция и OpenSSL↔Mbed TLS interop остаются открытыми. |
-| 1.63 | 2026-11-15 | Добавлен отдельный Linux `ControllerUartPort` и CMake target `dockstation_controller_transport`; CTest `controller_uart_port` покрывает 21 host assertion через POSIX PTY, в том числе raw 115200 8N1, non-blocking и partial I/O, invalid path/buffer, regular-file rejection и hard I/O disconnect. Локальная изолированная CMake/CTest сборка пройдена с ASan/UBSan; полный repository CI для этого изменения не запускался. Обновлены docs/11/15/18/26 и статус в README. TLS composition, target Repka/ARM64, ESP32, Mbed TLS interop и физическая линия остаются открытыми. |
+| 1.63 | 2026-11-15 | Добавлен отдельный Linux `ControllerUartPort` и CMake target `dockstation_controller_transport`; CTest `controller_uart_port` покрывает 21 host assertion через POSIX PTY, в том числе raw 115200 8N1, non-blocking и partial I/O, invalid path/buffer, regular-file rejection и hard I/O disconnect. Полный CI после внесения изменения прошёл в run 43689110797; physical Repka/ESP32 проверка осталась открытой. |
+| 1.64 | 2026-11-15 | Добавлен `ControllerTransportManager`, объединяющий Linux POSIX UART и OpenSSL TLS client в отдельный неблокирующий ciphertext transport; CTest `controller_transport_manager` проверяет 20 host assertions через PTY и OpenSSL peer. Изолированные CMake/CTest сборки пройдены в GCC Debug ASan/UBSan, Clang Debug ASan/UBSan и GCC Release. Обновлены docs/06/11/15/18/24/26 и README. Loader/Gateway composition, ControllerCodec/LinkSession integration, ESP32 firmware, Mbed TLS interop, target Repka и физические испытания остаются открытыми. Полный repository CI для редакции 1.64 ещё не запускался. |
 
 **Ограничение:** это план. Функции не считаются реализованными до появления кода, проверок и, где требуется, аппаратных испытаний.
 
@@ -1139,7 +1144,7 @@ Host-тест `verification/repka_gateway/test_controller_link_session.cpp` за
 
 ## 13. Результат последнего полного host CI
 
-Полный workflow `.github/workflows/linux-cmake.yml` [43649975503](https://github.com/GooseRabbit/dockstation/actions/runs/43649975503) завершился SUCCESS на Ubuntu 24.04.5 x86_64 для базового HEAD `e58ae91cb14fe671585854f5d1dea6db64c4aaa5` (ветка `chore/flatten-repka-directories`, 2026-11-15). Новый `ControllerUartPort` из редакции 1.63 в этот CI run не входил; для него выполнена отдельная локальная изолированная CMake/CTest проверка с ASan/UBSan.
+Полный workflow `.github/workflows/linux-cmake.yml` [43689110797](https://github.com/GooseRabbit/dockstation/actions/runs/43689110797) завершился SUCCESS на Ubuntu 24.04.5 x86_64 для базового HEAD `8481766d84d218d91d87f7a2bb355605b979f65b` (ветка `chore/flatten-repka-directories`, 2026-11-15). Этот run включал `ControllerUartPort`, но предшествовал добавлению `ControllerTransportManager` из редакции 1.64; для менеджера выполнены отдельные локальные изолированные CMake/CTest проверки в GCC Debug ASan/UBSan, Clang Debug ASan/UBSan и GCC Release.
 
 | Проверка | Результат |
 |---|---:|

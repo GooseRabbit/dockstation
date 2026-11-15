@@ -66,13 +66,17 @@ target_link_libraries(dockstation_controller_tls
 )
 dockstation_apply_compile_policy(dockstation_controller_tls)
 
-# Keep raw Linux UART I/O independent from TLS and the read-only Gateway.
-# A later controller transport manager will compose this with dockstation_controller_tls.
+# Compose the POSIX UART byte stream and OpenSSL TLS client without
+# coupling either adapter to the current read-only Gateway runtime.
 add_library(dockstation_controller_transport STATIC
     src/platform/linux/controller_uart_port.cpp
+    src/platform/linux/controller_transport_manager.cpp
 )
 target_include_directories(dockstation_controller_transport
     PUBLIC "${PROJECT_SOURCE_DIR}/src"
+)
+target_link_libraries(dockstation_controller_transport
+    PUBLIC dockstation_controller_tls
 )
 dockstation_apply_compile_policy(dockstation_controller_transport)
 
@@ -223,6 +227,15 @@ if(BUILD_TESTING)
     dockstation_apply_compile_policy(test_controller_uart_port)
     add_test(NAME controller_uart_port COMMAND test_controller_uart_port)
 
+    add_executable(test_controller_transport_manager
+        verification/repka_gateway/test_controller_transport_manager.cpp
+    )
+    target_link_libraries(test_controller_transport_manager
+        PRIVATE dockstation_controller_transport
+    )
+    dockstation_apply_compile_policy(test_controller_transport_manager)
+    add_test(NAME controller_transport_manager COMMAND test_controller_transport_manager)
+
     add_executable(test_controller_psk_credential_store
         verification/repka_gateway/test_controller_psk_credential_store.cpp
     )
@@ -305,6 +318,7 @@ if(BUILD_TESTING)
                     test_controller_link_session
                     test_controller_psk_tls_client
                     test_controller_uart_port
+                    test_controller_transport_manager
                     test_controller_psk_credential_store
                     test_local_api
                     test_source_cursor_reader
@@ -361,6 +375,9 @@ if(BUILD_TESTING)
                 -fsanitize=address,undefined
             )
             target_link_options(test_controller_uart_port PRIVATE
+                -fsanitize=address,undefined
+            )
+            target_link_options(test_controller_transport_manager PRIVATE
                 -fsanitize=address,undefined
             )
             target_link_options(test_controller_psk_credential_store PRIVATE
