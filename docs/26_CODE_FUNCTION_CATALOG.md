@@ -1062,3 +1062,24 @@ Optional RuntimeConfig keys: controller_uart_device, controller_local_id, contro
 | platform_kind_name() / platform_capability_status_name() | Даёт стабильные строковые названия профиля и статуса для будущей сериализации диагностики. |
 
 Проверка: verification/repka_gateway/test_platform_capabilities.cpp, CTest platform_capabilities. Fixture test использует временную файловую структуру и ссылки на /dev/null как безопасные character-device substitutes; он проверяет только логику обнаружения, а не GPIO/UART/V4L2 hardware. Выявленный кандидатный path — только информация для оператора. Repka WiringRP и repka_gpio.ko не используются; установка/загрузка драйвера и изменение permissions остаются открытыми по DEC-069.
+
+
+## 13. Диагностическая публикация платформенных возможностей — Gateway / Operator
+
+### src/communications/api_serialization.hpp / .cpp
+
+| Функция / тип | Назначение |
+|---|---|
+| serialize_interface_capability() | Сериализует статус интерфейса, количество device nodes, доступных текущему процессу nodes, sysfs-контроллеров и конфликтов kernel console; путь устройства публикуется как nullable candidate_device_path, всегда с candidate_only: true. |
+| serialize_platform_capabilities() | Публикует профиль Generic Linux/Repka Pi 5, model/compatible Device Tree, доступность источников и шесть аппаратных категорий: UART, GPIO, I2C, SPI, PWM и camera/V4L2. |
+| serialize_system_diagnostics() | Включает platform.capabilities в существующий read-only GET /api/v1/system/diagnostics; по умолчанию выполняет пассивное обнаружение текущей системы. Для CTest допускается передача готового снимка без доступа к host hardware. |
+
+### operator/src/dockstation_operator/api/station_api_client.py
+
+_validate_platform_capabilities() проверяет профиль, согласованность Device Tree availability flags, enum статусов, uint32 counters, соотношение accessible/device nodes, candidate path и обязательный candidate_only: true. Раздел является additive extension: старые schema 1.0 snapshots без platform.capabilities остаются допустимыми.
+
+### operator/src/dockstation_operator/ui/qml_bridge.py / ui/qml/Main.qml
+
+hardwarePlatformInfo публикует выбранный платформенный профиль и Device Tree metadata; hardwareInterfaces отображает статусы шести интерфейсов, counts, UART console conflicts и candidate path с явной пометкой «Кандидат (не выбран)». Панель system.hardware-platform расположена на вкладке «Система». Она отображает наблюдаемую доступность, но не подтверждает электрическую исправность, pin mapping или фактический обмен.
+
+**Проверка:** CTest local_api проверяет JSON и сериализацию инъецированного RepkaPi5 snapshot; pytest test_station_api_client.py проверяет валидный раздел, старый snapshot без capabilities и отрицательные случаи; QML tests проверяют bridge mapping и наличие панели. GitHub Actions run 43759675836 SUCCESS для HEAD 6e1272d5bbdd6ece441a44e227133114c544931a: 24/24 CTest на x64 и ARM64, 31/31 C++ host programs, 148 Python/QML/e2e tests, shell/network/target-preflight checks; ARM64 bundle installed in isolated staging and Sigstore provenance was created and verified. Это не аппаратная проверка Repka Pi 5. Решение по WiringRP/repka_gpio.ko остаётся открытым по DEC-069.
