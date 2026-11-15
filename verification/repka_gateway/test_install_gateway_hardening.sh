@@ -42,10 +42,12 @@ esac
 SH
 cat > "$BIN/ldd" <<'SH'
 #!/usr/bin/env bash
-printf 'libssl.so.3 => /lib/aarch64-linux-gnu/libssl.so.3\n'
+printf 'libcrypto.so.3 => /lib/aarch64-linux-gnu/libcrypto.so.3\nlibssl.so.3 => /lib/aarch64-linux-gnu/libssl.so.3\n'
 SH
 chmod +x "$BIN/"*
 export PATH="$BIN:/usr/bin:/bin"
+export DOCKSTATION_REQUIRE_EXACT_RUNTIME_SONAMES=1
+export DOCKSTATION_EXPECTED_SOURCE_COMMIT=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 export DOCKSTATION_PREFLIGHT_SCRIPT="$BIN/preflight"
 export DOCKSTATION_RUNTIME_PREFLIGHT_SCRIPT="$BIN/preflight"
 export DOCKSTATION_SYSTEMD_ANALYZE_COMMAND="$BIN/systemd-analyze"
@@ -87,13 +89,51 @@ done
 printf '[Service]\n' > "$BROOT/usr/local/lib/systemd/system/dockstation-gateway.service"
 printf '[Service]\n' > "$BROOT/usr/local/lib/systemd/system/dockstation-gateway-uart@.service"
 printf 'api_port=8080\n' > "$BROOT/usr/local/share/dockstation/gateway.conf.example"
-printf '%s\n' 'Bundle format: dockstation-repka-pi5-arm64-v1' 'Architecture: aarch64' > "$BROOT/BUNDLE-MANIFEST.txt"
-printf 'libssl.so.3 => /lib/aarch64-linux-gnu/libssl.so.3\n' > "$BROOT/RUNTIME-DEPENDENCIES.txt"
+printf '%s\n' \
+ 'Bundle format: dockstation-repka-pi5-arm64-v1' \
+ 'Architecture: aarch64' \
+ 'Build OS: Synthetic test OS' \
+ 'Build kernel: test-kernel' \
+ 'Compiler: c++ synthetic' \
+ 'CMake: cmake version 3.30.0' \
+ 'OpenSSL build version: 3.0.0' \
+ 'Source commit: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' \
+ 'Source date epoch: 1794760000' \
+ 'Build type: Release' \
+ 'SQLite persistence: disabled' \
+ 'Install prefix: /usr/local' \
+ 'ABI ceilings: GLIBC<=2.34, GLIBCXX<=3.4.32, CXXABI<=1.3.9, OPENSSL<=3.0.0' \
+ > "$BROOT/BUNDLE-MANIFEST.txt"
+{
+ printf '%s\n' '# DockStation runtime dependency report v1'
+ printf '%s\n' '### usr/local/bin/dockstation_linux_bootstrap'
+ printf '%s\n' 'libcrypto.so.3' 'libssl.so.3'
+ printf '%s\n' '### usr/local/bin/dockstation-credential-provision'
+ printf '%s\n' 'libcrypto.so.3' 'libssl.so.3'
+} > "$BROOT/RUNTIME-DEPENDENCIES.txt"
 (cd "$BROOT" && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
 BUNDLE="$TMP/dockstation-repka-pi5-arm64.tar.gz"
 tar -czf "$BUNDLE" -C "$BROOT" .
 (cd "$TMP" && sha256sum "$(basename "$BUNDLE")" > "$(basename "$BUNDLE").sha256")
 bash "$ROOT/repka/verify_arm64_bundle.sh" "$BUNDLE" >/dev/null
+if DOCKSTATION_EXPECTED_SOURCE_COMMIT=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
+    bash "$ROOT/repka/verify_arm64_bundle.sh" "$BUNDLE" >/dev/null 2>&1; then
+ echo 'FAIL: bundle source commit mismatch accepted' >&2; exit 1
+fi
+
+# A dependency report that omits a library observed by ldd must not pass CI.
+cp -a "$BROOT" "$TMP/incomplete-runtime-report-root"
+awk '
+  $0 == "### usr/local/bin/dockstation-credential-provision" { provisioner=1; print; next }
+  provisioner && $0 == "libcrypto.so.3" { next }
+  { print }
+' "$TMP/incomplete-runtime-report-root/RUNTIME-DEPENDENCIES.txt" > "$TMP/incomplete-runtime-report-root/RUNTIME-DEPENDENCIES.new"
+mv "$TMP/incomplete-runtime-report-root/RUNTIME-DEPENDENCIES.new" "$TMP/incomplete-runtime-report-root/RUNTIME-DEPENDENCIES.txt"
+(cd "$TMP/incomplete-runtime-report-root" && find . -type f ! -name SHA256SUMS -print0 | LC_ALL=C sort -z | xargs -0 sha256sum > SHA256SUMS)
+tar -czf "$TMP/incomplete-runtime-report.tar.gz" -C "$TMP/incomplete-runtime-report-root" .
+if bash "$ROOT/repka/verify_arm64_bundle.sh" "$TMP/incomplete-runtime-report.tar.gz" >/dev/null 2>&1; then
+ echo 'FAIL: incomplete runtime SONAME report accepted' >&2; exit 1
+fi
 STAGE2="$TMP/bundle-stage"
 DOCKSTATION_INSTALL_ROOT="$STAGE2" DOCKSTATION_CMAKE_COMMAND=/bin/false \
  bash "$ROOT/repka/install_gateway.sh" --bundle "$BUNDLE" >/dev/null
