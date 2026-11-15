@@ -11,7 +11,14 @@ include(GNUInstallDirs)
 
 find_package(Threads REQUIRED)
 find_package(OpenSSL 3.0 REQUIRED COMPONENTS SSL Crypto)
-find_package(SQLite3 3.31 REQUIRED)
+
+# SQLite remains an isolated candidate until its persistence adapters are integrated.
+# Gateway-only Repka builds can omit the SQLite development package entirely.
+option(DOCKSTATION_BUILD_SQLITE_PERSISTENCE
+       "Build the experimental SQLite persistence foundation" ON)
+if(DOCKSTATION_BUILD_SQLITE_PERSISTENCE)
+    find_package(SQLite3 3.31 REQUIRED)
+endif()
 
 option(DOCKSTATION_ENABLE_SANITIZERS
        "Enable AddressSanitizer and UndefinedBehaviorSanitizer for verification" OFF)
@@ -82,17 +89,19 @@ target_link_libraries(dockstation_controller_transport
 )
 dockstation_apply_compile_policy(dockstation_controller_transport)
 
-# Initial SQLite foundation is isolated from station business logic.
-add_library(dockstation_persistence_sqlite STATIC
-    src/platform/persistence/sqlite_database.cpp
-)
-target_include_directories(dockstation_persistence_sqlite
-    PUBLIC "${PROJECT_SOURCE_DIR}/src"
-)
-target_link_libraries(dockstation_persistence_sqlite
-    PUBLIC SQLite::SQLite3
-)
-dockstation_apply_compile_policy(dockstation_persistence_sqlite)
+if(DOCKSTATION_BUILD_SQLITE_PERSISTENCE)
+    # Initial SQLite foundation is isolated from station business logic.
+    add_library(dockstation_persistence_sqlite STATIC
+        src/platform/persistence/sqlite_database.cpp
+    )
+    target_include_directories(dockstation_persistence_sqlite
+        PUBLIC "${PROJECT_SOURCE_DIR}/src"
+    )
+    target_link_libraries(dockstation_persistence_sqlite
+        PUBLIC SQLite::SQLite3
+    )
+    dockstation_apply_compile_policy(dockstation_persistence_sqlite)
+endif()
 
 
 # The Gateway runtime owns the controller service and reuses the transport
@@ -266,14 +275,16 @@ if(BUILD_TESTING)
     dockstation_apply_compile_policy(test_controller_link_service)
     add_test(NAME controller_link_service COMMAND test_controller_link_service)
 
-    add_executable(test_sqlite_persistence_probe
-        verification/repka_gateway/test_sqlite_persistence_probe.cpp
-    )
-    target_link_libraries(test_sqlite_persistence_probe
-        PRIVATE dockstation_persistence_sqlite
-    )
-    dockstation_apply_compile_policy(test_sqlite_persistence_probe)
-    add_test(NAME sqlite_persistence_probe COMMAND test_sqlite_persistence_probe)
+    if(DOCKSTATION_BUILD_SQLITE_PERSISTENCE)
+        add_executable(test_sqlite_persistence_probe
+            verification/repka_gateway/test_sqlite_persistence_probe.cpp
+        )
+        target_link_libraries(test_sqlite_persistence_probe
+            PRIVATE dockstation_persistence_sqlite
+        )
+        dockstation_apply_compile_policy(test_sqlite_persistence_probe)
+        add_test(NAME sqlite_persistence_probe COMMAND test_sqlite_persistence_probe)
+    endif()
 
     add_executable(test_controller_psk_credential_store
         verification/repka_gateway/test_controller_psk_credential_store.cpp
@@ -359,7 +370,6 @@ if(BUILD_TESTING)
                     test_controller_uart_port
                     test_controller_transport_manager
                     test_controller_link_service
-                    test_sqlite_persistence_probe
                     test_controller_psk_credential_store
                     test_local_api
                     test_source_cursor_reader
@@ -424,9 +434,15 @@ if(BUILD_TESTING)
             target_link_options(test_controller_link_service PRIVATE
                 -fsanitize=address,undefined
             )
-            target_link_options(test_sqlite_persistence_probe PRIVATE
-                -fsanitize=address,undefined
-            )
+            if(DOCKSTATION_BUILD_SQLITE_PERSISTENCE)
+                target_compile_options(test_sqlite_persistence_probe PRIVATE
+                    -fsanitize=address,undefined
+                    -fno-omit-frame-pointer
+                )
+                target_link_options(test_sqlite_persistence_probe PRIVATE
+                    -fsanitize=address,undefined
+                )
+            endif()
             target_link_options(test_controller_psk_credential_store PRIVATE
                 -fsanitize=address,undefined
             )

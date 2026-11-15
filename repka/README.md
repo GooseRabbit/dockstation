@@ -49,11 +49,20 @@ cmake -S . -B build \
   -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_TESTING=OFF \
   -DDOCKSTATION_ENABLE_SANITIZERS=OFF \
+  -DDOCKSTATION_BUILD_SQLITE_PERSISTENCE=OFF \
   -DCMAKE_INSTALL_PREFIX=/usr/local
 cmake --build build --parallel
 # Подготовить relink-артефакт, используемый CMake install для этой цели
 cmake --build build --target preinstall --parallel
 ```
+
+SQLite persistence foundation пока остаётся отдельным экспериментальным модулем:
+Gateway runtime его не использует. Для целевой сборки Gateway параметр
+`DOCKSTATION_BUILD_SQLITE_PERSISTENCE=OFF` исключает сам target и проверку
+`find_package(SQLite3)`, поэтому Repka не требуется устанавливать SQLite
+development headers только ради сборки read-only Gateway. Полный CI и отдельные
+проверки кандидата SQLite собираются с параметром `ON` и продолжают проверять
+SQLite. Отключение модуля не означает отказ от будущего постоянного хранения.
 
 Создайте отдельную системную группу и непривилегированную учётную запись без
 возможности интерактивного входа. Команды безопасно пропускают создание,
