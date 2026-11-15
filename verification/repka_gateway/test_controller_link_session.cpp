@@ -140,6 +140,10 @@ int main() {
     expect(result.status == ControllerLinkSessionStatus::InvalidMessage,
            "rejects a payload type that does not match HELLO_ACK");
 
+    expect(session.request_snapshot(199U, "time").status ==
+               ControllerLinkSessionStatus::InvalidState,
+           "does not allow a snapshot request before HELLO_ACK establishes the session");
+
     auto hello_ack = make_message(ControllerMessageType::HelloAck);
     std::array<std::uint8_t, kControllerCodecMaximumFrameSize> inbound_frame{};
     const auto inbound_encode = encode_controller_message(
@@ -157,10 +161,6 @@ int main() {
                result.event == ControllerLinkSessionEvent::SessionEstablished &&
                session.state() == ControllerLinkSessionState::Established,
            "establishes the protocol session after a codec-decoded HELLO_ACK");
-
-    expect(session.request_snapshot(199U, "time").status ==
-               ControllerLinkSessionStatus::InvalidState,
-           "does not allow a snapshot request before HELLO_ACK establishes the session");
 
     result = session.request_snapshot(200U, "");
     expect(result.status == ControllerLinkSessionStatus::InvalidTimestamp &&
