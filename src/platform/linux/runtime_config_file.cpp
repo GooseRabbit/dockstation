@@ -94,6 +94,9 @@ RuntimeConfigFileResult parse_runtime_config_text(const std::string& contents) {
 
     RuntimeConfig config{};
     bool api_port_seen{false};
+    bool controller_uart_device_seen{false};
+    bool controller_local_id_seen{false};
+    bool controller_peer_id_seen{false};
     bool log_level_seen{false};
     bool log_file_seen{false};
     bool log_stderr_seen{false};
@@ -139,6 +142,24 @@ RuntimeConfigFileResult parse_runtime_config_text(const std::string& contents) {
                     return invalid(line_number, "api_port", "expected an integer from 1 to 65535");
                 }
                 config.api_port = static_cast<std::uint32_t>(number);
+            } else if (key == "controller_uart_device") {
+                if (controller_uart_device_seen) {
+                    return invalid(line_number, "controller_uart_device", "duplicate key");
+                }
+                controller_uart_device_seen = true;
+                config.controller_uart_device.assign(value.data(), value.size());
+            } else if (key == "controller_local_id") {
+                if (controller_local_id_seen) {
+                    return invalid(line_number, "controller_local_id", "duplicate key");
+                }
+                controller_local_id_seen = true;
+                config.controller_local_id.assign(value.data(), value.size());
+            } else if (key == "controller_peer_id") {
+                if (controller_peer_id_seen) {
+                    return invalid(line_number, "controller_peer_id", "duplicate key");
+                }
+                controller_peer_id_seen = true;
+                config.controller_peer_id.assign(value.data(), value.size());
             } else if (key == "log_level") {
                 if (log_level_seen) return invalid(line_number, "log_level", "duplicate key");
                 log_level_seen = true;
