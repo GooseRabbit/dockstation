@@ -16,8 +16,12 @@ int main(int argc, char* argv[]) {
     const auto service_runner =
         [](const dockstation::platform::linux_runtime::RuntimeConfig& config,
            const volatile std::sig_atomic_t* shutdown_requested) {
+            dockstation::platform::linux_platform::ControllerLinkServiceConfig controller_config{
+                config.controller_uart_device,
+                config.controller_local_id,
+                config.controller_peer_id};
             return dockstation::communications::run_local_api_server(
-                config.api_port, shutdown_requested);
+                config.api_port, shutdown_requested, controller_config);
         };
 
     const auto result =
