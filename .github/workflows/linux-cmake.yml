@@ -449,7 +449,10 @@ jobs:
 
           cp -- "$archive" "$signed_dir/dockstation-repka-pi5-arm64.tar.gz"
           cp -- "$archive.sha256" "$signed_dir/dockstation-repka-pi5-arm64.tar.gz.sha256"
-          sha256sum --check --strict "$signed_dir/dockstation-repka-pi5-arm64.tar.gz.sha256"
+          (
+            cd "$signed_dir"
+            sha256sum --check --strict dockstation-repka-pi5-arm64.tar.gz.sha256
+          )
 
       - name: Upload signed ARM64 distribution bundle
         id: upload-signed-arm64-bundle
