@@ -276,8 +276,7 @@ int main() {
         const bool first_writer_locked =
             execute(database, "BEGIN IMMEDIATE;");
         const bool competing_writer_blocked =
-            second_opened &&
-            !first_writer_locked ? false :
+            second_opened && first_writer_locked &&
             execute(competing_writer, "BEGIN IMMEDIATE;", SQLITE_BUSY);
         if (first_writer_locked) {
             (void)execute(database, "ROLLBACK;");
