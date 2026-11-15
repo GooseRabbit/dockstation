@@ -88,6 +88,25 @@ int main() {
                result.error_line == 2U && result.field == "api_port",
            "rejects duplicate keys and reports the offending line");
 
+    result = parse_runtime_config_text(
+        "controller_uart_device=/dev/serial0\\n"
+        "controller_local_id=repka-01\\n"
+        "controller_peer_id=esp32-01\\n");
+    expect(result.status == RuntimeConfigFileStatus::Loaded &&
+               result.config.controller_uart_device == "/dev/serial0" &&
+               result.config.controller_local_id == "repka-01" &&
+               result.config.controller_peer_id == "esp32-01" &&
+               validate_runtime_config(result.config).status ==
+                   RuntimeConfigValidationStatus::Valid,
+           "parses a complete optional controller link configuration");
+
+    result = parse_runtime_config_text(
+        "controller_uart_device=/dev/serial0\\n"
+        "controller_uart_device=/dev/serial1\\n");
+    expect(result.status == RuntimeConfigFileStatus::Invalid &&
+               result.field == "controller_uart_device",
+           "rejects duplicate controller UART settings");
+
     result = parse_runtime_config_text("unknown_setting=true\n");
     expect(result.status == RuntimeConfigFileStatus::Invalid &&
                result.error_line == 1U,
