@@ -107,7 +107,8 @@ BINARIES=(
     "$ROOT/usr/local/bin/dockstation-credential-provision"
 )
 for binary in "${BINARIES[@]}"; do
-    [[ -x "$binary" ]] || fail "Bundle binary missing or not executable: $binary"
+    [[ -f "$binary" && ! -L "$binary" && -x "$binary" ]] ||
+        fail "Bundle binary missing, non-regular or not executable: $binary"
 
     # 'file' and 'readelf' are optional architecture-inspection tools. When
     # readelf is available, also enforce the selected ABI symbol-version ceilings.
@@ -159,7 +160,8 @@ for expected_file in \
     "$ROOT/usr/local/lib/systemd/system/dockstation-gateway.service" \
     "$ROOT/usr/local/lib/systemd/system/dockstation-gateway-uart@.service" \
     "$ROOT/usr/local/share/dockstation/gateway.conf.example"; do
-    [[ -f "$expected_file" ]] || fail "Bundle file missing: $expected_file"
+    [[ -f "$expected_file" && ! -L "$expected_file" ]] ||
+        fail "Bundle file missing or not a regular file: $expected_file"
 done
 
 info "SHA-256 checksums match; archive paths and link types are accepted."
