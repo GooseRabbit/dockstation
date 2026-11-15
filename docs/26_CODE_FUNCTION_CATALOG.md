@@ -1032,3 +1032,18 @@ Optional RuntimeConfig keys: controller_uart_device, controller_local_id, contro
 | StationEventPipelineResult | Сохраняет точный SourceSessionCoordinatorStatus; содержит EventHandlingResult только если F13 был запущен. |
 
 Проверка: verification/regression/test_station_event_pipeline.cpp; CTest — station_event_pipeline. Тесты используют fake-порты и подтверждают блокировку F13 при отказе/ошибке сессии, конфликте регистрации и несовпадении старого source_instance.
+
+
+### src/platform/persistence/sqlite_database.hpp/.cpp
+
+| Функция / тип | Назначение |
+|---|---|
+| SqliteDatabaseStatus / SqliteDatabaseResult | Различают Ready, некорректный путь/timeout, ошибку открытия/PRAGMA, чужой application_id, неподдерживаемую или некорректную версию схемы, ошибку миграции и отказ закрытия активного соединения. |
+| SqliteDatabase::open() | Принимает абсолютный нормализованный путь и busy timeout; открывает с READWRITE/CREATE/FULLMUTEX/NOFOLLOW; до изменения journal mode проверяет application_id/user_version и неизвестные schema objects. |
+| SqliteDatabase::close() | Возвращает false и сохраняет handle, если SQLite отказывается закрыть соединение из-за незавершённых statements; успешное закрытие подтверждается отдельно. Копирование/move отключены. |
+| SqliteDatabase::native_handle() | Доступен только Linux persistence adapters; core/configuration ports не зависят от SQLite headers или типов. |
+| Initial migration | В одной EXCLUSIVE transaction создаёт schema_migrations, записывает UTC timestamp, application_id DSTN и user_version=1. Другие таблицы не создаются. |
+
+Соединение при каждом открытии устанавливает/проверяет DELETE rollback journal, synchronous=EXTRA, foreign_keys=ON и trusted_schema=OFF. Начальный кандидат предполагает одного сериализованного владельца соединения; WAL не включается. CMake требует SQLite >=3.31 для SQLITE_OPEN_NOFOLLOW. Read-only/commit repository adapters SSM/CFG, systemd StateDirectory, backup/restore, migration policy дальнейших версий и Gateway wiring не реализованы.
+
+Проверка: verification/repka_gateway/test_sqlite_persistence_probe.cpp, CTest sqlite_persistence_probe. GitHub Actions run 43699555707 SUCCESS: 23/23 CTest с ASan/UBSan, 31/31 C++ host-программ и 141 pytest. Probe проверяет transaction atomicity, ROLLBACK/COMMIT, close/reopen, hot-journal recovery после process exit, integrity_check, конкурирующего writer, symlink/foreign DB safety. Это host test, не внезапное отключение питания и не физическая Repka acceptance. Решение о выборе SQLite ещё не утверждено (DEC-068).
