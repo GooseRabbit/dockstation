@@ -3,3 +3,10 @@
 api_port=8080
 log_level=info
 log_stderr=true
+
+# Optional Repka<->ESP32 controller link. Keep all three settings commented
+# until the exact UART device and both controller protocol IDs are known.
+# Credentials are provisioned separately at /etc/dockstation/credentials/repka-esp32.psk.
+# controller_uart_device=/dev/serial0
+# controller_local_id=repka-01
+# controller_peer_id=esp32-01
