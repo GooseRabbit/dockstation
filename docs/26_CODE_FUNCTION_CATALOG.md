@@ -936,7 +936,7 @@ Wire v1: magic `DS`, wire version 1, тип сообщения 1…6, uint16 lit
 | `write_application_data()` / `read_application_data()` | Обменивается TLS application data только после полного handshake и проверки фиксированного TLS-профиля. |
 | `verify_negotiated_profile()` | Пропускает только TLS 1.3, TLS_AES_128_GCM_SHA256, группу P-256 и выбранную external-PSK сессию; сертификатный fallback/PSK-only не являются допустимой заменой. |
 
-Host-проверка: `verification/repka_gateway/test_controller_psk_tls_client.cpp`; CTest — `controller_psk_tls_client`. 13 проверок используют OpenSSL TLS peer и BIO transport pairs. Это проверка TLS state machine на host, а не эмуляция UART/ESP32 и не межстековая проверка с Mbed TLS. Адаптер не подключён к текущему C++ Gateway runtime до появления controller transport manager; физический UART, Mbed TLS firmware, secure provisioning/storage и аппаратная приёмка остаются открытыми.
+Host-проверка: `verification/repka_gateway/test_controller_psk_tls_client.cpp`; CTest — `controller_psk_tls_client`. 13 проверок используют OpenSSL TLS peer и BIO transport pairs. Это проверка TLS state machine на host, а не эмуляция ESP32 и не межстековая проверка с Mbed TLS. TLS client используется через ControllerTransportManager, а общую service/Gateway композицию выполняет ControllerLinkService; текущие интеграционные изменения ещё ожидают полного CI. Физический UART, Mbed TLS firmware, paired provisioning и аппаратная приёмка остаются открытыми.
 
 ### src/platform/linux/controller_uart_port.hpp/.cpp
 
