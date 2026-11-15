@@ -176,7 +176,30 @@ bash repka/verify_arm64_bundle.sh dockstation-repka-pi5-arm64.tar.gz
 совместимость runtime libraries; bundle не включает системные библиотеки и не
 пытается их обновлять.
 
-### Установка целевого C++ Gateway одной командой
+### Установка готового ARM64 bundle без компилятора
+
+Скачайте из GitHub Actions artifact архив `dockstation-repka-pi5-arm64.tar.gz`
+и sidecar `.sha256` в один каталог. Из корня checkout DockStation выполните:
+
+```sh
+sudo bash repka/install_gateway.sh --bundle ./dockstation-repka-pi5-arm64.tar.gz
+```
+
+В этом режиме используется runtime-only preflight: требуются 64-битная ARM64,
+systemd, `ldd`, `tar`, `sha256sum` и стандартные инструменты системной установки.
+CMake, C++ compiler, pkg-config и OpenSSL development headers на плате не нужны.
+Установщик проверяет внешнюю sidecar SHA-256, затем внутренние SHA-256, manifest,
+допустимый состав и пути архива, отсутствие symlink/hardlink и фактические runtime
+библиотеки через `ldd` непосредственно на целевой ОС. Если обязательной runtime
+библиотеки не хватает, установка останавливается до копирования файлов.
+
+Bundle не включает системные библиотеки и не обновляет ОС. Установщик не запускает
+`apt`, `apt upgrade` или `do-release-upgrade`, не меняет boot, Device Tree,
+pinmux или права устройств. Если отсутствует, например, `libssl.so.3`, сначала
+нужно подтвердить у производителя поддерживаемый способ получения библиотеки;
+автоматическая установка или обновление пакетов намеренно не выполняется.
+
+
 
 После checkout репозитория и read-only preflight установку на целевую ARM64 Repka OS
 можно выполнить так:

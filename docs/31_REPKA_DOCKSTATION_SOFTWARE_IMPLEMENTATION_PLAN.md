@@ -1,7 +1,7 @@
 # Полный план реализации программного комплекса DockStation на Repka Pi 5
 
 **Статус:** мастер-план реализации; последовательность разработки согласована, открытые платформенные, сетевые, серверные и аппаратные детали требуют отдельной проверки и решения.  
-**Редакция:** 1.78.  
+**Редакция:** 1.79.  
 **Дата:** 2026-11-15.  
 **Вычислительная платформа:** Repka Pi 5.  
 **Предполагаемая ОС:** официальная Repka OS; образ и версия проверяются перед развёртыванием.
@@ -1216,6 +1216,10 @@ SQLite остаётся кандидатом, не решением. Сравн�
 | 1.77 | 2026-11-15 | Установщик `repka/install_gateway.sh` прошёл GitHub Actions run 43732075272 SUCCESS. На x64 и ARM64: builds, 23/23 CTest и systemd deployment package verification; на x64 также 31 host-программа и 141 pytest. Новый staging acceptance подтвердил повторную установку с сохранением пользовательской конфигурации, сборку без SQLite discovery и отсутствие package manager/systemd/accounts host mutations в staging mode. CI не выполнял реальную установку через systemd manager на Repka OS; аппаратный и target OS acceptance остаются открытыми. |
 
 | 1.78 | 2026-11-15 | Добавлена сборка и публикация готового `dockstation-repka-pi5-arm64.tar.gz` из нативного Ubuntu 24.04 ARM64 CI runner: Release Gateway-only без SQLite, бинарные файлы/оба systemd unit/config example, manifest и runtime dependency report. Проверка архива ограничивает список файлов и запрещает symlink/hardlink, проверяет SHA256, AArch64 ELF и разрешение зависимостей через ldd. Артефакт загружается через upload-artifact (30 дней) с checksum sidecar и ссылкой в GitHub Actions Summary. Это снимает необходимость CMake/compiler/OpenSSL development headers на целевой плате только при наличии bundle, но не гарантирует совпадение runtime libraries с официальной Repka OS; target runtime acceptance остаётся отдельным шагом. |
+
+**Runtime-only ARM64 bundle deployment:** `repka/install_gateway.sh --bundle` использует отдельный preflight без CMake/compiler/OpenSSL headers, сверяет внешнюю и внутреннюю SHA-256, проверяет manifest, allow-list путей и отсутствие symlink/hardlink в архиве, затем проверяет фактические dynamic dependencies через `ldd` на целевой системе. Установка bundle не запускает CMake. Отсутствующие runtime libraries не устанавливаются автоматически; source-build mode сохранён как fallback.
+
+| 1.79 | 2026-11-15 | Подтверждён и добавлен в рабочую ветку runtime-only режим `repka/install_gateway.sh --bundle`: установка Release ARM64 bundle без CMake/compiler/OpenSSL dev headers; отдельный `check_target_runtime.sh`; проверка внешней/внутренней SHA-256, manifest, allow-list файлов, отсутствия symlink/hardlink и `ldd` runtime dependencies. Добавлены staging-тесты bundle/source modes, сохранения операторской конфигурации и отказа при tampered internal SHA. Source-build fallback сохранён; CI и целевая Repka OS acceptance ожидают выполнения нового прогона. |
 
 **Ограничение:** это план. Функции не считаются реализованными до появления кода, проверок и, где требуется, аппаратных испытаний.
 
