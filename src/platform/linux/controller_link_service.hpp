@@ -92,7 +92,6 @@ private:
     std::array<char, 32U> local_instance_id_{};
     std::array<std::uint8_t,
                hardware::interfaces::kControllerCodecMaximumFrameSize> outbound_frame_{};
-    std::size_t uart_device_path_size_{0U};
     std::size_t local_controller_id_size_{0U};
     std::size_t peer_controller_id_size_{0U};
     std::size_t outbound_frame_size_{0U};
