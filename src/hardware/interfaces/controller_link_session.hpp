@@ -39,6 +39,7 @@ enum class ControllerLinkSessionEvent : std::uint8_t {
     None,
     HelloRequired,
     HeartbeatDue,
+    SnapshotRequestReady,
     SessionEstablished,
     PeerHeartbeatReceived,
     PeerMessageReceived,
@@ -93,6 +94,11 @@ public:
     // Starts/restarts the host-initiated HELLO exchange. Sequence numbers
     // remain monotonic for the lifetime of this object, including retries.
     [[nodiscard]] ControllerLinkSessionResult start(
+        std::uint64_t now_ms, std::string_view sent_at) noexcept;
+
+    // Requests one read-only telemetry snapshot after the authenticated
+    // transport has established this logical protocol session.
+    [[nodiscard]] ControllerLinkSessionResult request_snapshot(
         std::uint64_t now_ms, std::string_view sent_at) noexcept;
 
     // Applies handshake/heartbeat deadlines, emits scheduled HEARTBEAT
