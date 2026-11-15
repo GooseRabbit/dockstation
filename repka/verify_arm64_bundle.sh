@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export LC_ALL=C
 
 fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 info() { printf '[INFO] %s\n' "$*"; }
@@ -76,6 +77,33 @@ grep -Fqx 'Bundle format: dockstation-repka-pi5-arm64-v1' "$ROOT/BUNDLE-MANIFEST
     fail "Unsupported bundle format."
 grep -Fqx 'Architecture: aarch64' "$ROOT/BUNDLE-MANIFEST.txt" ||
     fail "Bundle architecture is not aarch64."
+for required_line in \
+    'Build type: Release' \
+    'SQLite persistence: disabled' \
+    'Install prefix: /usr/local' \
+    'ABI ceilings: GLIBC<=2.34, GLIBCXX<=3.4.32, CXXABI<=1.3.9, OPENSSL<=3.0.0'; do
+    grep -Fqx "$required_line" "$ROOT/BUNDLE-MANIFEST.txt" ||
+        fail "Bundle manifest is missing or changes required policy: $required_line"
+done
+SOURCE_COMMIT_VALUE="$(sed -n 's/^Source commit: //p' "$ROOT/BUNDLE-MANIFEST.txt")"
+[[ "$SOURCE_COMMIT_VALUE" =~ ^[[:xdigit:]]{40}$ ]] ||
+    fail "Bundle manifest must contain one 40-hex Git source commit."
+[[ "$(sed -n 's/^Source date epoch: //p' "$ROOT/BUNDLE-MANIFEST.txt")" =~ ^[0-9]+$ ]] ||
+    fail "Bundle manifest must contain a numeric Source date epoch."
+grep -Eq '^Build OS: .+' "$ROOT/BUNDLE-MANIFEST.txt" ||
+    fail "Bundle manifest is missing Build OS."
+grep -Eq '^Build kernel: .+' "$ROOT/BUNDLE-MANIFEST.txt" ||
+    fail "Bundle manifest is missing Build kernel."
+grep -Eq '^Compiler: .+' "$ROOT/BUNDLE-MANIFEST.txt" ||
+    fail "Bundle manifest is missing Compiler."
+grep -Eq '^CMake: .+' "$ROOT/BUNDLE-MANIFEST.txt" ||
+    fail "Bundle manifest is missing CMake."
+grep -Eq '^OpenSSL build version: 3\\.' "$ROOT/BUNDLE-MANIFEST.txt" ||
+    fail "Bundle manifest must record an OpenSSL 3 build version."
+if [[ -n "${DOCKSTATION_EXPECTED_SOURCE_COMMIT:-}" ]]; then
+    [[ "$SOURCE_COMMIT_VALUE" == "$DOCKSTATION_EXPECTED_SOURCE_COMMIT" ]] ||
+        fail "Bundle source commit does not match the CI checkout."
+fi
 # Validate every checksum path before sha256sum is allowed to open it.
 EXPECTED_CHECKSUM_NAMES=(
     ./BUNDLE-MANIFEST.txt
@@ -102,6 +130,62 @@ ACTUAL_NAMES_SORTED="$(printf '%s' "$ACTUAL_CHECKSUM_NAMES" | LC_ALL=C sort)"
 
 (cd "$ROOT" && sha256sum --check --strict SHA256SUMS) ||
     fail "One or more bundle file checksums do not match."
+
+# The dependency report is a stable SONAME inventory, not ldd's ASLR-dependent
+# address/path output. Every listed requirement must still resolve on the target.
+DEPENDENCY_REPORT="$ROOT/RUNTIME-DEPENDENCIES.txt"
+mapfile -t DEPENDENCY_LINES < "$DEPENDENCY_REPORT"
+(( ${#DEPENDENCY_LINES[@]} >= 5 )) ||
+    fail "Runtime dependency report is incomplete."
+[[ "${DEPENDENCY_LINES[0]}" == "# DockStation runtime dependency report v1" ]] ||
+    fail "Unsupported runtime dependency report format."
+GATEWAY_SECTION="### usr/local/bin/dockstation_linux_bootstrap"
+PROVISIONER_SECTION="### usr/local/bin/dockstation-credential-provision"
+CURRENT_SECTION=""
+SEEN_GATEWAY_SECTION=false
+SEEN_PROVISIONER_SECTION=false
+GATEWAY_BUILD_DEPENDENCIES=()
+PROVISIONER_BUILD_DEPENDENCIES=()
+PREVIOUS_DEPENDENCY=""
+for dependency_line in "${DEPENDENCY_LINES[@]:1}"; do
+    case "$dependency_line" in
+        "$GATEWAY_SECTION")
+            [[ "$SEEN_GATEWAY_SECTION" == false && "$SEEN_PROVISIONER_SECTION" == false ]] ||
+                fail "Runtime dependency report has a duplicate or out-of-order Gateway section."
+            SEEN_GATEWAY_SECTION=true
+            CURRENT_SECTION=gateway
+            PREVIOUS_DEPENDENCY=""
+            ;;
+        "$PROVISIONER_SECTION")
+            [[ "$SEEN_GATEWAY_SECTION" == true && "$SEEN_PROVISIONER_SECTION" == false ]] ||
+                fail "Runtime dependency report has a duplicate or out-of-order credential section."
+            (( ${#GATEWAY_BUILD_DEPENDENCIES[@]} > 0 )) ||
+                fail "Gateway runtime dependency list is empty."
+            SEEN_PROVISIONER_SECTION=true
+            CURRENT_SECTION=provisioner
+            PREVIOUS_DEPENDENCY=""
+            ;;
+        *)
+            [[ -n "$CURRENT_SECTION" ]] ||
+                fail "Runtime dependency entry appears before a binary section."
+            [[ "$dependency_line" =~ ^[A-Za-z0-9][A-Za-z0-9_.+-]*$ ]] ||
+                fail "Malformed SONAME in runtime dependency report: $dependency_line"
+            [[ -z "$PREVIOUS_DEPENDENCY" || "$dependency_line" > "$PREVIOUS_DEPENDENCY" ]] ||
+                fail "Runtime dependency SONAMEs must be unique and sorted."
+            PREVIOUS_DEPENDENCY="$dependency_line"
+            if [[ "$CURRENT_SECTION" == gateway ]]; then
+                GATEWAY_BUILD_DEPENDENCIES+=("$dependency_line")
+            else
+                PROVISIONER_BUILD_DEPENDENCIES+=("$dependency_line")
+            fi
+            ;;
+    esac
+done
+[[ "$SEEN_GATEWAY_SECTION" == true && "$SEEN_PROVISIONER_SECTION" == true ]] ||
+    fail "Runtime dependency report must contain both executable sections."
+(( ${#GATEWAY_BUILD_DEPENDENCIES[@]} > 0 && ${#PROVISIONER_BUILD_DEPENDENCIES[@]} > 0 )) ||
+    fail "Runtime dependency report has an empty executable section."
+
 BINARIES=(
     "$ROOT/usr/local/bin/dockstation_linux_bootstrap"
     "$ROOT/usr/local/bin/dockstation-credential-provision"
@@ -154,6 +238,28 @@ for binary in "${BINARIES[@]}"; do
     if grep -Fq 'not found' <<< "$dependency_output"; then
         fail "Unresolved runtime dependency in $binary: $dependency_output"
     fi
+    actual_dependency_names="$(
+        awk '
+            $1 == "linux-vdso.so.1" { next }
+            $2 == "=>" { print $1; next }
+            $1 ~ /^\\// {
+                name = $1
+                sub(/^.*\\//, "", name)
+                print name
+            }
+        ' <<< "$dependency_output" | sort -u
+    )" || fail "Could not parse ldd dependencies for $binary."
+    [[ -n "$actual_dependency_names" ]] ||
+        fail "ldd produced no shared-library SONAMEs for $binary."
+    if [[ "${binary##*/}" == dockstation_linux_bootstrap ]]; then
+        expected_dependency_names=("${GATEWAY_BUILD_DEPENDENCIES[@]}")
+    else
+        expected_dependency_names=("${PROVISIONER_BUILD_DEPENDENCIES[@]}")
+    fi
+    for expected_dependency in "${expected_dependency_names[@]}"; do
+        grep -Fqx -- "$expected_dependency" <<< "$actual_dependency_names" ||
+            fail "$binary is missing a build-recorded runtime SONAME on this target: $expected_dependency"
+    done
 done
 
 for expected_file in \
