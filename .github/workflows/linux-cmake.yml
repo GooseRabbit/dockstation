@@ -279,7 +279,7 @@ jobs:
           test -f "$stage/etc/dockstation/gateway.conf"
           grep -Fqx 'api_port=8080' "$stage/etc/dockstation/gateway.conf"
 
-          printf '%s\\n' 'operator_setting=preserve-me' >> "$stage/etc/dockstation/gateway.conf"
+          printf '%s\n' 'operator_setting=preserve-me' >> "$stage/etc/dockstation/gateway.conf"
           bash repka/install_gateway.sh --bundle "$archive"
           grep -Fqx 'operator_setting=preserve-me' "$stage/etc/dockstation/gateway.conf"
 
