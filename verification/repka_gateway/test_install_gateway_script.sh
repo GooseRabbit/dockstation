@@ -78,6 +78,8 @@ export DOCKSTATION_INSTALL_ROOT="$STAGE_SOURCE"
 export DOCKSTATION_BUILD_DIR="$TMP/build"
 export DOCKSTATION_BUILD_JOBS=2
 export DOCKSTATION_TEST_LOG="$LOG"
+export DOCKSTATION_REQUIRE_EXACT_RUNTIME_SONAMES=1
+export DOCKSTATION_EXPECTED_SOURCE_COMMIT=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 
 # Source installation staging remains the development fallback.
 bash "$INSTALLER"
@@ -99,8 +101,26 @@ done
 printf '[Service]\nPrivateDevices=true\n' > "$BROOT/usr/local/lib/systemd/system/dockstation-gateway.service"
 printf '[Service]\nPrivateDevices=false\nDevicePolicy=closed\nDeviceAllow=/dev/%%i rw\n' > "$BROOT/usr/local/lib/systemd/system/dockstation-gateway-uart@.service"
 printf 'api_port=8080\nlog_stderr=true\n' > "$BROOT/usr/local/share/dockstation/gateway.conf.example"
-printf '%s\n' 'Bundle format: dockstation-repka-pi5-arm64-v1' 'Architecture: aarch64' 'Source commit: test' > "$BROOT/BUNDLE-MANIFEST.txt"
-printf '%s\n' 'libssl.so.3 => /lib/aarch64-linux-gnu/libssl.so.3' > "$BROOT/RUNTIME-DEPENDENCIES.txt"
+printf '%s\n' \
+    'Bundle format: dockstation-repka-pi5-arm64-v1' \
+    'Architecture: aarch64' \
+    'Build OS: Synthetic test OS' \
+    'Build kernel: test-kernel' \
+    'Compiler: c++ synthetic' \
+    'CMake: cmake version 3.30.0' \
+    'OpenSSL build version: 3.0.0' \
+    'Source commit: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' \
+    'Source date epoch: 1794760000' \
+    'Build type: Release' \
+    'SQLite persistence: disabled' \
+    'Install prefix: /usr/local' \
+    'ABI ceilings: GLIBC<=2.34, GLIBCXX<=3.4.32, CXXABI<=1.3.9, OPENSSL<=3.0.0' \
+    > "$BROOT/BUNDLE-MANIFEST.txt"
+{
+    printf '%s\n' '# DockStation runtime dependency report v1'
+    printf '%s\n' '### usr/local/bin/dockstation_linux_bootstrap' 'libssl.so.3'
+    printf '%s\n' '### usr/local/bin/dockstation-credential-provision' 'libssl.so.3'
+} > "$BROOT/RUNTIME-DEPENDENCIES.txt"
 (
     cd "$BROOT"
     find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
