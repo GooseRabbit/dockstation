@@ -3,13 +3,15 @@
 #include <string>
 
 #include "platform/linux/controller_link_service.hpp"
+#include "platform/linux/platform_capabilities.hpp"
 
 namespace dockstation::communications {
 
 [[nodiscard]] std::string json_escape(const std::string& value);
 [[nodiscard]] std::string serialize_health_response();
 [[nodiscard]] std::string serialize_system_diagnostics(
-    const platform::linux_platform::ControllerLinkServiceStatus* controller_link_status = nullptr);
+    const platform::linux_platform::ControllerLinkServiceStatus* controller_link_status = nullptr,
+    const platform::linux_runtime::LinuxPlatformCapabilities* platform_capabilities = nullptr);
 [[nodiscard]] std::string serialize_controller_link_status(
     const platform::linux_platform::ControllerLinkServiceStatus& status);
 [[nodiscard]] std::string serialize_error_response(

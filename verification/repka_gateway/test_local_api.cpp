@@ -1,9 +1,11 @@
 #include "communications/api_serialization.hpp"
 #include "communications/local_api_server.hpp"
+#include "platform/linux/platform_capabilities.hpp"
 
 #include <arpa/inet.h>
 #include <cassert>
 #include <cstddef>
+#include <cstdio>
 #include <iostream>
 #include <netinet/in.h>
 #include <string>
@@ -48,6 +50,9 @@ void test_diagnostics_serialization() {
     assert(payload.find("\"read_only\":true") != std::string::npos);
     assert(payload.find("\"hardware_controller_connected\":false") !=
            std::string::npos);
+    assert(payload.find("\"capabilities\":{") != std::string::npos);
+    assert(payload.find("\"interfaces\":{") != std::string::npos);
+    assert(payload.find("\"candidate_only\":true") != std::string::npos);
 
     dockstation::platform::linux_platform::ControllerLinkServiceStatus connected{};
     connected.state =
@@ -63,6 +68,54 @@ void test_diagnostics_serialization() {
     assert(payload.find(":nan") == std::string::npos);
     assert(payload.find(":inf") == std::string::npos);
     assert(payload.find(":-inf") == std::string::npos);
+}
+
+
+void test_platform_capability_serialization() {
+    using dockstation::platform::linux_runtime::LinuxPlatformCapabilities;
+    using dockstation::platform::linux_runtime::LinuxPlatformKind;
+    using dockstation::platform::linux_runtime::PlatformCapabilityStatus;
+    LinuxPlatformCapabilities capabilities{};
+    capabilities.platform_kind = LinuxPlatformKind::RepkaPi5;
+    capabilities.device_tree_model_available = true;
+    capabilities.device_tree_compatible_available = true;
+    capabilities.kernel_cmdline_available = true;
+    (void)std::snprintf(capabilities.device_tree_model.data(),
+                        capabilities.device_tree_model.size(), "%s", "Repka Pi 5");
+    (void)std::snprintf(capabilities.device_tree_compatible.data(),
+                        capabilities.device_tree_compatible.size(), "%s",
+                        "repka,repka-pi5;rockchip,rk3588");
+    capabilities.uart.status = PlatformCapabilityStatus::Available;
+    capabilities.uart.device_node_count = 2U;
+    capabilities.uart.accessible_device_count = 1U;
+    capabilities.uart.sysfs_controller_count = 2U;
+    capabilities.uart.kernel_console_conflict_count = 1U;
+    (void)std::snprintf(capabilities.uart.first_device_path.data(),
+                        capabilities.uart.first_device_path.size(), "%s", "/dev/ttyS0");
+    capabilities.gpio.status = PlatformCapabilityStatus::NotConfigured;
+    capabilities.gpio.sysfs_controller_count = 1U;
+    capabilities.i2c.status = PlatformCapabilityStatus::Unavailable;
+    capabilities.spi.status = PlatformCapabilityStatus::Unknown;
+    capabilities.pwm.status = PlatformCapabilityStatus::Detected;
+    capabilities.pwm.device_node_count = 1U;
+    capabilities.camera.status = PlatformCapabilityStatus::Available;
+    capabilities.camera.device_node_count = 1U;
+    capabilities.camera.accessible_device_count = 1U;
+    const std::string payload =
+        dockstation::communications::serialize_system_diagnostics(nullptr, &capabilities);
+    assert(payload.find("\"profile\":\"REPKA_PI5\"") != std::string::npos);
+    assert(payload.find("\"model\":\"Repka Pi 5\"") != std::string::npos);
+    assert(payload.find("\"compatible\":\"repka,repka-pi5;rockchip,rk3588\"") !=
+           std::string::npos);
+    assert(payload.find("\"status\":\"AVAILABLE\",\"device_nodes\":2") !=
+           std::string::npos);
+    assert(payload.find("\"candidate_device_path\":\"/dev/ttyS0\"") !=
+           std::string::npos);
+    assert(payload.find("\"candidate_only\":true") != std::string::npos);
+    assert(payload.find("\"kernel_console_conflicts\":1") != std::string::npos);
+    assert(payload.find("\"gpio\":{\"status\":\"NOT_CONFIGURED\"") !=
+           std::string::npos);
+    assert(payload.find("\"spi\":{\"status\":\"UNKNOWN\"") != std::string::npos);
 }
 
 void test_routes() {
@@ -183,6 +236,7 @@ void test_loopback_server() {
 int main() {
     test_health_serialization();
     test_diagnostics_serialization();
+    test_platform_capability_serialization();
     test_routes();
     test_request_parser();
     test_loopback_server();

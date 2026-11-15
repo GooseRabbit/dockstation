@@ -10,6 +10,7 @@
 #include <string>
 
 #include "platform/linux/network_diagnostics.hpp"
+#include "platform/linux/platform_capabilities.hpp"
 #include "platform/linux/runtime_environment.hpp"
 #include "platform/linux/system_diagnostics.hpp"
 
@@ -79,11 +80,59 @@ void append_status_message(std::ostringstream& output,
            << "\",\"message\":\"" << json_escape(message) << "\"";
 }
 
+std::string serialize_interface_capability(
+    const platform::linux_runtime::PlatformInterfaceCapability& capability) {
+    const std::string candidate_path = capability.first_device_path[0] == '\0'
+        ? std::string{} : std::string{capability.first_device_path.data()};
+    std::ostringstream output;
+    output << "{\"status\":\""
+           << platform::linux_runtime::platform_capability_status_name(capability.status)
+           << "\",\"device_nodes\":" << capability.device_node_count
+           << ",\"accessible_device_nodes\":" << capability.accessible_device_count
+           << ",\"sysfs_controllers\":" << capability.sysfs_controller_count
+           << ",\"kernel_console_conflicts\":" << capability.kernel_console_conflict_count
+           << ",\"candidate_device_path\":"
+           << optional_string(!candidate_path.empty(), candidate_path)
+           << ",\"candidate_only\":true}";
+    return output.str();
+}
+
+std::string serialize_platform_capabilities(
+    const platform::linux_runtime::LinuxPlatformCapabilities& capabilities) {
+    const std::string model = capabilities.device_tree_model_available
+        ? std::string{capabilities.device_tree_model.data()} : std::string{};
+    const std::string compatible = capabilities.device_tree_compatible_available
+        ? std::string{capabilities.device_tree_compatible.data()} : std::string{};
+    std::ostringstream output;
+    output << "{\"profile\":\""
+           << platform::linux_runtime::platform_kind_name(capabilities.platform_kind)
+           << "\",\"device_tree\":{\"model\":"
+           << optional_string(capabilities.device_tree_model_available, model)
+           << ",\"compatible\":"
+           << optional_string(capabilities.device_tree_compatible_available, compatible)
+           << ",\"model_available\":"
+           << (capabilities.device_tree_model_available ? "true" : "false")
+           << ",\"compatible_available\":"
+           << (capabilities.device_tree_compatible_available ? "true" : "false")
+           << ",\"kernel_cmdline_available\":"
+           << (capabilities.kernel_cmdline_available ? "true" : "false")
+           << "},\"interfaces\":{"
+           << "\"uart\":" << serialize_interface_capability(capabilities.uart)
+           << ",\"gpio\":" << serialize_interface_capability(capabilities.gpio)
+           << ",\"i2c\":" << serialize_interface_capability(capabilities.i2c)
+           << ",\"spi\":" << serialize_interface_capability(capabilities.spi)
+           << ",\"pwm\":" << serialize_interface_capability(capabilities.pwm)
+           << ",\"camera\":" << serialize_interface_capability(capabilities.camera)
+           << "},\"note\":\"Passive discovery only. Device paths are diagnostic candidates, not selected endpoints; no physical I/O, pinmux, driver or permission changes were performed.\"}";
+    return output.str();
+}
+
 std::string serialize_platform(
     const platform::linux_runtime::RuntimeValue& os,
     const platform::linux_runtime::RuntimeValue& kernel,
     const platform::linux_runtime::RuntimeValue& architecture,
-    const platform::linux_diagnostics::SystemDiagnosticsSnapshot& system) {
+    const platform::linux_diagnostics::SystemDiagnosticsSnapshot& system,
+    const platform::linux_runtime::LinuxPlatformCapabilities& capabilities) {
     const bool os_available =
         os.status == platform::linux_runtime::RuntimeValueStatus::Available;
     const bool kernel_available =
@@ -183,7 +232,8 @@ std::string serialize_platform(
            << ",\"total_tasks\":"
            << optional_integer(system.cpu_load.status == DiagnosticValueStatus::Available,
                                system.cpu_load.total_tasks)
-           << "}}}";
+           << "}},\"capabilities\":"
+           << serialize_platform_capabilities(capabilities) << "}";
     return output.str();
 }
 
@@ -309,7 +359,8 @@ std::string serialize_health_response() {
 }
 
 std::string serialize_system_diagnostics(
-    const platform::linux_platform::ControllerLinkServiceStatus* controller_link_status) {
+    const platform::linux_platform::ControllerLinkServiceStatus* controller_link_status,
+    const platform::linux_runtime::LinuxPlatformCapabilities* platform_capabilities) {
     const bool hardware_controller_connected =
         controller_link_status != nullptr &&
         controller_link_status->tls_authenticated &&
@@ -325,6 +376,9 @@ std::string serialize_system_diagnostics(
     const auto architecture = platform::linux_runtime::read_hardware_architecture();
     const auto system = platform::linux_diagnostics::collect_system_diagnostics();
     const auto network = platform::linux_diagnostics::collect_network_diagnostics();
+    const auto detected_capabilities = platform_capabilities == nullptr
+        ? platform::linux_runtime::detect_linux_platform_capabilities()
+        : *platform_capabilities;
 
     const bool base_checks_pass =
         os.status == platform::linux_runtime::RuntimeValueStatus::Available &&
@@ -344,7 +398,8 @@ std::string serialize_system_diagnostics(
                    ? "Linux host diagnostics read; DNS and SSH service checks are not yet implemented"
                    : "One or more Linux host diagnostics are unavailable; DNS and SSH service checks are not yet implemented")
            << "\"},\"platform\":"
-           << serialize_platform(os, kernel, architecture, system)
+           << serialize_platform(os, kernel, architecture, system,
+                                  detected_capabilities)
            << ",\"network\":" << serialize_network(network)
            << ",\"scope\":{\"read_only\":true,"
            << "\"hardware_controller_connected\":"
