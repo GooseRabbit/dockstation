@@ -148,19 +148,7 @@ if [[ "$preflight_status" -eq 1 ]]; then
     warn "Preflight сообщил предупреждения; аппаратный UART автоматически не включается."
 fi
 
-if [[ -n "$BUNDLE" ]]; then
-    [[ -f "$BUNDLE" ]] || fail "ARM64 bundle не найден: $BUNDLE"
-    [[ -f "$BUNDLE.sha256" ]] || fail "Не найден sidecar SHA-256: $BUNDLE.sha256"
-    [[ -x "$BUNDLE_VERIFIER" ]] || fail "Не найден исполняемый verifier: $BUNDLE_VERIFIER"
-    for tool in tar sha256sum mktemp; do
-        command -v "$tool" >/dev/null 2>&1 || fail "Не найдена команда $tool."
-    done
-    (
-        cd "$(dirname -- "$BUNDLE")"
-        sha256sum --check --strict "$(basename -- "$BUNDLE").sha256"
-    ) || fail "Внешняя SHA-256 bundle не совпадает."
-    "$BUNDLE_VERIFIER" "$BUNDLE"
-else
+if [[ -z "$BUNDLE" ]]; then
     command -v "$CMAKE" >/dev/null 2>&1 || fail "Не найдена команда CMake."
 fi
 
@@ -218,10 +206,7 @@ if [[ -z "$STAGE_ROOT" ]]; then
     fi
 fi
 
-BUNDLE_TEMP=""
 if [[ -n "$BUNDLE" ]]; then
-    BUNDLE_TEMP="$(mktemp -d)"
-    trap 'rm -rf "$BUNDLE_TEMP"' EXIT
     # The same immutable snapshot was hashed and passed to the verifier above.
     tar --no-same-owner --no-same-permissions -xzf "$BUNDLE_SNAPSHOT" -C "$BUNDLE_TEMP"
     BUNDLE_PREFIX="$BUNDLE_TEMP$PREFIX"
