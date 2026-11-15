@@ -24,7 +24,7 @@ jobs:
       - name: Install OpenSSL development headers
         run: |
           sudo apt-get update
-          sudo apt-get install -y libssl-dev
+          sudo apt-get install -y libssl-dev libsqlite3-dev
 
       - name: Configure CMake
         run: >-
