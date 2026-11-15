@@ -259,6 +259,30 @@ jobs:
           )
           bash repka/verify_arm64_bundle.sh "$archive"
 
+      - name: Exercise real ARM64 bundle installer in isolated staging
+        env:
+          DOCKSTATION_INSTALL_ROOT: ${{ runner.temp }}/dockstation-arm64/install-stage
+          DOCKSTATION_CMAKE_COMMAND: /bin/false
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/dockstation-arm64/artifacts/dockstation-repka-pi5-arm64.tar.gz"
+          stage="$DOCKSTATION_INSTALL_ROOT"
+
+          # Run the actual runtime preflight, sidecar/internal checksum checks,
+          # archive verifier, native ldd checks and installer copy path on ARM64.
+          bash repka/install_gateway.sh --bundle "$archive"
+
+          test -x "$stage/usr/local/bin/dockstation_linux_bootstrap"
+          test -x "$stage/usr/local/bin/dockstation-credential-provision"
+          test -f "$stage/usr/local/lib/systemd/system/dockstation-gateway.service"
+          test -f "$stage/usr/local/lib/systemd/system/dockstation-gateway-uart@.service"
+          test -f "$stage/etc/dockstation/gateway.conf"
+          grep -Fqx 'api_port=8080' "$stage/etc/dockstation/gateway.conf"
+
+          printf '%s\\n' 'operator_setting=preserve-me' >> "$stage/etc/dockstation/gateway.conf"
+          bash repka/install_gateway.sh --bundle "$archive"
+          grep -Fqx 'operator_setting=preserve-me' "$stage/etc/dockstation/gateway.conf"
+
       - name: Upload ARM64 deployment bundle
         id: upload-arm64-bundle
         uses: actions/upload-artifact@v7

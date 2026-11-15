@@ -196,7 +196,8 @@ if [[ -n "$STAGE_ROOT" ]]; then
     "$INSTALL" -d -m 0750 "$STAGE_ROOT$CONFIG_DIR"
     [[ -e "$STAGE_ROOT$CONFIG_FILE" ]] ||
         "$INSTALL" -m 0640 "$EXAMPLE_FILE" "$STAGE_ROOT$CONFIG_FILE"
-    "$SYSTEMD_ANALYZE" verify "$BASE_FILE" "$UART_FILE"
+    # In staging mode ExecStart paths intentionally do not exist on the host.
+    # Target systemd verification runs after installing files into real /usr/local.
     info "Staging завершён; учётные записи и systemd manager хоста не затрагивались."
     exit 0
 fi

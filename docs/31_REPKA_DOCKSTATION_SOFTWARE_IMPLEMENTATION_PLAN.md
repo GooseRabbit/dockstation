@@ -1,7 +1,7 @@
 # Полный план реализации программного комплекса DockStation на Repka Pi 5
 
 **Статус:** мастер-план реализации; последовательность разработки согласована, открытые платформенные, сетевые, серверные и аппаратные детали требуют отдельной проверки и решения.  
-**Редакция:** 1.79.  
+**Редакция:** 1.80.  
 **Дата:** 2026-11-15.  
 **Вычислительная платформа:** Repka Pi 5.  
 **Предполагаемая ОС:** официальная Repka OS; образ и версия проверяются перед развёртыванием.
@@ -1217,9 +1217,11 @@ SQLite остаётся кандидатом, не решением. Сравн�
 
 | 1.78 | 2026-11-15 | Добавлена сборка и публикация готового `dockstation-repka-pi5-arm64.tar.gz` из нативного Ubuntu 24.04 ARM64 CI runner: Release Gateway-only без SQLite, бинарные файлы/оба systemd unit/config example, manifest и runtime dependency report. Проверка архива ограничивает список файлов и запрещает symlink/hardlink, проверяет SHA256, AArch64 ELF и разрешение зависимостей через ldd. Артефакт загружается через upload-artifact (30 дней) с checksum sidecar и ссылкой в GitHub Actions Summary. Это снимает необходимость CMake/compiler/OpenSSL development headers на целевой плате только при наличии bundle, но не гарантирует совпадение runtime libraries с официальной Repka OS; target runtime acceptance остаётся отдельным шагом. |
 
-**Runtime-only ARM64 bundle deployment:** `repka/install_gateway.sh --bundle` использует отдельный preflight без CMake/compiler/OpenSSL headers, сверяет внешнюю и внутреннюю SHA-256, проверяет manifest, allow-list путей и отсутствие symlink/hardlink в архиве, затем проверяет фактические dynamic dependencies через `ldd` на целевой системе. Установка bundle не запускает CMake. Отсутствующие runtime libraries не устанавливаются автоматически; source-build mode сохранён как fallback.
+**Runtime-only ARM64 bundle deployment:** `repka/install_gateway.sh --bundle` использует отдельный preflight без CMake/compiler/OpenSSL headers, сверяет внешнюю и внутреннюю SHA-256, проверяет manifest, allow-list путей и отсутствие symlink/hardlink в архиве, затем проверяет фактические dynamic dependencies через `ldd` на целевой системе. Установка bundle не запускает CMake. Отсутствующие runtime libraries не устанавливаются автоматически; source-build mode сохранён как fallback. Нативный ARM64 CI устанавливает реальный свежесобранный bundle в isolated staging, включая sidecar, archive verification и повторную установку с сохранением конфигурации; systemd manager/users staging-хоста не затрагиваются.
 
 | 1.79 | 2026-11-15 | Подтверждён и добавлен в рабочую ветку runtime-only режим `repka/install_gateway.sh --bundle`: установка Release ARM64 bundle без CMake/compiler/OpenSSL dev headers; отдельный `check_target_runtime.sh`; проверка внешней/внутренней SHA-256, manifest, allow-list файлов, отсутствия symlink/hardlink и `ldd` runtime dependencies. Добавлены staging-тесты bundle/source modes, сохранения операторской конфигурации и отказа при tampered internal SHA. Source-build fallback сохранён; CI и целевая Repka OS acceptance ожидают выполнения нового прогона. |
+
+| 1.80 | 2026-11-15 | Усилен acceptance готового ARM64 bundle: на нативном ARM64 runner выполняется сам `repka/install_gateway.sh --bundle` с реальным свежесобранным архивом и runtime preflight/sidecar/internal SHA/`ldd`; копируются бинарные файлы, оба unit и конфигурация, затем повторная установка обязана сохранить операторский параметр. Staging не запускает systemd manager и не проверяет абсолютный ExecStart против host-root; фактический `systemd-analyze verify` выполняется на целевой системе после настоящей установки. Preliminary ABI audit bundle commit e2cbf67: максимум `GLIBC_2.34`, `GLIBCXX_3.4.32`, `OPENSSL_3.0.0`; официальный Repka OS 5 v1.0.6 заявляет Ubuntu 25.10/kernel 6.1.115.1. Upstream Ubuntu 25.10 заявляет glibc 2.42, GCC 15.2 и OpenSSL 3.5.3, то есть системный baseline выглядит совместимым; точный пакетный состав Repka и запуск на плате ещё не подтверждены. |
 
 **Ограничение:** это план. Функции не считаются реализованными до появления кода, проверок и, где требуется, аппаратных испытаний.
 
