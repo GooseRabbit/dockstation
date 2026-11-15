@@ -56,6 +56,39 @@ constexpr char kHexDigits[] = "0123456789abcdef";
             static_cast<std::size_t>(converted.ptr - storage.data())};
 }
 
+[[nodiscard]] bool valid_controller_uart_path(std::string_view path) noexcept {
+    if (path.size() < 6U || path.size() > 255U ||
+        path.substr(0U, 5U) != "/dev/" ||
+        path.find(static_cast<char>(0)) != std::string_view::npos ||
+        path.back() == '/') {
+        return false;
+    }
+
+    std::size_t offset = 5U;
+    while (offset < path.size()) {
+        const std::size_t separator = path.find('/', offset);
+        const std::size_t end = separator == std::string_view::npos
+            ? path.size() : separator;
+        const std::string_view component = path.substr(offset, end - offset);
+        if (component.empty() || component == "." || component == "..") {
+            return false;
+        }
+        for (const unsigned char ch : component) {
+            const bool alpha = (ch >= 'A' && ch <= 'Z') ||
+                               (ch >= 'a' && ch <= 'z');
+            const bool digit = ch >= '0' && ch <= '9';
+            if (!alpha && !digit && ch != '_' && ch != '-' && ch != '.') {
+                return false;
+            }
+        }
+        if (separator == std::string_view::npos) {
+            break;
+        }
+        offset = separator + 1U;
+    }
+    return true;
+}
+
 [[nodiscard]] bool copy_wire_identifier(
     std::array<char,
         hardware::interfaces::kControllerLinkSessionMaximumIdentifierBytes>& target,
@@ -314,10 +347,8 @@ ControllerLinkServiceStatus ControllerLinkService::status() const noexcept {
 
 bool ControllerLinkService::copy_configuration(
     const ControllerLinkServiceConfig& config) noexcept {
-    if (config.uart_device_path.size() < 6U ||
-        config.uart_device_path.size() >= uart_device_path_.size() ||
-        config.uart_device_path.substr(0U, 5U) != "/dev/" ||
-        config.uart_device_path.find('\0') != std::string_view::npos) {
+    if (!valid_controller_uart_path(config.uart_device_path) ||
+        config.uart_device_path.size() >= uart_device_path_.size()) {
         return false;
     }
     std::copy(config.uart_device_path.begin(), config.uart_device_path.end(),
