@@ -158,6 +158,37 @@ int main() {
                session.state() == ControllerLinkSessionState::Established,
            "establishes the protocol session after a codec-decoded HELLO_ACK");
 
+    expect(session.request_snapshot(199U, "time").status ==
+               ControllerLinkSessionStatus::InvalidState,
+           "does not allow a snapshot request before HELLO_ACK establishes the session");
+
+    result = session.request_snapshot(200U, "");
+    expect(result.status == ControllerLinkSessionStatus::InvalidTimestamp &&
+               !result.has_outbound_message,
+           "rejects a snapshot request without a valid timestamp");
+
+    result = session.request_snapshot(200U, "2026-11-14T19:00:00Z");
+    expect(result.status == ControllerLinkSessionStatus::Success &&
+               result.event == ControllerLinkSessionEvent::SnapshotRequestReady &&
+               result.has_outbound_message &&
+               result.outbound_message.type == ControllerMessageType::RequestSnapshot &&
+               result.outbound_message.sequence_number == 2U,
+           "emits a sequenced read-only snapshot request after HELLO_ACK");
+    const auto snapshot_request_encode = encode_controller_message(
+        result.outbound_message,
+        ControllerMessagePayload{EmptyControllerMessagePayload{}},
+        outbound_frame.data(), outbound_frame.size());
+    ControllerCodecDecodeStorage snapshot_request_storage{};
+    ControllerCodecDecodedMessage snapshot_request_decoded{};
+    const auto snapshot_request_decode = decode_controller_message(
+        outbound_frame.data(), snapshot_request_encode.frame_size,
+        snapshot_request_storage, snapshot_request_decoded);
+    expect(snapshot_request_encode.status == ControllerCodecStatus::Success &&
+               snapshot_request_decode.status == ControllerCodecStatus::Success &&
+               snapshot_request_decoded.envelope.type ==
+                   ControllerMessageType::RequestSnapshot,
+           "snapshot request round-trips through the production codec");
+
     result = session.handle_message(
         make_message(ControllerMessageType::Heartbeat, "esp32-01",
                      "esp32-boot-01", 1U), 300U);
@@ -186,7 +217,7 @@ int main() {
                result.event == ControllerLinkSessionEvent::HeartbeatDue &&
                result.has_outbound_message &&
                result.outbound_message.type == ControllerMessageType::Heartbeat &&
-               result.outbound_message.sequence_number == 2U,
+               result.outbound_message.sequence_number == 3U,
            "emits the next monotonic local HEARTBEAT when due");
 
     // An accepted telemetry packet is valid peer activity and advances the
@@ -231,7 +262,7 @@ int main() {
     expect(result.status == ControllerLinkSessionStatus::Success &&
                result.event == ControllerLinkSessionEvent::HelloRequired &&
                result.outbound_message.type == ControllerMessageType::Hello &&
-               result.outbound_message.sequence_number == 4U &&
+               result.outbound_message.sequence_number == 5U &&
                session.state() == ControllerLinkSessionState::AwaitingHelloAck,
            "automatically retries HELLO with a higher local sequence");
 
@@ -244,7 +275,7 @@ int main() {
     result = session.poll(12799U, "2026-11-14T19:00:12Z");
     expect(result.status == ControllerLinkSessionStatus::Success &&
                result.event == ControllerLinkSessionEvent::HeartbeatDue &&
-               result.outbound_message.sequence_number == 5U,
+               result.outbound_message.sequence_number == 6U,
            "sends the next heartbeat while the peer activity timeout has not elapsed");
 
     result = session.poll(12800U, "time");
@@ -259,7 +290,7 @@ int main() {
 
     result = session.poll(13800U, "2026-11-14T19:00:13Z");
     expect(result.status == ControllerLinkSessionStatus::Success &&
-               result.outbound_message.sequence_number == 6U &&
+               result.outbound_message.sequence_number == 7U &&
                result.outbound_message.type == ControllerMessageType::Hello,
            "restarts HELLO with a monotonic sequence after peer timeout");
 
@@ -275,7 +306,7 @@ int main() {
            "stop returns the state machine to Stopped");
     result = session.start(14000U, "time");
     expect(result.status == ControllerLinkSessionStatus::Success &&
-               result.outbound_message.sequence_number == 7U,
+               result.outbound_message.sequence_number == 8U,
            "stop/start does not reset the local sequence counter");
 
     session.stop();
