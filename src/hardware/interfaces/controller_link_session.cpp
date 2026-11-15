@@ -98,6 +98,21 @@ ControllerLinkSessionResult ControllerLinkSession::start(
                          now_ms, sent_at);
 }
 
+ControllerLinkSessionResult ControllerLinkSession::request_snapshot(
+    std::uint64_t now_ms, std::string_view sent_at) noexcept {
+    if (!configured_) {
+        return make_result(ControllerLinkSessionStatus::InvalidConfiguration,
+                           ControllerLinkSessionEvent::None);
+    }
+    if (state_ != ControllerLinkSessionState::Established) {
+        return make_result(ControllerLinkSessionStatus::InvalidState,
+                           ControllerLinkSessionEvent::None);
+    }
+    return make_outbound(ControllerMessageType::RequestSnapshot,
+                         ControllerLinkSessionEvent::SnapshotRequestReady,
+                         now_ms, sent_at);
+}
+
 ControllerLinkSessionResult ControllerLinkSession::poll(
     std::uint64_t now_ms, std::string_view sent_at) noexcept {
     if (!configured_) {
