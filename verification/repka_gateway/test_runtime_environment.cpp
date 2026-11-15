@@ -2,6 +2,7 @@
 #include <iostream>
 
 #include "platform/linux/runtime_environment.hpp"
+#include "platform/linux/system_diagnostics.hpp"
 
 using namespace dockstation::platform::linux_runtime;
 
@@ -40,6 +41,12 @@ int main() {
     expect(dependencies.uname_available, "uname dependency is available");
     expect(dependencies.proc_uptime_available, "/proc/uptime is readable");
     expect(dependencies.proc_memory_available, "/proc/meminfo is readable");
+    const auto cpu_temperature =
+        dockstation::platform::linux_diagnostics::read_cpu_temperature();
+    expect(dependencies.thermal_sensor_available ==
+               (cpu_temperature.status ==
+                dockstation::platform::linux_diagnostics::DiagnosticValueStatus::Available),
+           "runtime environment and published CPU temperature use the same sensor policy");
     const RuntimeDependencyStatus expected_status =
         !dependencies.uname_available
             ? RuntimeDependencyStatus::Unavailable

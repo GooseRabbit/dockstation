@@ -1,5 +1,7 @@
 #include "platform/linux/runtime_environment.hpp"
 
+#include "platform/linux/system_diagnostics.hpp"
+
 #include <fstream>
 #include <string_view>
 #include <sys/utsname.h>
@@ -11,8 +13,6 @@ namespace {
 constexpr std::string_view kOsReleasePath{"/etc/os-release"};
 constexpr std::string_view kProcUptimePath{"/proc/uptime"};
 constexpr std::string_view kProcMemoryPath{"/proc/meminfo"};
-constexpr std::string_view kThermalSensorPath{
-    "/sys/class/thermal/thermal_zone0/temp"};
 
 std::string trim(std::string value) {
     const auto first = value.find_first_not_of(" \t\r\n");
@@ -154,7 +154,11 @@ RuntimeDependencyReport check_runtime_dependencies() {
     report.proc_uptime_available = can_read_first_line(kProcUptimePath);
     report.proc_memory_available = can_read_first_line(kProcMemoryPath);
     report.os_release_available = can_read_first_line(kOsReleasePath);
-    report.thermal_sensor_available = can_read_first_line(kThermalSensorPath);
+    // Use the same sensor selection and validation as the published diagnostics.
+    // Repka/device-tree layouts may expose the CPU/SoC sensor outside thermal_zone0.
+    report.thermal_sensor_available =
+        linux_diagnostics::read_cpu_temperature().status ==
+        linux_diagnostics::DiagnosticValueStatus::Available;
 
     if (!report.uname_available) {
         report.status = RuntimeDependencyStatus::Unavailable;

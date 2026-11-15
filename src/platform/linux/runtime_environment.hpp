@@ -31,6 +31,7 @@ struct RuntimeDependencyReport {
     bool proc_uptime_available{false};
     bool proc_memory_available{false};
     bool os_release_available{false};
+    // True only when the canonical CPU/SoC/package diagnostic can read a valid sensor.
     bool thermal_sensor_available{false};
 };
 
