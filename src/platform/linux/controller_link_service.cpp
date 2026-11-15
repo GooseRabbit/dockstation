@@ -191,8 +191,7 @@ void ControllerLinkService::poll() noexcept {
     }
 
     if (!tls_authenticated_ && transport_.is_handshake_complete()) {
-        const auto timestamp_storage = std::array<char, 32U>{};
-        auto timestamp_buffer = timestamp_storage;
+        std::array<char, 32U> timestamp_buffer{};
         const std::string_view sent_at = make_timestamp(timestamp_buffer);
         if (!begin_protocol_session(now_ms, sent_at)) {
             fail_transport("CONTROLLER_PROTOCOL_START_FAILED", now_ms);
