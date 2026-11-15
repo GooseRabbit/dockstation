@@ -274,7 +274,10 @@ bool SqliteDatabase::close() noexcept {
 
     const int status = sqlite3_close(database_);
     if (status != SQLITE_OK) {
-        last_sqlite_status_ = sqlite3_extended_errcode(database_);
+        // sqlite3_close() returns SQLITE_BUSY while statements remain alive.
+        // Preserve that exact result; querying a separate extended error code
+        // can report SQLITE_OK even though the close operation was refused.
+        last_sqlite_status_ = status;
         return false;
     }
 
