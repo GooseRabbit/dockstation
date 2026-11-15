@@ -187,9 +187,7 @@ jobs:
 
       - name: Build deployable ARM64 executables
         run: |
-          cmake --build build-release
-            --target dockstation_linux_bootstrap dockstation-credential-provision
-            --parallel 2
+          cmake --build build-release --target dockstation_linux_bootstrap dockstation-credential-provision --parallel 2
           cmake --build build-release --target preinstall --parallel 2
 
       - name: Assemble and verify ARM64 deployment bundle
@@ -213,37 +211,36 @@ jobs:
           for binary in \
             "$package_root/usr/local/bin/dockstation_linux_bootstrap" \
             "$package_root/usr/local/bin/dockstation-credential-provision"; do
-            printf '### %s
-' "${binary#"$package_root"/}" >> "$dependencies"
-            ldd "$binary" | tee -a "$dependencies"
-            if grep -Fq 'not found' "$dependencies"; then
+            printf '%s\n' "### ${binary#"$package_root"/}" >> "$dependencies"
+            dependency_output="$(ldd "$binary")"
+            printf '%s\n' "$dependency_output" | tee -a "$dependencies"
+            if grep -Fq 'not found' <<< "$dependency_output"; then
               echo "ERROR: unresolved runtime dependency in $binary" >&2
               exit 1
             fi
-            printf '
-' >> "$dependencies"
+            printf '\n' >> "$dependencies"
           done
 
           os_pretty_name="$(. /etc/os-release && printf '%s' "$PRETTY_NAME")"
           compiler_version="$(c++ --version | head -n 1)"
           cmake_version="$(cmake --version | head -n 1)"
           openssl_version="$(pkg-config --modversion openssl)"
-          cat > "$package_root/BUNDLE-MANIFEST.txt" <<EOF
-          Bundle format: dockstation-repka-pi5-arm64-v1
-          Architecture: $(uname -m)
-          Build OS: $os_pretty_name
-          Build kernel: $(uname -r)
-          Compiler: $compiler_version
-          CMake: $cmake_version
-          OpenSSL build version: $openssl_version
-          Source commit: $SOURCE_COMMIT
-          Build type: Release
-          SQLite persistence: disabled
-          Install prefix: /usr/local
-          Included: dockstation_linux_bootstrap, dockstation-credential-provision,
-                    dockstation-gateway.service, dockstation-gateway-uart@.service,
-                    gateway.conf.example
-          EOF
+          {
+            printf '%s\n' "Bundle format: dockstation-repka-pi5-arm64-v1"
+            printf '%s\n' "Architecture: $(uname -m)"
+            printf '%s\n' "Build OS: $os_pretty_name"
+            printf '%s\n' "Build kernel: $(uname -r)"
+            printf '%s\n' "Compiler: $compiler_version"
+            printf '%s\n' "CMake: $cmake_version"
+            printf '%s\n' "OpenSSL build version: $openssl_version"
+            printf '%s\n' "Source commit: $SOURCE_COMMIT"
+            printf '%s\n' "Build type: Release"
+            printf '%s\n' "SQLite persistence: disabled"
+            printf '%s\n' "Install prefix: /usr/local"
+            printf '%s\n' "Included: dockstation_linux_bootstrap, dockstation-credential-provision,"
+            printf '%s\n' "          dockstation-gateway.service, dockstation-gateway-uart@.service,"
+            printf '%s\n' "          gateway.conf.example"
+          } > "$package_root/BUNDLE-MANIFEST.txt"
 
           (
             cd "$package_root"
