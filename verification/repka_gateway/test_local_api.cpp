@@ -63,6 +63,13 @@ void test_routes() {
     assert(response.body.find("\"read_only\":true") != std::string::npos);
 
     response = dockstation::communications::dispatch_api_request(
+        HttpRequest{"GET", "/api/v1/controller/link", "HTTP/1.1"});
+    assert(response.status_code == 200U);
+    assert(response.body.find("\"status\":\"NOT_CONFIGURED\"") != std::string::npos);
+    assert(response.body.find("\"state\":\"NOT_CONFIGURED\"") != std::string::npos);
+    assert(response.body.find("\"tls_authenticated\":false") != std::string::npos);
+
+    response = dockstation::communications::dispatch_api_request(
         HttpRequest{"POST", "/api/v1/health", "HTTP/1.1"});
     assert(response.status_code == 405U);
     assert(response.allow == "GET");
