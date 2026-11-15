@@ -1,7 +1,7 @@
 # Испытания и приёмка
 
 **Статус:** предварительный план.  
-**Редакция:** 3.3.
+**Редакция:** 3.4.
 **Дата актуализации:** 2026-11-15.
 
 ## 1. Назначение
@@ -664,5 +664,5 @@ Workflow \`.github/workflows/linux-cmake.yml\`, run [43499328759](https://github
 
 **TEST-HW-008 — физическая линия Repka—ESP32:** после определения точной платы/SoC выполнить target build и обмен по UART 3,3 В, 115200 8N1; измерить handshake latency и peak heap, проверить частичные чтения/записи, потерю/восстановление линии, отказ неверного PSK и отсутствие открытых прикладных данных. Этот критерий не пройден и не может быть закрыт host CI.
 
-**Текущее покрытие:** отдельные host CTest проверяют TLS client, POSIX UART и ControllerTransportManager через PTY/OpenSSL peer. Новый ControllerLinkService test проверяет безопасный NOT_CONFIGURED и fail-closed поведение ошибочной конфигурации; runtime config/parser и LocalApi tests проверяют опциональные настройки и read-only статус. Эти тесты добавлены в кандидатную ветку, но ещё не подтверждены полным CI и не являются доказательством работы ESP32, Mbed TLS или электрической линии. Измерения датчиков пока не публикуются; TEST-SW-138 требует отдельного host/integration покрытия перед закрытием. Privileged credential acceptance остаётся локальной проверкой. ESP32 provisioning, TEST-SW-133 и TEST-HW-008 остаются открытыми.
+**Текущее покрытие:** полный GitHub Actions run 43698392221 завершился SUCCESS для HEAD `71b7ee30b8308243283e9f10c0970d28dc0c4665`: 22/22 CTest с ASan/UBSan, 31/31 C++ host-программ и 141 pytest; также прошли QML/package, Python compileall, Gateway install/systemd/non-root, privileged credential provisioning/store acceptance и shell/network checks. CTest `controller_link_service` проверяет безопасный NOT_CONFIGURED, частичную конфигурацию и ошибочный UART path; runtime config/parser и LocalApi tests проверяют настройки и read-only статус. Это не полный end-to-end обмен `ControllerLinkService` с TLS peer и `TELEMETRY_SNAPSHOT`: TEST-SW-138 пока не закрыт. Наличие CI PASS не доказывает работу ESP32, Mbed TLS или электрической линии. Значения датчиков пока не публикуются. ESP32 provisioning, TEST-SW-133 и TEST-HW-008 остаются открытыми.
 
