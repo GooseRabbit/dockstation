@@ -29,6 +29,53 @@ class FakeResponse:
         return self.payload
 
 
+
+def valid_platform_capabilities():
+    return {
+        "profile": "REPKA_PI5",
+        "device_tree": {
+            "model": "Repka Pi 5",
+            "compatible": "repka,repka-pi5;rockchip,rk3588",
+            "model_available": True,
+            "compatible_available": True,
+            "kernel_cmdline_available": True,
+        },
+        "interfaces": {
+            "uart": {
+                "status": "AVAILABLE", "device_nodes": 2, "accessible_device_nodes": 1,
+                "sysfs_controllers": 2, "kernel_console_conflicts": 1,
+                "candidate_device_path": "/dev/ttyS0", "candidate_only": True,
+            },
+            "gpio": {
+                "status": "NOT_CONFIGURED", "device_nodes": 0, "accessible_device_nodes": 0,
+                "sysfs_controllers": 1, "kernel_console_conflicts": 0,
+                "candidate_device_path": None, "candidate_only": True,
+            },
+            "i2c": {
+                "status": "UNAVAILABLE", "device_nodes": 0, "accessible_device_nodes": 0,
+                "sysfs_controllers": 0, "kernel_console_conflicts": 0,
+                "candidate_device_path": None, "candidate_only": True,
+            },
+            "spi": {
+                "status": "UNKNOWN", "device_nodes": 0, "accessible_device_nodes": 0,
+                "sysfs_controllers": 0, "kernel_console_conflicts": 0,
+                "candidate_device_path": None, "candidate_only": True,
+            },
+            "pwm": {
+                "status": "DETECTED", "device_nodes": 1, "accessible_device_nodes": 0,
+                "sysfs_controllers": 1, "kernel_console_conflicts": 0,
+                "candidate_device_path": "/dev/pwm0", "candidate_only": True,
+            },
+            "camera": {
+                "status": "AVAILABLE", "device_nodes": 1, "accessible_device_nodes": 1,
+                "sysfs_controllers": 1, "kernel_console_conflicts": 0,
+                "candidate_device_path": "/dev/video0", "candidate_only": True,
+            },
+        },
+        "note": "Passive discovery only.",
+    }
+
+
 def valid_diagnostics():
     return {
         "schema_version": "1.0",
@@ -107,6 +154,37 @@ def test_validate_health_response_requires_expected_gateway():
 
 def test_validate_diagnostics_response_accepts_gateway_contract():
     StationApiClient.validate_diagnostics_response(valid_diagnostics())
+
+
+
+
+def test_validate_diagnostics_response_accepts_platform_capabilities():
+    payload = valid_diagnostics()
+    payload["platform"]["capabilities"] = valid_platform_capabilities()
+    StationApiClient.validate_diagnostics_response(payload)
+
+
+def test_validate_diagnostics_response_keeps_compatibility_with_old_snapshot_without_capabilities():
+    payload = valid_diagnostics()
+    assert "capabilities" not in payload["platform"]
+    StationApiClient.validate_diagnostics_response(payload)
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda capabilities: capabilities["interfaces"]["uart"].update(status="READY"),
+        lambda capabilities: capabilities["interfaces"]["uart"].update(candidate_only=False),
+        lambda capabilities: capabilities["interfaces"]["uart"].update(accessible_device_nodes=3),
+        lambda capabilities: capabilities["device_tree"].update(model_available=True, model=None),
+    ],
+)
+def test_validate_diagnostics_response_rejects_invalid_platform_capabilities(mutate):
+    payload = valid_diagnostics()
+    payload["platform"]["capabilities"] = valid_platform_capabilities()
+    mutate(payload["platform"]["capabilities"])
+    with pytest.raises(ApiClientError):
+        StationApiClient.validate_diagnostics_response(payload)
 
 
 def test_validate_diagnostics_response_accepts_older_snapshot_without_resources():

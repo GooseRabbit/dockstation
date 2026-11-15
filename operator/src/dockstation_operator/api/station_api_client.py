@@ -52,6 +52,63 @@ def _require_string_list(value: object, field: str) -> None:
         raise ApiClientError(f"Поле {field} должно быть списком строк.")
 
 
+
+_CAPABILITY_STATUSES = {"AVAILABLE", "DETECTED", "NOT_CONFIGURED", "UNAVAILABLE", "UNKNOWN"}
+_PLATFORM_PROFILES = {"GENERIC_LINUX", "REPKA_PI5", "UNKNOWN"}
+_PLATFORM_INTERFACE_KEYS = ("uart", "gpio", "i2c", "spi", "pwm", "camera")
+
+
+def _validate_platform_capabilities(value: object) -> None:
+    section = _require_object(value, "platform.capabilities")
+    profile = section.get("profile")
+    if not isinstance(profile, str) or profile not in _PLATFORM_PROFILES:
+        raise ApiClientError("Поле platform.capabilities.profile содержит неизвестный профиль.")
+    device_tree = _require_object(section.get("device_tree"), "platform.capabilities.device_tree")
+    for field in ("model", "compatible"):
+        _require_string(device_tree.get(field), f"platform.capabilities.device_tree.{field}", nullable=True)
+    for field in ("model_available", "compatible_available", "kernel_cmdline_available"):
+        if not isinstance(device_tree.get(field), bool):
+            raise ApiClientError(f"Поле platform.capabilities.device_tree.{field} должно быть boolean.")
+    if device_tree["model_available"] != bool(device_tree.get("model")):
+        raise ApiClientError("Доступность Device Tree model не соответствует значению.")
+    if device_tree["compatible_available"] != bool(device_tree.get("compatible")):
+        raise ApiClientError("Доступность Device Tree compatible не соответствует значению.")
+    interfaces = _require_object(section.get("interfaces"), "platform.capabilities.interfaces")
+    max_uint32 = (1 << 32) - 1
+    for key in _PLATFORM_INTERFACE_KEYS:
+        label = f"platform.capabilities.interfaces.{key}"
+        item = _require_object(interfaces.get(key), label)
+        status = item.get("status")
+        if not isinstance(status, str) or status not in _CAPABILITY_STATUSES:
+            raise ApiClientError(f"Поле {label}.status содержит неизвестный статус.")
+        counts: dict[str, int] = {}
+        for field in ("device_nodes", "accessible_device_nodes", "sysfs_controllers", "kernel_console_conflicts"):
+            count = item.get(field)
+            if isinstance(count, bool) or not isinstance(count, int) or not 0 <= count <= max_uint32:
+                raise ApiClientError(f"Поле {label}.{field} должно быть целым числом в диапазоне uint32.")
+            counts[field] = count
+        if counts["accessible_device_nodes"] > counts["device_nodes"]:
+            raise ApiClientError(f"Поле {label}.accessible_device_nodes превышает число найденных устройств.")
+        if counts["kernel_console_conflicts"] > counts["device_nodes"]:
+            raise ApiClientError(f"Поле {label}.kernel_console_conflicts превышает число найденных устройств.")
+        _require_string(item.get("candidate_device_path"), f"{label}.candidate_device_path", nullable=True)
+        if item.get("candidate_only") is not True:
+            raise ApiClientError(f"Поле {label}.candidate_only должно быть true: путь не выбирается автоматически.")
+        if item.get("candidate_device_path") is not None and counts["device_nodes"] == 0:
+            raise ApiClientError(f"Поле {label}.candidate_device_path задано без обнаруженного device node.")
+        if status == "AVAILABLE" and counts["accessible_device_nodes"] == 0:
+            raise ApiClientError(f"Статус {label}.status=AVAILABLE требует доступный device node.")
+        if status == "DETECTED" and (
+            counts["device_nodes"] == 0 or counts["accessible_device_nodes"] != 0
+        ):
+            raise ApiClientError(f"Статус {label}.status=DETECTED противоречит счётчикам устройств.")
+        if status == "NOT_CONFIGURED" and (
+            counts["device_nodes"] != 0 or counts["sysfs_controllers"] == 0
+        ):
+            raise ApiClientError(f"Статус {label}.status=NOT_CONFIGURED противоречит счётчикам устройств.")
+    _require_string(section.get("note"), "platform.capabilities.note")
+
+
 def _validate_status_message(section: dict[str, Any], field: str) -> None:
     _require_status(section.get("status"), f"{field}.status")
     _require_string(section.get("message"), f"{field}.message")
@@ -245,6 +302,9 @@ class StationApiClient:
             raise ApiClientError("Поле summary.exit_code не соответствует итоговому статусу.")
 
         platform = _require_object(payload.get("platform"), "platform")
+        # Capabilities is an additive extension; older VM snapshots remain valid.
+        if "capabilities" in platform:
+            _validate_platform_capabilities(platform.get("capabilities"))
         os_section = _require_object(platform.get("os"), "platform.os")
         _validate_status_message(os_section, "platform.os")
         for key in ("name", "version", "identifier"):
