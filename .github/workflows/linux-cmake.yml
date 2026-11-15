@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - chore/flatten-repka-directories
+      - work/sqlite-persistence-evaluation
   pull_request:
     branches:
       - main
