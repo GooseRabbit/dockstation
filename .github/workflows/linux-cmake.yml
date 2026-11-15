@@ -362,7 +362,10 @@ jobs:
           sidecar="$archive.sha256"
           test -s "$archive"
           test -s "$sidecar"
-          sha256sum --check --strict "$sidecar"
+          (
+            cd "$RUNNER_TEMP/dockstation-arm64/build"
+            sha256sum --check --strict dockstation-repka-pi5-arm64.tar.gz.sha256
+          )
           manifest_commit="$(tar -xOf "$archive" ./BUNDLE-MANIFEST.txt |
             sed -n 's/^Source commit: //p')"
           [[ "$manifest_commit" == "$SOURCE_COMMIT" ]]
