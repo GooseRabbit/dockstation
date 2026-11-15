@@ -48,6 +48,16 @@ void test_diagnostics_serialization() {
     assert(payload.find("\"read_only\":true") != std::string::npos);
     assert(payload.find("\"hardware_controller_connected\":false") !=
            std::string::npos);
+
+    dockstation::platform::linux_platform::ControllerLinkServiceStatus connected{};
+    connected.state =
+        dockstation::platform::linux_platform::ControllerLinkServiceState::Established;
+    connected.tls_authenticated = true;
+    connected.protocol_established = true;
+    const std::string connected_payload =
+        dockstation::communications::serialize_system_diagnostics(&connected);
+    assert(connected_payload.find("\"hardware_controller_connected\":true") !=
+           std::string::npos);
     assert(payload.find("\"physical_sensors_configured\":false") !=
            std::string::npos);
     assert(payload.find(":nan") == std::string::npos);
