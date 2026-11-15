@@ -321,30 +321,161 @@ jobs:
           bash repka/install_gateway.sh --bundle "$archive"
           grep -Fqx 'operator_setting=preserve-me' "$stage/etc/dockstation/gateway.conf"
 
-      - name: Upload ARM64 deployment bundle
-        id: upload-arm64-bundle
+      - name: Upload ARM64 build output for signing job
+        id: upload-arm64-build-bundle
         uses: actions/upload-artifact@v7
         with:
-          name: dockstation-repka-pi5-arm64-${{ github.sha }}
+          name: dockstation-repka-pi5-arm64-build-${{ github.sha }}
           path: |
             ${{ runner.temp }}/dockstation-arm64/artifacts/dockstation-repka-pi5-arm64.tar.gz
             ${{ runner.temp }}/dockstation-arm64/artifacts/dockstation-repka-pi5-arm64.tar.gz.sha256
           if-no-files-found: error
           retention-days: 30
 
-      - name: Publish ARM64 bundle location in workflow summary
+  attest-arm64-bundle:
+    name: Sign and verify ARM64 release bundle
+    needs: arm64-build-and-test
+    # Never grant signing identity to pull-request code. Only the named working
+    # branch may publish a signed distribution artifact.
+    if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/chore/flatten-repka-directories' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      attestations: write
+      contents: read
+      id-token: write
+    steps:
+      - name: Download tested ARM64 build output
+        # actions/download-artifact v7, pinned to its immutable commit.
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: dockstation-repka-pi5-arm64-build-${{ github.sha }}
+          path: ${{ runner.temp }}/dockstation-arm64/build
+
+      - name: Verify build output and embedded source commit
         env:
-          BUNDLE_URL: ${{ steps.upload-arm64-bundle.outputs.artifact-url }}
           SOURCE_COMMIT: ${{ github.sha }}
         run: |
-          bundle_sha256="$(awk '{ print $1 }' "$RUNNER_TEMP/dockstation-arm64/artifacts/dockstation-repka-pi5-arm64.tar.gz.sha256")"
+          set -euo pipefail
+          archive="$RUNNER_TEMP/dockstation-arm64/build/dockstation-repka-pi5-arm64.tar.gz"
+          sidecar="$archive.sha256"
+          test -s "$archive"
+          test -s "$sidecar"
+          sha256sum --check --strict "$sidecar"
+          manifest_commit="$(tar -xOf "$archive" ./BUNDLE-MANIFEST.txt |
+            sed -n 's/^Source commit: //p')"
+          [[ "$manifest_commit" == "$SOURCE_COMMIT" ]]
+
+      - name: Create signed GitHub build provenance
+        id: attest-arm64-bundle
+        # actions/attest v4, pinned to its immutable commit.
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-path: ${{ runner.temp }}/dockstation-arm64/build/dockstation-repka-pi5-arm64.tar.gz
+
+      - name: Download and verify signed provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_COMMIT: ${{ github.sha }}
+          SOURCE_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/dockstation-arm64/build/dockstation-repka-pi5-arm64.tar.gz"
+          signed_dir="$RUNNER_TEMP/dockstation-arm64/signed"
+          provenance_dir="$RUNNER_TEMP/dockstation-arm64/provenance"
+          mkdir -p "$signed_dir" "$provenance_dir"
+
+          # Download the API-published Sigstore bundle so the exact sidecar
+          # shipped to the operator can be verified independently of the API.
+          (
+            cd "$provenance_dir"
+            gh attestation download "$archive" --repo GooseRabbit/dockstation
+          )
+          mapfile -t bundles < <(find "$provenance_dir" -maxdepth 1 -type f -name '*.jsonl' -print)
+          [[ "${#bundles[@]}" -eq 1 ]] || {
+            echo "ERROR: expected exactly one downloaded attestation bundle." >&2
+            exit 1
+          }
+          attestation_bundle="$signed_dir/dockstation-repka-pi5-arm64.tar.gz.attestation.jsonl"
+          cp -- "${bundles[0]}" "$attestation_bundle"
+
+          verify_policy=(
+            --repo GooseRabbit/dockstation
+            --signer-workflow GooseRabbit/dockstation/.github/workflows/linux-cmake.yml
+            --source-ref "$SOURCE_REF"
+            --source-digest "$SOURCE_COMMIT"
+            --deny-self-hosted-runners
+          )
+
+          # Verify against GitHub's repository attestation API first, then
+          # verify the exact JSONL bundle that will be distributed.
+          gh attestation verify "$archive" "${verify_policy[@]}"
+          gh attestation verify "$archive" --bundle "$attestation_bundle" "${verify_policy[@]}"
+
+          # Negative controls: altered bytes, an unexpected workflow identity,
+          # or another source commit must never be accepted.
+          tampered_archive="$RUNNER_TEMP/dockstation-arm64/tampered.tar.gz"
+          cp -- "$archive" "$tampered_archive"
+          printf '%s' 'tampered' >> "$tampered_archive"
+          if gh attestation verify "$tampered_archive" "${verify_policy[@]}" >/dev/null 2>&1; then
+            echo "ERROR: modified archive unexpectedly passed provenance verification." >&2
+            exit 1
+          fi
+
+          if gh attestation verify "$archive" \
+            --repo GooseRabbit/dockstation \
+            --signer-workflow GooseRabbit/dockstation/.github/workflows/untrusted.yml \
+            --source-ref "$SOURCE_REF" \
+            --source-digest "$SOURCE_COMMIT" \
+            --deny-self-hosted-runners >/dev/null 2>&1; then
+            echo "ERROR: unexpected signer workflow identity was accepted." >&2
+            exit 1
+          fi
+
+          wrong_commit="0000000000000000000000000000000000000000"
+          if gh attestation verify "$archive" \
+            --repo GooseRabbit/dockstation \
+            --signer-workflow GooseRabbit/dockstation/.github/workflows/linux-cmake.yml \
+            --source-ref "$SOURCE_REF" \
+            --source-digest "$wrong_commit" \
+            --deny-self-hosted-runners >/dev/null 2>&1; then
+            echo "ERROR: unexpected source commit was accepted." >&2
+            exit 1
+          fi
+
+          cp -- "$archive" "$signed_dir/dockstation-repka-pi5-arm64.tar.gz"
+          cp -- "$archive.sha256" "$signed_dir/dockstation-repka-pi5-arm64.tar.gz.sha256"
+          sha256sum --check --strict "$signed_dir/dockstation-repka-pi5-arm64.tar.gz.sha256"
+
+      - name: Upload signed ARM64 distribution bundle
+        id: upload-signed-arm64-bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: dockstation-repka-pi5-arm64-${{ github.sha }}
+          path: ${{ runner.temp }}/dockstation-arm64/signed/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish signed ARM64 bundle and provenance in workflow summary
+        env:
+          BUNDLE_URL: ${{ steps.upload-signed-arm64-bundle.outputs.artifact-url }}
+          ATTESTATION_URL: ${{ steps.attest-arm64-bundle.outputs.attestation-url }}
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          bundle_sha256="$(awk '{ print $1 }' "$RUNNER_TEMP/dockstation-arm64/signed/dockstation-repka-pi5-arm64.tar.gz.sha256")"
           {
-            printf '%s\n' "## DockStation Repka Pi 5 ARM64 bundle"
-            printf '%s\n' ""
-            printf '%s\n' "- Commit: $SOURCE_COMMIT"
-            printf '%s\n' "- Download bundle: $BUNDLE_URL"
-            printf '%s\n' "- SHA-256: $bundle_sha256"
-            printf '%s\n' "- Verify checksum with: sha256sum -c dockstation-repka-pi5-arm64.tar.gz.sha256"
-            printf '%s\n' "- Bundle built on native ARM64 Ubuntu 24.04; official Repka OS runtime compatibility remains to be checked on the target image."
-            printf '%s\n' "- Retention: 30 days."
+            printf '%s\\n' "## DockStation Repka Pi 5 ARM64 — signed bundle"
+            printf '%s\\n' ""
+            printf '%s\\n' "- Source commit: $SOURCE_COMMIT"
+            printf '%s\\n' "- Download signed distribution: $BUNDLE_URL"
+            printf '%s\\n' "- GitHub attestation record: $ATTESTATION_URL"
+            printf '%s\\n' "- Archive SHA-256: $bundle_sha256"
+            printf '%s\\n' "- Included files: archive, SHA-256 sidecar, detached Sigstore attestation JSONL."
+            printf '%s\\n' "- Provenance verified against repository, workflow, branch and exact source commit."
+            printf '%s\\n' "- Negative checks passed: modified archive, wrong workflow and wrong source commit were rejected."
+            printf '%s\\n' "- Verify online: gh attestation verify dockstation-repka-pi5-arm64.tar.gz --repo GooseRabbit/dockstation --signer-workflow GooseRabbit/dockstation/.github/workflows/linux-cmake.yml --source-ref refs/heads/chore/flatten-repka-directories --source-digest $SOURCE_COMMIT"
+            printf '%s\\n' "- Retention: 30 days."
+            printf '%s\\n' "- The ARM64 build runner is Ubuntu 24.04; official Repka OS runtime compatibility remains to be checked on the target image."
           } >> "$GITHUB_STEP_SUMMARY"

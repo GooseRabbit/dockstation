@@ -65,14 +65,57 @@ CI packages the same payload twice and requires byte-identical archives. This
 tests deterministic archive construction from one staged install tree; it does
 not claim independent bit-for-bit reproducibility of two compiler builds.
 
-## Integrity limitation
+## Cryptographic artifact provenance
 
-SHA-256 sidecars detect accidental corruption and bind the checked digest to
-the requested filename. A checksum file is **not a digital signature**: an
-attacker able to replace both the archive and its sidecar can generate a new
-matching pair. Artifact authenticity still depends on retrieving the bundle
-from the trusted CI/GitHub artifact source. A future signed-release mechanism
-would be a separate security improvement.
+The ARM64 release workflow now produces a GitHub Artifact Attestation for the
+exact `dockstation-repka-pi5-arm64.tar.gz` archive. GitHub Actions requests a
+short-lived Sigstore signing certificate using its OIDC identity and publishes
+a signed SLSA build-provenance attestation. The final 30-day Actions artifact
+contains the archive, its SHA-256 sidecar, and the detached
+`dockstation-repka-pi5-arm64.tar.gz.attestation.jsonl` bundle.
+
+Signing is isolated in a separate job with only the permissions needed to
+download the build artifact and write/read attestations. It runs only for
+pushes or manual runs on `chore/flatten-repka-directories`; pull-request code
+does not receive the signing job. The job verifies the provenance through the
+GitHub API and then verifies the downloaded JSONL bundle. Negative controls
+require rejection of a modified archive, an unexpected signer workflow, and
+an unexpected source commit. The verifier also rejects self-hosted-runner
+attestations.
+
+For online verification, use a current GitHub CLI:
+
+```sh
+gh attestation verify dockstation-repka-pi5-arm64.tar.gz \\
+  --repo GooseRabbit/dockstation \\
+  --signer-workflow GooseRabbit/dockstation/.github/workflows/linux-cmake.yml \\
+  --source-ref refs/heads/chore/flatten-repka-directories \\
+  --source-digest <40-character-source-commit>
+```
+
+The source commit is recorded in `BUNDLE-MANIFEST.txt` and printed in the
+workflow summary. For offline verification, the JSONL sidecar is distributed
+with the archive; first obtain a Sigstore trusted-root file online with
+`gh attestation trusted-root > trusted_root.jsonl`, then run
+`gh attestation verify` with `--bundle <sidecar>` and
+`--custom-trusted-root trusted_root.jsonl`. Because offline verification
+cannot query the current repository identity, compare the verified certificate's
+`sourceRepositoryIdentifier` with the numeric repository ID obtained online
+using `gh api repos/GooseRabbit/dockstation --jq .id`.
+
+SHA-256 sidecars remain useful for detecting accidental corruption, but a
+checksum alone is **not a digital signature**: an attacker able to replace both
+the archive and its sidecar can generate a new matching pair. The attestation
+binds the archive digest to the expected GitHub repository/workflow identity
+and source revision. It does not prove that the source code is safe, that the
+workflow itself was uncompromised, or that the binary is compatible with the
+physical Repka OS image. It is a signed provenance check, not an independent
+reproducible-build guarantee.
+
+The installer deliberately does not invoke GitHub CLI or validate the
+attestation automatically. Operators must verify provenance on a trusted
+management computer before copying the bundle to Repka; installer success by
+itself does not establish artifact origin.
 
 ## Automated tests
 
