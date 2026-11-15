@@ -237,14 +237,7 @@ development headers должны быть доступны заранее. Пр�
 файлы устанавливаются в staging-каталог, а системные учётные записи и systemd manager
 хоста не затрагиваются; на самой плате этот режим не используется.
 
-**Проверка установщика:** GitHub Actions run 43735486405 завершился SUCCESS на x64
-и ARM64. На обеих архитектурах прошли 23/23 CTest; на x64 также прошли 31 host-
-программа, 141 Python-тест, Operator/Python Gateway/e2e и все Repka shell-тесты.
-Нативный ARM64 job собрал Release bundle, проверил SHA-256, AArch64 ELF, ABI symbol
-ceilings и runtime dependencies, затем реально установил и повторно установил
-архив в staging с `DOCKSTATION_CMAKE_COMMAND=/bin/false`, сохранив пользовательскую
-конфигурацию. Физический install и systemd lifecycle на официальной Repka OS пока
-не выполнялись.
+**Проверка установщика:** GitHub Actions [run 43743089682](https://github.com/GooseRabbit/dockstation/actions/runs/43743089682) завершился SUCCESS на x64 и ARM64. На обеих архитектурах прошли 23/23 CTest; на x64 также прошли 31 host-программа, 141 Python-тест, Operator/Python Gateway/e2e, shell syntax check и полный Repka shell-test loop, включая новые hardening-тесты. Нативный ARM64 job собрал Release bundle, проверил SHA-256, AArch64 ELF, ABI symbol ceilings и runtime dependencies, затем установил и повторно установил архив в изолированном staging с `DOCKSTATION_CMAKE_COMMAND=/bin/false`, сохранив пользовательскую конфигурацию. Artifact ID: `14173500998` (срок хранения GitHub Actions — 30 дней). Физический install и systemd lifecycle на официальной Repka OS не выполнялись.
 
 ### Дополнительные проверки безопасности установщика
 
