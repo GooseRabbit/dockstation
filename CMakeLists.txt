@@ -455,10 +455,18 @@ configure_file(
     "${PROJECT_BINARY_DIR}/dockstation-gateway.service"
     @ONLY
 )
+configure_file(
+    "${PROJECT_SOURCE_DIR}/repka/dockstation-gateway-uart@.service.in"
+    "${PROJECT_BINARY_DIR}/dockstation-gateway-uart@.service"
+    @ONLY
+)
 install(TARGETS dockstation_linux_bootstrap dockstation-credential-provision
     RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
 )
 install(FILES "${PROJECT_BINARY_DIR}/dockstation-gateway.service"
+    DESTINATION "lib/systemd/system"
+)
+install(FILES "${PROJECT_BINARY_DIR}/dockstation-gateway-uart@.service"
     DESTINATION "lib/systemd/system"
 )
 install(FILES "${PROJECT_SOURCE_DIR}/repka/gateway.conf.example"

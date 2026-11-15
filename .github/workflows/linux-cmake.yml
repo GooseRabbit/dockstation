@@ -50,6 +50,7 @@ jobs:
           sudo install -d -o root -g dockstation -m 0750 /etc/dockstation
           sudo install -o root -g dockstation -m 0640 /usr/local/share/dockstation/gateway.conf.example /etc/dockstation/gateway.conf
           sudo systemd-analyze verify /usr/local/lib/systemd/system/dockstation-gateway.service
+          sudo systemd-analyze verify /usr/local/lib/systemd/system/dockstation-gateway-uart@.service
           sudo -u dockstation test -r /etc/dockstation/gateway.conf
           sudo -u dockstation test ! -w /etc/dockstation/gateway.conf
           sudo -u dockstation test ! -w /usr/local/bin/dockstation_linux_bootstrap
@@ -129,3 +130,34 @@ jobs:
             echo "=== $test_file ==="
             bash "$test_file"
           done
+
+  arm64-build-and-test:
+    name: Build and CTest (Linux ARM64)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev libsqlite3-dev
+
+      - name: Confirm native ARM64 runner
+        run: test "$(uname -m)" = "aarch64"
+
+      - name: Configure CMake
+        run: >-
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Debug
+          -DDOCKSTATION_ENABLE_SANITIZERS=ON
+
+      - name: Build all Linux targets on ARM64
+        run: cmake --build build --parallel 2
+
+      - name: Run CTest on ARM64
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Verify Gateway deployment package on ARM64
+        run: bash verification/repka_gateway/test_systemd_deployment.sh

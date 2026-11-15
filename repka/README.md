@@ -134,7 +134,89 @@ CI не заменяет ручное испытание systemd manager. Про
 
 Примечание по CMake: в проверенной конфигурации перед `sudo cmake --install build`
 потребовалось явно выполнить `cmake --build build --target preinstall --parallel`.
-Этот шаг формирует relink-артефакт, на который ссылается `cmake_install.cmake`.
+Этот шаг формирует relink-артефакт, на который ссылается \`cmake_install.cmake\`.
+
+### Отдельный профиль для одного UART-устройства
+
+Обычный \`dockstation-gateway.service\` намеренно использует \`PrivateDevices=true\`:
+он остаётся подходящим для read-only диагностики и не получает физические устройства.
+Для будущего соединения Repka—ESP32 устанавливается отдельный шаблон
+\`dockstation-gateway-uart@.service\`. Он не включается автоматически и требует
+явного выбора одного реального character device в имени экземпляра службы.
+
+Перед включением профиля на целевой Repka OS сначала установите фактический узел
+UART и проверьте, что это именно character device. Не считайте \`/dev/serial0\`,
+\`/dev/ttyS0\` или номер UART гарантированным до проверки конкретного образа:
+
+\`\`\`sh
+ls -l /dev/serial0 /dev/serial/by-id/* /dev/serial/by-path/* \\
+  /dev/ttyS* /dev/ttyAMA* /dev/ttyFIQ* /dev/ttyUSB* /dev/ttyACM* 2>/dev/null || true
+readlink -f /dev/serial0 2>/dev/null || true
+test -c /dev/ttyS0 && stat -c '%F %A %U:%G %n' /dev/ttyS0
+\`\`\`
+
+В командах ниже \`ttyS0\` — только пример. Замените его на basename реального
+устройства, подтверждённого предыдущей проверкой. Если \`/dev/serial0\` является
+символьной ссылкой, используйте конечный узел, на который она указывает, а не
+предполагаемое имя ссылки.
+
+Укажите в \`/etc/dockstation/gateway.conf\` тот же абсолютный путь:
+
+\`\`\`ini
+controller_uart_device=/dev/ttyS0
+\`\`\`
+
+Проверьте владельца, группу и режим доступа к этому узлу:
+
+\`\`\`sh
+stat -c '%F %A %U:%G %n' /dev/ttyS0
+\`\`\`
+
+Пользователь \`dockstation\` должен иметь обычное право доступа к устройству через
+его фактическую группу или отдельное узкое правило udev. Не добавляйте его в
+группу \`root\` и не меняйте права устройства на \`0666\`. Если группа устройства
+предназначена для доступа к UART, добавьте \`dockstation\` именно в эту группу
+(например, \`dialout\`, только если \`stat\` действительно показал \`dialout\`):
+
+\`\`\`sh
+sudo usermod -aG dialout dockstation
+\`\`\`
+
+После подтверждения пути, прав и настроек остановите базовый unit и явно
+включите экземпляр UART-профиля:
+
+\`\`\`sh
+sudo systemctl disable --now dockstation-gateway.service
+sudo systemctl daemon-reload
+sudo systemd-analyze verify /usr/local/lib/systemd/system/dockstation-gateway-uart@.service
+sudo systemctl enable --now dockstation-gateway-uart@ttyS0.service
+\`\`\`
+
+Замените \`ttyS0\` в последней команде на выбранный basename. \`DevicePolicy=closed\`
+совместно с \`DeviceAllow=/dev/%i rw\` добавляет адресное разрешение чтения и
+записи выбранного узла сверх штатных исключений systemd; wildcard-доступ к
+остальным классам устройств не добавляется. \`PrivateDevices=false\` здесь нужен
+только для видимости физического \`/dev\`, а не для снятия device-фильтра.
+Остальные ограничения
+(\`NoNewPrivileges\`, пустые capabilities, \`ProtectSystem=strict\`, защита \`/home\`,
+kernel и сетевых семейств) сохранены. Профиль не добавляет явных разрешений на GPIO,
+камеру, общие блочные устройства или другие UART.
+
+Проверьте состояние и журнал:
+
+\`\`\`sh
+systemctl show dockstation-gateway-uart@ttyS0.service -p User -p Group -p ActiveState -p SubState
+sudo journalctl -u dockstation-gateway-uart@ttyS0.service -n 50 --no-pager
+curl -i http://127.0.0.1:8080/api/v1/health
+curl -i http://127.0.0.1:8080/api/v1/controller/link
+\`\`\`
+
+Этот профиль подтверждает только конфигурацию доступа на уровне systemd. Он не
+подтверждает, что выбранный UART не занят системной консолью, соответствует
+нужному физическому разъёму и корректно связан с ESP32. Проверка console/DT/pinmux,
+прав и фактического обмена должна быть выполнена на точной версии Repka OS 5.
+Профили камеры и GPIO будут добавляться отдельно после появления соответствующих
+адаптеров и проверки минимальных device permissions.
 
 ## Временный Python Gateway
 
@@ -163,3 +245,8 @@ Ubuntu VM x86_64 не является целевой Repka Pi 5: ARM64-сбор
 systemd-развёртывание на целевой плате, ESP32 и физические узлы требуют отдельной
 проверки. Для инструкции по архитектуре и результатам ручных VM-испытаний
 см. `docs/30_REPKA_NETWORK_IMPLEMENTATION_PLAN.md` и мастер-план `docs/31`.
+
+В GitHub Actions добавлен отдельный нативный Linux ARM64 job на Ubuntu 24.04 ARM64
+(CMake build и CTest); его результат ожидает первого запуска. Даже успешная ARM64
+сборка на Ubuntu не подтверждает ABI, библиотеки, systemd, настройки UART или
+драйверы официальной Repka OS 5 — целевая плата требует отдельной приёмки.

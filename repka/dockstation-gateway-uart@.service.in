@@ -1,0 +1,43 @@
+[Unit]
+Description=DockStation Gateway with access to UART device /dev/%i
+After=network.target
+StartLimitIntervalSec=60s
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=dockstation
+Group=dockstation
+WorkingDirectory=/
+ExecStart=@CMAKE_INSTALL_FULL_BINDIR@/dockstation_linux_bootstrap --config-file /etc/dockstation/gateway.conf
+Restart=on-failure
+RestartSec=3s
+TimeoutStopSec=15s
+KillSignal=SIGTERM
+UMask=0077
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=dockstation-gateway-uart-%i
+
+NoNewPrivileges=true
+PrivateTmp=true
+# The physical /dev tree is visible, but DevicePolicy limits device access.
+# DeviceAllow below adds one UART node to systemd standard device exceptions.
+PrivateDevices=false
+DevicePolicy=closed
+DeviceAllow=/dev/%i rw
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictRealtime=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+
+[Install]
+WantedBy=multi-user.target
