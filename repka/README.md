@@ -263,6 +263,26 @@ development headers должны быть доступны заранее. Пр�
 shell test loop текущего Linux CI workflow; новые `test_*.sh` в этой директории
 также попадают в общий цикл без отдельного списка в workflow.
 
+### Аудит состава и происхождения ARM64 bundle
+
+Release job проверяет, что checkout HEAD точно совпадает с `github.sha`, и записывает
+40-символьный source commit и его commit timestamp в manifest. Manifest также
+фиксирует Release-only профиль, отключённую SQLite persistence и ABI ceilings
+(`GLIBC_2.34`, `GLIBCXX_3.4.32`, `CXXABI_1.3.9`, `OPENSSL_3.0.0`).
+
+`RUNTIME-DEPENDENCIES.txt` содержит отсортированный SONAME inventory для каждого
+бинарника. Он не сохраняет ASLR-адреса или абсолютные пути build runner. При сборке
+CI требует точного совпадения этого inventory с `ldd`; при установке verifier
+проверяет, что каждый записанный SONAME разрешается на целевой системе. Это
+позволяет целевой ОС иметь дополнительные транзитивные зависимости, не теряя
+контроль над обязательными библиотеками из build environment.
+
+Архив создаётся с фиксированными owner/group, порядком имён, commit timestamp и
+gzip без timestamp/original filename. CI повторно упаковывает тот же payload и
+сравнивает архивы побайтно. Это подтверждает детерминированность упаковки одного
+готового дерева; отдельная проверка воспроизводимости компиляции из двух чистых
+build directories пока не заявляется.
+
 ### Отдельный профиль для одного UART-устройства
 
 Обычный \`dockstation-gateway.service\` намеренно использует \`PrivateDevices=true\`:
