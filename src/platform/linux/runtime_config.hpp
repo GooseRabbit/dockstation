@@ -13,6 +13,10 @@ inline constexpr std::uint32_t kDefaultGatewayPort = 8080U;
 
 struct RuntimeConfig {
     std::uint32_t api_port{kDefaultGatewayPort};
+    // Leave all three values empty until the paired ESP32 and UART device are configured.
+    std::string controller_uart_device{};
+    std::string controller_local_id{};
+    std::string controller_peer_id{};
     logging::LoggerConfig logger{};
 };
 
