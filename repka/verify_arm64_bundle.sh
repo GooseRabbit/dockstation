@@ -258,7 +258,7 @@ for binary in "${BINARIES[@]}"; do
     fi
     if [[ "${DOCKSTATION_REQUIRE_EXACT_RUNTIME_SONAMES:-0}" == "1" ]]; then
         expected_names_sorted="$(printf '%s\n' "${expected_dependency_names[@]}" | sort -u)"
-        actual_names_sorted="$(printf '%s\\n' "$actual_dependency_names" | sort -u)"
+        actual_names_sorted="$(printf '%s\n' "$actual_dependency_names" | sort -u)"
         [[ "$actual_names_sorted" == "$expected_names_sorted" ]] ||
             fail "$binary runtime SONAME set differs from the build inventory."
     else
