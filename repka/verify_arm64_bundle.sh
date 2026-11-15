@@ -93,82 +93,15 @@ ACTUAL_CHECKSUM_NAMES=""
 for checksum_line in "${CHECKSUM_LINES[@]}"; do
     [[ "${checksum_line:0:64}" =~ ^[[:xdigit:]]{64}$ && "${checksum_line:64:2}" == "  " ]] ||
         fail "Malformed checksum line in SHA256SUMS."
-    ACTUAL_CHECKSUM_NAMES+="${checksum_line:66}"
-BINARIES=(
-    "$ROOT/usr/local/bin/dockstation_linux_bootstrap"
-    "$ROOT/usr/local/bin/dockstation-credential-provision"
-)
-for binary in "${BINARIES[@]}"; do
-    [[ -f "$binary" && ! -L "$binary" && -x "$binary" ]] ||
-        fail "Bundle binary missing, non-regular or not executable: $binary"
-
-    # 'file' and 'readelf' are optional architecture-inspection tools. When
-    # readelf is available, also enforce the selected ABI symbol-version ceilings.
-    if command -v file >/dev/null 2>&1; then
-        description="$(file -b "$binary")"
-        printf '%s\n' "$description" | grep -Eiq 'ELF 64-bit.*(ARM aarch64|AArch64)' ||
-            fail "Binary is not a 64-bit AArch64 ELF: $binary ($description)"
-    fi
-
-    if command -v readelf >/dev/null 2>&1; then
-        machine="$(readelf -h "$binary" | awk -F: '/Machine:/ { sub(/^[[:space:]]+/, "", $2); print $2 }')"
-        [[ "$machine" == "AArch64" ]] || fail "Binary ELF machine is not AArch64: $binary ($machine)"
-        version_names="$(
-            readelf --version-info "$binary" 2>/dev/null |
-                grep -oE 'Name: (GLIBC|GLIBCXX|CXXABI|OPENSSL)_[0-9.]+' |
-                awk '{ print $2 }' |
-                sort -Vu || true
-        )"
-
-        for symbol_family in GLIBC GLIBCXX CXXABI OPENSSL; do
-            case "$symbol_family" in
-                GLIBC) ceiling="GLIBC_2.34" ;;
-                GLIBCXX) ceiling="GLIBCXX_3.4.32" ;;
-                CXXABI) ceiling="CXXABI_1.3.9" ;;
-                OPENSSL) ceiling="OPENSSL_3.0.0" ;;
-            esac
-            highest="$(grep -E "^${symbol_family}_[0-9.]+" <<< "$version_names" | sort -V | tail -n 1 || true)"
-            if [[ -n "$highest" ]]; then
-                comparison="$(printf '%s\n%s\n' "$highest" "$ceiling" | sort -V | tail -n 1)"
-                [[ "$comparison" == "$ceiling" ]] ||
-                    fail "$binary requires $highest, above the selected ABI ceiling $ceiling."
-                info "$binary: maximum $symbol_family requirement is $highest (ceiling $ceiling)."
-            fi
-        done
-    else
-        [[ "${DOCKSTATION_REQUIRE_ABI_AUDIT:-0}" != "1" ]] ||
-            fail "readelf is required by DOCKSTATION_REQUIRE_ABI_AUDIT=1."
-        info "readelf unavailable; symbol-version audit skipped. Native ldd remains mandatory."
-    fi
-
-    dependency_output="$(ldd "$binary" 2>&1)" ||
-        fail "ldd failed for $binary: $dependency_output"
-    if grep -Fq 'not found' <<< "$dependency_output"; then
-        fail "Unresolved runtime dependency in $binary: $dependency_output"
-    fi
+    ACTUAL_CHECKSUM_NAMES+="${checksum_line:66}"$'\n'
 done
-
-for expected_file in \
-    "$ROOT/usr/local/lib/systemd/system/dockstation-gateway.service" \
-    "$ROOT/usr/local/lib/systemd/system/dockstation-gateway-uart@.service" \
-    "$ROOT/usr/local/share/dockstation/gateway.conf.example"; do
-    [[ -f "$expected_file" && ! -L "$expected_file" ]] ||
-        fail "Bundle file missing or not a regular file: $expected_file"
-done
-
-info "SHA-256 checksums match; archive paths and link types are accepted."
-info "Both executables passed architecture inspection where available and native ldd checks."
-printf 'PASS: DockStation ARM64 deployment bundle verification completed.\n'
-\\n'
-done
-EXPECTED_NAMES_SORTED="$(printf '%s\\n' "${EXPECTED_CHECKSUM_NAMES[@]}" | LC_ALL=C sort)"
+EXPECTED_NAMES_SORTED="$(printf '%s\n' "${EXPECTED_CHECKSUM_NAMES[@]}" | LC_ALL=C sort)"
 ACTUAL_NAMES_SORTED="$(printf '%s' "$ACTUAL_CHECKSUM_NAMES" | LC_ALL=C sort)"
 [[ "$ACTUAL_NAMES_SORTED" == "$EXPECTED_NAMES_SORTED" ]] ||
     fail "SHA256SUMS does not cover the exact expected bundle payload."
 
 (cd "$ROOT" && sha256sum --check --strict SHA256SUMS) ||
     fail "One or more bundle file checksums do not match."
-
 BINARIES=(
     "$ROOT/usr/local/bin/dockstation_linux_bootstrap"
     "$ROOT/usr/local/bin/dockstation-credential-provision"
