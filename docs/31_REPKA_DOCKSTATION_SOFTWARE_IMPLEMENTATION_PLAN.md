@@ -1,7 +1,7 @@
 # Полный план реализации программного комплекса DockStation на Repka Pi 5
 
 **Статус:** мастер-план реализации; последовательность разработки согласована, открытые платформенные, сетевые, серверные и аппаратные детали требуют отдельной проверки и решения.  
-**Редакция:** 1.80.  
+**Редакция:** 1.81.  
 **Дата:** 2026-11-15.  
 **Вычислительная платформа:** Repka Pi 5.  
 **Предполагаемая ОС:** официальная Repka OS; образ и версия проверяются перед развёртыванием.
@@ -1222,6 +1222,13 @@ SQLite остаётся кандидатом, не решением. Сравн�
 | 1.79 | 2026-11-15 | Подтверждён и добавлен в рабочую ветку runtime-only режим `repka/install_gateway.sh --bundle`: установка Release ARM64 bundle без CMake/compiler/OpenSSL dev headers; отдельный `check_target_runtime.sh`; проверка внешней/внутренней SHA-256, manifest, allow-list файлов, отсутствия symlink/hardlink и `ldd` runtime dependencies. Добавлены staging-тесты bundle/source modes, сохранения операторской конфигурации и отказа при tampered internal SHA. Source-build fallback сохранён; CI и целевая Repka OS acceptance ожидают выполнения нового прогона. |
 
 | 1.80 | 2026-11-15 | Усилен acceptance готового ARM64 bundle: на нативном ARM64 runner выполняется сам `repka/install_gateway.sh --bundle` с реальным свежесобранным архивом и runtime preflight/sidecar/internal SHA/`ldd`; копируются бинарные файлы, оба unit и конфигурация, затем повторная установка обязана сохранить операторский параметр. Staging не запускает systemd manager и не проверяет абсолютный ExecStart против host-root; фактический `systemd-analyze verify` выполняется на целевой системе после настоящей установки. Preliminary ABI audit bundle commit e2cbf67: максимум `GLIBC_2.34`, `GLIBCXX_3.4.32`, `OPENSSL_3.0.0`; официальный Repka OS 5 v1.0.6 заявляет Ubuntu 25.10/kernel 6.1.115.1. Upstream Ubuntu 25.10 заявляет glibc 2.42, GCC 15.2 и OpenSSL 3.5.3, то есть системный baseline выглядит совместимым; точный пакетный состав Repka и запуск на плате ещё не подтверждены. |
+
+**ABI и lifecycle audit bundle:** фактические требования скачанного Release bundle (source commit c0769421b6ca3454dfa4f4f2548b4e1f898202c7): Gateway — максимум `GLIBC_2.34`, `GLIBCXX_3.4.32`, `CXXABI_1.3.9`, `OPENSSL_3.0.0`; credential provisioner — `GLIBC_2.34` и `OPENSSL_3.0.0`. Runtime dependencies: `libssl.so.3`, `libcrypto.so.3`, `libstdc++.so.6`, `libc.so.6`, `libm.so.6`, `libgcc_s.so.1`, `/lib/ld-linux-aarch64.so.1`. В `verify_arm64_bundle.sh` закреплены ABI ceilings; CI требует `readelf`, а на target `ldd` обязателен, `readelf` необязателен. Upstream Ubuntu 25.10 package baseline (glibc 2.42, libstdc++ 15.2, OpenSSL 3.5.3) выглядит новее указанных symbol requirements, но custom Repka OS package set на плате не проверен.
+
+**Открытый риск сопровождения ОС:** Repka OS 5 Basic 1.0.6 указывает Ubuntu 25.10, чей стандартный upstream support закончился 9 июля 2026 года. Неизвестно, какой срок и охват security backports предоставляет Repka через `repka-os-update`; до production требуется подтверждение производителя по kernel/glibc/OpenSSL/systemd/OpenSSH. Ubuntu `apt upgrade` и `do-release-upgrade` на целевой Repka не выполнять.
+
+
+| 1.81 | 2026-11-15 | GitHub Actions run 43736420005 SUCCESS для x64/ARM64: 23/23 CTest на обеих архитектурах, 31 host-программа, 141 Python-тест, Operator/Python Gateway/e2e и Repka shell tests. Нативный ARM64 job установил реальный bundle через `install_gateway.sh --bundle` в isolated staging с CMake=`/bin/false`, повторно установил его и подтвердил сохранение operator config; artifact 14170935154 опубликован, SHA-256 `b14bf9e245ff7e2f48d8b55905ea5a2a5b7aad6812604bc3e337eadd65838e13`. Добавлен автоматический ABI ceiling gate: GLIBC_2.34, GLIBCXX_3.4.32, CXXABI_1.3.9, OPENSSL_3.0.0; negative test отвергает GLIBCXX_3.4.33. Exact Repka package set и systemd/UART на target board не проверены. Отдельно зафиксирован lifecycle risk: Ubuntu 25.10 upstream EOL 09.07.2026; сроки собственных Repka security backports неизвестны и требуют подтверждения производителя. |
 
 **Ограничение:** это план. Функции не считаются реализованными до появления кода, проверок и, где требуется, аппаратных испытаний.
 
