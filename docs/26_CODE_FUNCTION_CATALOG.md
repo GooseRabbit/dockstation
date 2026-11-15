@@ -992,8 +992,9 @@ Host-проверка: `verification/repka_gateway/test_controller_psk_tls_clien
 |---|---|
 | `ControllerLinkSessionConfig` | Локальные ID/instance, ожидаемый peer ID, точная версия протокола и настраиваемые интервалы handshake/heartbeat/timeout/retry. |
 | `ControllerLinkSessionState` / `ControllerLinkSessionStatus` / `ControllerLinkSessionEvent` | Состояния Stopped/AwaitingHelloAck/Established/LinkLost, причины отказа и события для вызывающего transport adapter. |
-| `ControllerLinkSessionResult` | Возвращает состояние/результат и, для исходящего HELLO/HEARTBEAT, логический envelope; тело для этих сообщений — EmptyControllerMessagePayload. |
+| `ControllerLinkSessionResult` | Возвращает состояние/результат и, для исходящих HELLO/HEARTBEAT/REQUEST_SNAPSHOT, логический envelope; тело для этих сообщений — EmptyControllerMessagePayload. |
 | `ControllerLinkSession::start()` | Начинает host-initiated handshake и формирует HELLO с локальными ID, версией и возрастающим sequence. |
+| `ControllerLinkSession::request_snapshot()` | После Established формирует пустой REQUEST_SNAPSHOT с тем же возрастающим исходящим sequence; до handshake отклоняет запрос. |
 | `ControllerLinkSession::poll()` | Проверяет deadlines, формирует периодический HEARTBEAT, переводит связь в LinkLost и инициирует повторный HELLO. Время передаётся вызывающим слоем в monotonic milliseconds. |
 | `ControllerLinkSession::handle_message()` | Принимает уже декодированное сообщение после ControllerCodec; проверяет структуру, точную версию, ожидаемый peer ID/instance, разрешённый тип и строго возрастающий sequence. |
 | `ControllerLinkSession::stop()` | Останавливает автомат, не сбрасывая локальную последовательность и последнее наблюдавшееся состояние sequence peer в пределах жизни объекта. |
