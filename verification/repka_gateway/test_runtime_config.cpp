@@ -36,6 +36,37 @@ int main() {
                RuntimeConfigValidationStatus::Valid,
            "default runtime configuration is valid");
 
+    config.controller_uart_device = "/dev/serial/by-id/usb-controller";
+    config.controller_local_id = "repka-01";
+    config.controller_peer_id = "esp32-01";
+    result = validate_runtime_config(config);
+    expect(result.status == RuntimeConfigValidationStatus::Valid,
+           "accepts a complete optional controller link configuration");
+
+    config.controller_peer_id.clear();
+    result = validate_runtime_config(config);
+    expect(result.status == RuntimeConfigValidationStatus::Invalid &&
+               result.field == "controller_link",
+           "rejects partially configured controller link identifiers");
+
+    config = RuntimeConfig{};
+    config.controller_uart_device = "/dev/../tmp/tty";
+    config.controller_local_id = "repka-01";
+    config.controller_peer_id = "esp32-01";
+    result = validate_runtime_config(config);
+    expect(result.status == RuntimeConfigValidationStatus::Invalid &&
+               result.field == "controller_uart_device",
+           "rejects path traversal outside the device directory");
+
+    config = RuntimeConfig{};
+    config.controller_uart_device = "/dev/serial0";
+    config.controller_local_id = "repka-01";
+    config.controller_peer_id = "repka-01";
+    result = validate_runtime_config(config);
+    expect(result.status == RuntimeConfigValidationStatus::Invalid &&
+               result.field == "controller_link",
+           "rejects identical local and peer controller IDs");
+
     config.api_port = 0U;
     auto result = validate_runtime_config(config);
     expect(result.status == RuntimeConfigValidationStatus::Invalid &&
