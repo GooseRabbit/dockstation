@@ -56,8 +56,8 @@ while IFS= read -r entry; do
             expected_type="d"
             ;;
         BUNDLE-MANIFEST.txt|RUNTIME-DEPENDENCIES.txt|SHA256SUMS|\
-        usr/local/bin/dockstation_linux_bootstrap|usr/local/bin/dockstation-credential-provision|\\
-        usr/local/lib/systemd/system/dockstation-gateway.service|usr/local/lib/systemd/system/dockstation-gateway-uart@.service|\\
+        usr/local/bin/dockstation_linux_bootstrap|usr/local/bin/dockstation-credential-provision|\
+        usr/local/lib/systemd/system/dockstation-gateway.service|usr/local/lib/systemd/system/dockstation-gateway-uart@.service|\
         usr/local/share/dockstation/gateway.conf.example)
             expected_type="-"
             ;;
