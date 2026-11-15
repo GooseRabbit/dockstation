@@ -145,6 +145,37 @@ CI не заменяет ручное испытание systemd manager. Про
 потребовалось явно выполнить `cmake --build build --target preinstall --parallel`.
 Этот шаг формирует relink-артефакт, на который ссылается \`cmake_install.cmake\`.
 
+### Готовый ARM64 bundle из CI
+
+После успешного ARM64 CI run workflow публикует готовый архив
+`dockstation-repka-pi5-arm64.tar.gz` и файл его контрольной суммы. Архив собирается
+на нативном ARM64 runner из Release Gateway-only build без SQLite, содержит два
+исполняемых файла, два systemd unit-файла, пример конфигурации, manifest и список
+фактических динамических зависимостей. Перед публикацией CI проверяет AArch64 ELF,
+SHA-256 файлов и разрешение runtime-зависимостей на ARM64 runner.
+
+Артефакт доступен на странице соответствующего GitHub Actions run в разделе
+Artifacts (ссылка также попадает в Summary). Срок хранения CI artifact — 30 дней;
+это не постоянный релиз. Рядом лежит sidecar `.sha256`; после скачивания проверьте
+его командой:
+
+```sh
+sha256sum -c dockstation-repka-pi5-arm64.tar.gz.sha256
+```
+
+Проверку состава, целостности и AArch64-зависимостей архива можно повторить в
+Linux окружении с `tar`, `sha256sum`, `file` и `ldd`:
+
+```sh
+bash repka/verify_arm64_bundle.sh dockstation-repka-pi5-arm64.tar.gz
+```
+
+Важно: bundle собирается на Ubuntu 24.04 ARM64, а не на официальной Repka OS.
+Успешный `ldd` на runner не гарантирует совпадение runtime-библиотек на конкретной
+версии Repka OS 5. На самой плате перед установкой потребуется проверить
+совместимость runtime libraries; bundle не включает системные библиотеки и не
+пытается их обновлять.
+
 ### Установка целевого C++ Gateway одной командой
 
 После checkout репозитория и read-only preflight установку на целевую ARM64 Repka OS

@@ -174,3 +174,116 @@ jobs:
 
       - name: Build Gateway without SQLite development files
         run: cmake --build build-gateway-only --target dockstation_linux_bootstrap --parallel 2
+
+      - name: Configure deployable ARM64 Release bundle
+        run: >-
+          cmake -S . -B build-release
+          -DCMAKE_BUILD_TYPE=Release
+          -DBUILD_TESTING=OFF
+          -DDOCKSTATION_ENABLE_SANITIZERS=OFF
+          -DDOCKSTATION_BUILD_SQLITE_PERSISTENCE=OFF
+          -DCMAKE_DISABLE_FIND_PACKAGE_SQLite3=TRUE
+          -DCMAKE_INSTALL_PREFIX=/usr/local
+
+      - name: Build deployable ARM64 executables
+        run: |
+          cmake --build build-release
+            --target dockstation_linux_bootstrap dockstation-credential-provision
+            --parallel 2
+          cmake --build build-release --target preinstall --parallel 2
+
+      - name: Assemble and verify ARM64 deployment bundle
+        env:
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          package_root="$RUNNER_TEMP/dockstation-arm64/root"
+          artifact_dir="$RUNNER_TEMP/dockstation-arm64/artifacts"
+          mkdir -p "$package_root" "$artifact_dir"
+          DESTDIR="$package_root" cmake --install build-release
+
+          test -x "$package_root/usr/local/bin/dockstation_linux_bootstrap"
+          test -x "$package_root/usr/local/bin/dockstation-credential-provision"
+          test -f "$package_root/usr/local/lib/systemd/system/dockstation-gateway.service"
+          test -f "$package_root/usr/local/lib/systemd/system/dockstation-gateway-uart@.service"
+          test -f "$package_root/usr/local/share/dockstation/gateway.conf.example"
+
+          dependencies="$package_root/RUNTIME-DEPENDENCIES.txt"
+          : > "$dependencies"
+          for binary in \
+            "$package_root/usr/local/bin/dockstation_linux_bootstrap" \
+            "$package_root/usr/local/bin/dockstation-credential-provision"; do
+            printf '### %s
+' "${binary#"$package_root"/}" >> "$dependencies"
+            ldd "$binary" | tee -a "$dependencies"
+            if grep -Fq 'not found' "$dependencies"; then
+              echo "ERROR: unresolved runtime dependency in $binary" >&2
+              exit 1
+            fi
+            printf '
+' >> "$dependencies"
+          done
+
+          os_pretty_name="$(. /etc/os-release && printf '%s' "$PRETTY_NAME")"
+          compiler_version="$(c++ --version | head -n 1)"
+          cmake_version="$(cmake --version | head -n 1)"
+          openssl_version="$(pkg-config --modversion openssl)"
+          cat > "$package_root/BUNDLE-MANIFEST.txt" <<EOF
+          Bundle format: dockstation-repka-pi5-arm64-v1
+          Architecture: $(uname -m)
+          Build OS: $os_pretty_name
+          Build kernel: $(uname -r)
+          Compiler: $compiler_version
+          CMake: $cmake_version
+          OpenSSL build version: $openssl_version
+          Source commit: $SOURCE_COMMIT
+          Build type: Release
+          SQLite persistence: disabled
+          Install prefix: /usr/local
+          Included: dockstation_linux_bootstrap, dockstation-credential-provision,
+                    dockstation-gateway.service, dockstation-gateway-uart@.service,
+                    gateway.conf.example
+          EOF
+
+          (
+            cd "$package_root"
+            find . -type f ! -name SHA256SUMS -print0 |
+              sort -z |
+              xargs -0 sha256sum > SHA256SUMS
+          )
+          archive="$artifact_dir/dockstation-repka-pi5-arm64.tar.gz"
+          source_date_epoch="$(git log -1 --format=%ct)"
+          tar --sort=name --owner=0 --group=0 --numeric-owner --mtime="@$source_date_epoch" \
+            -cf - -C "$package_root" . | gzip -n > "$archive"
+          (
+            cd "$artifact_dir"
+            sha256sum dockstation-repka-pi5-arm64.tar.gz > dockstation-repka-pi5-arm64.tar.gz.sha256
+            sha256sum --check --strict dockstation-repka-pi5-arm64.tar.gz.sha256
+          )
+          bash repka/verify_arm64_bundle.sh "$archive"
+
+      - name: Upload ARM64 deployment bundle
+        id: upload-arm64-bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: dockstation-repka-pi5-arm64-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/dockstation-arm64/artifacts/dockstation-repka-pi5-arm64.tar.gz
+            ${{ runner.temp }}/dockstation-arm64/artifacts/dockstation-repka-pi5-arm64.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish ARM64 bundle location in workflow summary
+        env:
+          BUNDLE_URL: ${{ steps.upload-arm64-bundle.outputs.artifact-url }}
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          {
+            echo "## DockStation Repka Pi 5 ARM64 bundle"
+            echo
+            echo "- Commit: `$SOURCE_COMMIT`"
+            echo "- [Download bundle]($BUNDLE_URL)"
+            echo "- Verify checksum with: `sha256sum -c dockstation-repka-pi5-arm64.tar.gz.sha256`"
+            echo "- Bundle built on native ARM64 Ubuntu 24.04; official Repka OS runtime compatibility remains to be checked on the target image."
+            echo "- Retention: 30 days."
+          } >> "$GITHUB_STEP_SUMMARY"

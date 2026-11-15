@@ -1,7 +1,7 @@
 # Полный план реализации программного комплекса DockStation на Repka Pi 5
 
 **Статус:** мастер-план реализации; последовательность разработки согласована, открытые платформенные, сетевые, серверные и аппаратные детали требуют отдельной проверки и решения.  
-**Редакция:** 1.77.  
+**Редакция:** 1.78.  
 **Дата:** 2026-11-15.  
 **Вычислительная платформа:** Repka Pi 5.  
 **Предполагаемая ОС:** официальная Repka OS; образ и версия проверяются перед развёртыванием.
@@ -1214,6 +1214,8 @@ SQLite остаётся кандидатом, не решением. Сравн�
 | 1.76 | 2026-11-15 | Добавлен `repka/install_gateway.sh`: Release Gateway-only сборка без SQLite, read-only preflight, CMake install, создание непривилегированной учётной записи, сохранение конфигурации, systemd verification и включение только базового loopback read-only service. Активный UART instance обновляется без смены режима; при заданном controller_uart_device без активного UART unit базовый профиль не запускается. Добавлен staging mode без изменения host accounts/systemd и shell acceptance test. Скрипт не использует apt и не меняет boot/pinmux/права/PSK. Физическая Repka OS ещё не проверялась. |
 
 | 1.77 | 2026-11-15 | Установщик `repka/install_gateway.sh` прошёл GitHub Actions run 43732075272 SUCCESS. На x64 и ARM64: builds, 23/23 CTest и systemd deployment package verification; на x64 также 31 host-программа и 141 pytest. Новый staging acceptance подтвердил повторную установку с сохранением пользовательской конфигурации, сборку без SQLite discovery и отсутствие package manager/systemd/accounts host mutations в staging mode. CI не выполнял реальную установку через systemd manager на Repka OS; аппаратный и target OS acceptance остаются открытыми. |
+
+| 1.78 | 2026-11-15 | Добавлена сборка и публикация готового `dockstation-repka-pi5-arm64.tar.gz` из нативного Ubuntu 24.04 ARM64 CI runner: Release Gateway-only без SQLite, бинарные файлы/оба systemd unit/config example, manifest и runtime dependency report. Проверка архива ограничивает список файлов и запрещает symlink/hardlink, проверяет SHA256, AArch64 ELF и разрешение зависимостей через ldd. Артефакт загружается через upload-artifact (30 дней) с checksum sidecar и ссылкой в GitHub Actions Summary. Это снимает необходимость CMake/compiler/OpenSSL development headers на целевой плате только при наличии bundle, но не гарантирует совпадение runtime libraries с официальной Repka OS; target runtime acceptance остаётся отдельным шагом. |
 
 **Ограничение:** это план. Функции не считаются реализованными до появления кода, проверок и, где требуется, аппаратных испытаний.
 
