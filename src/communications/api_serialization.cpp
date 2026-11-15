@@ -347,6 +347,63 @@ std::string serialize_system_diagnostics() {
     return output.str();
 }
 
+std::string serialize_controller_link_status(
+    const platform::linux_platform::ControllerLinkServiceStatus& status) {
+    using platform::linux_platform::ControllerLinkServiceState;
+
+    const char* state_name = "NOT_CONFIGURED";
+    const char* status_name = "NOT_CONFIGURED";
+    switch (status.state) {
+        case ControllerLinkServiceState::NotConfigured:
+            state_name = "NOT_CONFIGURED";
+            status_name = "NOT_CONFIGURED";
+            break;
+        case ControllerLinkServiceState::TlsHandshake:
+            state_name = "TLS_HANDSHAKE";
+            status_name = "CONNECTING";
+            break;
+        case ControllerLinkServiceState::ProtocolHandshake:
+            state_name = "PROTOCOL_HANDSHAKE";
+            status_name = "CONNECTING";
+            break;
+        case ControllerLinkServiceState::Established:
+            state_name = "ESTABLISHED";
+            status_name = status.tls_authenticated && status.protocol_established
+                ? "OK" : "ERROR";
+            break;
+        case ControllerLinkServiceState::LinkLost:
+            state_name = "LINK_LOST";
+            status_name = "LINK_LOST";
+            break;
+        case ControllerLinkServiceState::Error:
+            state_name = "ERROR";
+            status_name = "ERROR";
+            break;
+        case ControllerLinkServiceState::Stopped:
+            state_name = "STOPPED";
+            status_name = "NOT_CONFIGURED";
+            break;
+    }
+
+    std::ostringstream output;
+    output << "{\"status\":\"" << status_name
+           << "\",\"state\":\"" << state_name
+           << "\",\"tls_authenticated\":"
+           << (status.tls_authenticated ? "true" : "false")
+           << ",\"protocol_established\":"
+           << (status.protocol_established ? "true" : "false")
+           << ",\"telemetry_snapshots_received\":"
+           << status.telemetry_snapshots_received
+           << ",\"error_messages_received\":"
+           << status.error_messages_received
+           << ",\"rejected_frames\":" << status.rejected_frames
+           << ",\"error_code\":\""
+           << json_escape(status.error_code == nullptr
+                              ? std::string{} : std::string{status.error_code})
+           << "\"}";
+    return output.str();
+}
+
 std::string serialize_error_response(const std::string& code,
                                      const std::string& message) {
     return "{\"error\":{\"code\":\"" + json_escape(code) +
