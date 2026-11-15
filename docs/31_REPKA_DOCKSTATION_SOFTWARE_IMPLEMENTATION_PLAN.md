@@ -1,7 +1,7 @@
 # Полный план реализации программного комплекса DockStation на Repka Pi 5
 
 **Статус:** мастер-план реализации; последовательность разработки согласована, открытые платформенные, сетевые, серверные и аппаратные детали требуют отдельной проверки и решения.  
-**Редакция:** 1.84.  
+**Редакция:** 1.85.  
 **Дата:** 2026-11-15.  
 **Вычислительная платформа:** Repka Pi 5.  
 **Предполагаемая ОС:** официальная Repka OS; образ и версия проверяются перед развёртыванием.
@@ -79,6 +79,32 @@ Windows-клиент не обращается к GPIO, драйверам и с
 | Сервер | Отдельный backend/API | Технология не выбрана |
 
 Не утверждать заранее HTTP-библиотеку, СУБД, протокол ESP32, формат всех сообщений или криптографические алгоритмы.
+
+## 3.3. Сбор фактических сведений о Linux-платформе
+
+В репозитории предусмотрен отдельный read-only инструмент `repka/collect_platform_diagnostics.sh`. Его назначение — собирать наблюдаемые сведения о Linux-системе для анализа совместимости и формирования платформенных профилей. Он не заменяет `check_target_platform.sh` и `check_target_runtime.sh`: эти проверки оценивают требования к сборке/установке и runtime, а сборщик формирует расширенную инвентаризацию.
+
+Запуск из корня репозитория:
+
+```bash
+bash repka/collect_platform_diagnostics.sh
+```
+
+При необходимости можно передать каталог отчёта. Утилита создаёт каталог с ограниченными правами доступа, архив `.tar.gz` и SHA-256 sidecar. Установка пакетов, изменение служб, загрузка модулей, настройка загрузчика/Device Tree/pinmux, изменение прав устройств и операции записи в GPIO/I2C не выполняются. Повышенные привилегии не требуются.
+
+Отчёт охватывает:
+- выбранные идентификаторы ОС, kernel release/version, архитектуру, word size, glibc, systemd и OpenSSL;
+- выбранные CPU/memory поля, загруженные модули и доступные kernel CONFIG;
+- активный Device Tree: model, compatible, aliases и релевантные peripheral nodes;
+- только allowlist параметров kernel command line и инвентаризацию загрузочных файлов без копирования их содержимого;
+- device nodes и sysfs-классы UART/TTY, GPIO, I2C, SPI, PWM, V4L2, media, platform, thermal;
+- выбранные пакеты и shared libraries, наличие диагностических утилит, безопасные сведения GPIO/I2C и мультимедийные метаданные V4L2/GStreamer/FFmpeg.
+
+Сборщик намеренно исключает полный kernel command line, сетевые адреса, hostname, machine-id, MAC, серийные номера, credentials, ключи, environment variables и журналы служб. Параметры загрузки включаются только по allowlist. `gpioinfo` используется для перечисления метаданных линий без чтения значений, а `i2cdetect -l` — только для списка адаптеров без сканирования шины.
+
+Результат диагностический, а не аппаратная приёмка: device node/driver/Device Tree status не подтверждают физическую распиновку, электрические уровни или реальный обмен; наличие плагина/кодека не подтверждает рабочий аппаратный видеотракт. Неподдерживаемый источник и недостаточные права отображаются как недоступные, а не подменяются нулём или предположением.
+
+Запуск на существующей Ubuntu VM даст только фактический профиль Ubuntu, полезный для сравнения и проверки самого сборщика. Он не раскрывает параметры Repka OS. Отдельную Repka OS VM устанавливать не требуется; целевой профиль Repka Pi 5 будет снят той же утилитой непосредственно на плате после её получения. Offline inspection официального образа может быть отдельным дополнительным источником, но не заменяет активную диагностику платы.
 
 ## 4. Виртуальная лаборатория
 
@@ -1237,6 +1263,7 @@ SQLite остаётся кандидатом, не решением. Сравн�
 | 1.82 | 2026-11-15 | Усилена безопасность установки ARM64 bundle: strict single-line sidecar-to-filename binding, проверка и распаковка одного приватного snapshot, предварительная проверка путей назначения, read-only validation существующих системных UID/GID, primary group, home и login shell пользователя `dockstation`. Verifier отклоняет duplicate archive paths и все типы tar entries, кроме ожидаемых файлов/каталогов; точный набор семи SHA256 путей проверяется до вызова `sha256sum --check`. Добавлены `test_install_gateway_hardening.sh` и `test_service_identity_preflight.sh`. GitHub Actions [run 43743089682](https://github.com/GooseRabbit/dockstation/actions/runs/43743089682) SUCCESS для x64/ARM64: 23/23 CTest на каждой архитектуре, 31 host-программа, 141 pytest, shell syntax и полный Repka shell-test loop (включая оба новых теста). ARM64 Release bundle проверен и дважды установлен в isolated staging без CMake; artifact ID `14173500998`. Hardware/systemd lifecycle на официальной Repka OS не проверялись. |
 | 1.83 | 2026-11-15 | Завершён аудит состава ARM64 release bundle. Manifest фиксирует source commit/epoch, Release-only profile, SQLite disabled и ABI ceilings; CI требует source commit, совпадающий с checkout SHA. Runtime dependency report — версионированный отсортированный SONAME inventory: build CI сравнивает его точно с ldd, а target verifier требует разрешения всех recorded SONAME. Архив нормализован по имени/owner/group/mtime и gzip metadata; CI побайтно сравнивает два повторно собранных из одного staged payload архива. Negative tests отклоняют source commit mismatch и неполный SONAME inventory. GitHub Actions run 43744455212 завершился SUCCESS на x64/ARM64: 23/23 CTest на каждой архитектуре, 31 host-программа, 141 pytest, Operator/QML/e2e, shell syntax и весь Repka shell-test loop. ARM64 bundle прошёл manifest/ABI/dependency verifier и дважды установлен в isolated staging без CMake; artifact ID 14173668321 (30 дней). Это подтверждает детерминированность упаковки одного staged tree, но не independent clean-build bit-for-bit reproducibility и не физическую Repka OS acceptance. |
 | 1.84 | 2026-11-15 | Добавлена отдельная signing job на рабочей ветке для GitHub Artifact Attestation (Sigstore/OIDC) точного ARM64 TAR.GZ; в итоговый artifact входят архив, SHA-256 sidecar и detached JSONL. Подписание отключено для Pull Request; CI проверяет provenance через GitHub API и локальный bundle, отклоняет изменённый архив, неверный signer workflow и неверный source commit. Полная проверка GitHub Actions run 43746375584 завершилась SUCCESS: x64 и ARM64 — 23/23 CTest на каждой архитектуре; x64 — 31 host test program и 141 pytest; Operator/QML/e2e, shell syntax, Repka shell-test loop и ARM64 Release installer staging прошли. Signed artifact ID 14174691384 (30 дней), commit 6fb22bf79fd665ffed4ae50debd16b0105b86f71; TAR.GZ SHA-256 `11c5024b765bc3f8311ca031d46288038bbfc269fd7235ccd6fce91cf68550a5`; GitHub attestation 67847564, Rekor index 3907782864. Успех signer/negative controls подтверждён CI; это не physical Repka OS acceptance и не independent reproducible-build proof. |
+| 1.85 | 2026-11-15 | Добавлен read-only Linux platform diagnostics collector: сведения об ОС/ABI, ядре/модулях/config, активном Device Tree/aliases, allowlist загрузочных параметров, device nodes/sysfs интерфейсы, выбранные пакеты/библиотеки и мультимедийные метаданные. Добавлен shell fixture test для Repka Pi 5-подобного Device Tree, фильтрации секретов, безопасного чтения os-release и отказа от перезаписи отчёта. Ubuntu VM остаётся только baseline обычной Ubuntu; физическая приёмка Repka Pi 5 не выполнялась. |
 
 **Ограничение:** это план. Функции не считаются реализованными до появления кода, проверок и, где требуется, аппаратных испытаний.
 
