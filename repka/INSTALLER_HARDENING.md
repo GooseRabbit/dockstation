@@ -45,6 +45,26 @@ read them, preventing a crafted manifest from directing the verifier to hash
 files outside the extracted bundle. The existing AArch64 ELF, optional ABI
 ceiling, and mandatory native `ldd` checks remain in place.
 
+## ARM64 release bundle audit
+
+The build job writes a versioned runtime dependency report containing one
+sorted SONAME list for each executable. It deliberately omits ASLR-dependent
+memory addresses and absolute library paths. During bundle creation, CI
+compares this report exactly with the build runner's `ldd` output. On the
+target, the verifier requires each recorded SONAME to resolve; additional
+target-specific transitive dependencies are allowed.
+
+The bundle manifest records the exact checked-out Git commit, commit-derived
+source-date epoch, build OS/kernel, compiler, CMake, OpenSSL 3 build version,
+Release-only profile, disabled SQLite persistence, install prefix, and ABI
+ceilings. CI checks the recorded source commit against the actual checkout.
+
+Tar entries are sorted by path and normalized to numeric root ownership and the
+source commit timestamp. Gzip timestamps and original filenames are omitted.
+CI packages the same payload twice and requires byte-identical archives. This
+tests deterministic archive construction from one staged install tree; it does
+not claim independent bit-for-bit reproducibility of two compiler builds.
+
 ## Integrity limitation
 
 SHA-256 sidecars detect accidental corruption and bind the checked digest to
