@@ -326,7 +326,6 @@ void ControllerLinkService::stop() noexcept {
     configured_ = false;
     tls_authenticated_ = false;
     snapshot_request_pending_ = false;
-    uart_device_path_size_ = 0U;
     local_controller_id_size_ = 0U;
     peer_controller_id_size_ = 0U;
     uart_device_path_.fill('\0');
@@ -353,7 +352,6 @@ bool ControllerLinkService::copy_configuration(
     }
     std::copy(config.uart_device_path.begin(), config.uart_device_path.end(),
               uart_device_path_.begin());
-    uart_device_path_size_ = config.uart_device_path.size();
 
     if (!copy_wire_identifier(local_controller_id_,
                               local_controller_id_size_,
