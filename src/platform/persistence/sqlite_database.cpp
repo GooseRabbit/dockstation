@@ -180,7 +180,7 @@ SqliteDatabaseResult SqliteDatabase::open(
     if (open_status != SQLITE_OK || database_ == nullptr) {
         last_sqlite_status_ = database_ == nullptr
             ? open_status : sqlite3_extended_errcode(database_);
-        close();
+        (void)close();
         return {SqliteDatabaseStatus::OpenFailed, last_sqlite_status_, 0};
     }
 
@@ -280,7 +280,6 @@ bool SqliteDatabase::close() noexcept {
 
     database_ = nullptr;
     schema_version_ = 0;
-    last_sqlite_status_ = SQLITE_OK;
     return true;
 }
 
