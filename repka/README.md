@@ -265,7 +265,9 @@ ceilings и runtime dependencies, затем реально установил �
 `SHA256SUMS` должен включать ровно семь ожидаемых файлов, без пропусков,
 дубликатов и путей за пределами пакета. Эти ограничения покрываются отдельными
 скриптами `test_install_gateway_hardening.sh` и
-`test_service_identity_preflight.sh`, запускаемыми общим shell test loop в CI.
+`test_service_identity_preflight.sh`. Оба файла автоматически входят в обязательный
+shell test loop текущего Linux CI workflow; новые `test_*.sh` в этой директории
+также попадают в общий цикл без отдельного списка в workflow.
 
 ### Отдельный профиль для одного UART-устройства
 
