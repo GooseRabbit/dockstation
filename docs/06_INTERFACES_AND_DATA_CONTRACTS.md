@@ -1,7 +1,7 @@
 # Интерфейсы и контракты данных
 
 **Статус:** предварительная спецификация.  
-**Редакция:** 1.30  
+**Редакция:** 1.31  
 **Дата актуализации:** 2026-11-15.
 
 ## 1. Назначение
@@ -495,11 +495,11 @@ StateChanged публикуется только после подтверждё
 
 `poll()` получает от вызывающего слоя монотонное время в миллисекундах: по умолчанию HELLO ждёт HELLO_ACK не более 3000 мс, HEARTBEAT формируется через каждые 1000 мс, входящая активность peer должна поступать не реже 5000 мс, после потери связи повтор HELLO планируется через 1000 мс. Любое корректное входящее сообщение (heartbeat, телеметрия или ошибка) обновляет время активности peer. Параметры можно переопределить в конфигурации. Вычитание времени рассчитано на переполнение uint64 при условии соблюдения ограничений интервалов.
 
-`start()/poll()` возвращают логический конверт исходящего сообщения. Вызывающая сторона кодирует его через `encode_controller_message()` с `EmptyControllerMessagePayload` и отдельно передаёт в транспорт. Строка `sent_at` задаётся вызывающим кодом, должна быть непустым корректным UTF-8 без NUL (синтаксис timestamp и временная шкала пока не выбраны); её backing storage должна оставаться живой до кодирования. Так же должны жить входной кадр и decode storage, на которые ссылается `ControllerCodecDecodedMessage`, пока выполняется `handle_message()`.
+`start()/poll()` возвращают логический конверт исходящего HELLO/HEARTBEAT. После успешного HELLO_ACK и перехода в `Established` вызывающая сторона может вызвать `request_snapshot(monotonic_ms, sent_at)`: метод формирует REQUEST_SNAPSHOT с тем же общим возрастающим локальным sequence и пустым payload. До Established запрос отклоняется; неверный timestamp не расходует sequence. Все исходящие конверты кодируются через `encode_controller_message()` с `EmptyControllerMessagePayload` и отдельно передаются в транспорт. Строка `sent_at` задаётся вызывающим кодом, должна быть непустым корректным UTF-8 без NUL (синтаксис timestamp и временная шкала пока не выбраны); её backing storage должна оставаться живой до кодирования. Так же должны жить входной кадр и decode storage, на которые ссылается `ControllerCodecDecodedMessage`, пока выполняется `handle_message()`.
 
 Состояние `Established` означает только то, что логический HELLO/HELLO_ACK обмен согласован. Оно **не** подтверждает криптографическую идентичность устройства, целостность/конфиденциальность канала или право на выполнение команд. Сам `ControllerLinkSession` не выполняет криптографический handshake, не шифрует данные, не обеспечивает durable anti-replay storage, не открывает UART и не выполняет физические действия. Эти функции разделены между `ControllerPskTlsClient`, `ControllerUartPort` и `ControllerTransportManager`; менеджер пока не подключает логическую LinkSession и прикладной кодек. До реализации отдельного защищённого transport/session verifier по docs/07 и docs/24 этот класс нельзя использовать как достаточную защиту для управляющих команд. CRC-32 кодека остаётся только контролем случайной порчи.
 
-Проверка: `verification/repka_gateway/test_controller_link_session.cpp`, CTest `controller_link_session`. Host-тесты проверяют handshake, точную версию и peer ID, смену peer instance, монотонный sequence, round-trip HELLO/HELLO_ACK через production codec, heartbeat, потерю связи, retry, неверную конфигурацию, срок жизни timestamp и переполнение монотонного счётчика. Это host-проверка логики, не доказательство физической работы ESP32/UART или аутентификации устройства.
+Проверка: `verification/repka_gateway/test_controller_link_session.cpp`, CTest `controller_link_session`. Host-тесты проверяют handshake, точную версию и peer ID, смену peer instance, монотонный sequence, round-trip HELLO/HELLO_ACK/REQUEST_SNAPSHOT через production codec, запрет запроса до Established, heartbeat, потерю связи, retry, неверную конфигурацию, срок жизни timestamp и переполнение монотонного счётчика. Это host-проверка логики, не доказательство физической работы ESP32/UART или аутентификации устройства.
 
 
 ### 16.6. Защищённый транспорт Repka—ESP32 (утверждённый базовый профиль DEC-066)
