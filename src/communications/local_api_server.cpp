@@ -187,7 +187,9 @@ HttpParseResult parse_http_request_impl(const std::string& raw_request) {
     return result;
 }
 
-ApiResponse dispatch_api_request_impl(const HttpRequest& request) {
+ApiResponse dispatch_api_request_impl(
+    const HttpRequest& request,
+    const platform::linux_platform::ControllerLinkService* controller_link) {
     if (request.target.find('?') != std::string::npos ||
         request.target.find('#') != std::string::npos) {
         return {400U, "Bad Request",
@@ -216,6 +218,12 @@ ApiResponse dispatch_api_request_impl(const HttpRequest& request) {
                     {}};
         }
         return {200U, "OK", body, {}};
+    }
+    if (request.target == "/api/v1/controller/link") {
+        const auto link_status = controller_link == nullptr
+            ? platform::linux_platform::ControllerLinkServiceStatus{}
+            : controller_link->status();
+        return {200U, "OK", serialize_controller_link_status(link_status), {}};
     }
     return {404U, "Not Found",
             serialize_error_response("NOT_FOUND", "API route not found"), {}};
@@ -306,7 +314,9 @@ std::string build_http_response(const ApiResponse& response) {
     return result;
 }
 
-void process_client(int descriptor) {
+void process_client(
+    int descriptor,
+    const platform::linux_platform::ControllerLinkService* controller_link) {
     std::string raw_request;
     raw_request.reserve(1024U);
     ApiResponse response{};
@@ -329,7 +339,7 @@ void process_client(int descriptor) {
                                                        parsed.error),
                               {}};
         } else {
-            response = dispatch_api_request_impl(parsed.request);
+            response = dispatch_api_request_impl(parsed.request, controller_link);
         }
     }
     (void)send_all(descriptor, build_http_response(response));
@@ -349,15 +359,19 @@ HttpParseResult parse_http_request(const std::string& raw_request) {
     return parse_http_request_impl(raw_request);
 }
 
-ApiResponse dispatch_api_request(const HttpRequest& request) {
-    return dispatch_api_request_impl(request);
+ApiResponse dispatch_api_request(
+    const HttpRequest& request,
+    const platform::linux_platform::ControllerLinkService* controller_link) {
+    return dispatch_api_request_impl(request, controller_link);
 }
 
 LocalApiServer::~LocalApiServer() {
     stop();
 }
 
-bool LocalApiServer::start(std::uint32_t port) {
+bool LocalApiServer::start(
+    std::uint32_t port,
+    platform::linux_platform::ControllerLinkService* controller_link) {
     if (listen_descriptor_ >= 0) {
         error_ = "Local API server is already running";
         return false;
@@ -416,6 +430,7 @@ bool LocalApiServer::start(std::uint32_t port) {
 
     listen_descriptor_ = descriptor;
     bound_port_ = ntohs(actual_address.sin_port);
+    controller_link_ = controller_link;
     error_.clear();
     return true;
 }
@@ -472,7 +487,7 @@ LocalApiServeResult LocalApiServer::serve_once(int timeout_milliseconds) {
         ::close(client);
         return LocalApiServeResult::Error;
     }
-    process_client(client);
+    process_client(client, controller_link_);
     ::close(client);
     return LocalApiServeResult::Handled;
 }
@@ -483,6 +498,7 @@ void LocalApiServer::stop() noexcept {
         listen_descriptor_ = -1;
     }
     bound_port_ = 0U;
+    controller_link_ = nullptr;
 }
 
 LocalApiServerStatus LocalApiServer::status() const {
@@ -491,15 +507,26 @@ LocalApiServerStatus LocalApiServer::status() const {
 
 int run_local_api_server(
     std::uint32_t port,
-    const volatile std::sig_atomic_t* shutdown_requested) {
+    const volatile std::sig_atomic_t* shutdown_requested,
+    platform::linux_platform::ControllerLinkServiceConfig controller_config) {
     if (shutdown_requested == nullptr) {
         (void)write_log(platform::logging::LogLevel::Error,
                         "Для локального API не передан флаг штатного завершения");
         return 1;
     }
 
+    platform::linux_platform::ControllerLinkService controller_link;
+    const auto controller_status = controller_link.start(controller_config);
+    if (controller_status.state ==
+        platform::linux_platform::ControllerLinkServiceState::Error) {
+        (void)write_log(platform::logging::LogLevel::Warning,
+                        "Внутренний контроллерный канал не запущен",
+                        {{"error_code", controller_status.error_code == nullptr
+                            ? "" : controller_status.error_code}});
+    }
+
     LocalApiServer server;
-    if (!server.start(port)) {
+    if (!server.start(port, &controller_link)) {
         (void)write_log(platform::logging::LogLevel::Error,
                         "Не удалось запустить локальный read-only API",
                         {{"reason", server.status().reason},
@@ -514,17 +541,20 @@ int run_local_api_server(
                      {"port", std::to_string(server.status().port)}});
 
     while (*shutdown_requested == 0) {
+        controller_link.poll();
         const LocalApiServeResult result = server.serve_once(250);
         if (result == LocalApiServeResult::Error) {
             (void)write_log(platform::logging::LogLevel::Error,
                             "Ошибка локального API listener",
                             {{"reason", server.status().reason}});
             server.stop();
+            controller_link.stop();
             return 1;
         }
     }
 
     server.stop();
+    controller_link.stop();
     (void)write_log(platform::logging::LogLevel::Info,
                     "Локальный read-only API остановлен");
     return 0;
