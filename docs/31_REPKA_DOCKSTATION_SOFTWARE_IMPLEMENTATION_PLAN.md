@@ -1202,10 +1202,6 @@ SQLite остаётся кандидатом, не решением. Сравн�
 
 
 
-## 14. Проверка кандидата SQLite persistence foundation
-
-GitHub Actions [run 43699555707](https://github.com/GooseRabbit/dockstation/actions/runs/43699555707) завершился SUCCESS для SHA 53f3289bb58d1fd9dc0f67111299a546aaf7b49e на Ubuntu 24.04.5 x86_64: CMake configure/build, 23/23 CTest с ASan/UBSan (включая sqlite_persistence_probe), 31/31 C++ host-программ, Python compileall, 141 pytest, QML/package, systemd/non-root Gateway, credential acceptance и shell/network checks. Probe подтверждает поведение SQLite в host-условиях, в том числе rollback после аварийного завершения процесса; он не доказывает сохранность при внезапной потере питания, корректность SD/eMMC на Repka, работу конкретной Repka OS или пригодность к production-нагрузке. Candidate branch не перенесена в chore/flatten-repka-directories; main не изменён.
-
 ## 13. Результат последнего полного host CI
 
 Полный workflow `.github/workflows/linux-cmake.yml` [43689110797](https://github.com/GooseRabbit/dockstation/actions/runs/43689110797) завершился SUCCESS на Ubuntu 24.04.5 x86_64 для базового HEAD `8481766d84d218d91d87f7a2bb355605b979f65b` (ветка `chore/flatten-repka-directories`, 2026-11-15). Этот run включал `ControllerUartPort`, но предшествовал добавлению `ControllerTransportManager` из редакции 1.64; для менеджера выполнены отдельные локальные изолированные CMake/CTest проверки в GCC Debug ASan/UBSan, Clang Debug ASan/UBSan и GCC Release.
@@ -1241,3 +1237,8 @@ Credential acceptance проверяет локальную Repka-сторону
 **Проверка:** CTest station_event_pipeline проверяет успешное подтверждение, блокировку при отказе, несовпадение instance, ошибки cursor/registration, ранний отказ F01/F02 без изменения cursor и точную передачу cursor профильному обработчику. Контрактный тест в tests/ проверяет все пять маршрутов и захват переданного cursor.
 
 **Ограничения:** тесты используют fake-адаптеры. Реальный verifier, доверенное создание SourceSessionEvidence внутри аутентифицированного transport adapter, постоянное хранилище и атомарность production-транзакций должны быть реализованы отдельно. Подтверждение сессии и commit события пока не объединены в одну транзакцию: неуспешная обработка первого события может оставить новую сессию подтверждённой с пустым last_sequence. C++ Gateway runtime ещё не подключён к этому core pipeline.
+
+
+## 14. Проверка кандидата SQLite persistence foundation
+
+GitHub Actions [run 43699555707](https://github.com/GooseRabbit/dockstation/actions/runs/43699555707) завершился SUCCESS для SHA 53f3289bb58d1fd9dc0f67111299a546aaf7b49e на Ubuntu 24.04.5 x86_64: CMake configure/build, 23/23 CTest с ASan/UBSan (включая sqlite_persistence_probe), 31/31 C++ host-программ, Python compileall, 141 pytest, QML/package, systemd/non-root Gateway, credential acceptance и shell/network checks. Probe подтверждает поведение SQLite в host-условиях, в том числе rollback после аварийного завершения процесса; он не доказывает сохранность при внезапной потере питания, корректность SD/eMMC на Repka, работу конкретной Repka OS или пригодность к production-нагрузке. Candidate branch не перенесена в chore/flatten-repka-directories; main не изменён.
