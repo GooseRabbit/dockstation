@@ -16,7 +16,8 @@ enum class SqliteDatabaseStatus : std::uint8_t {
     ApplicationIdMismatch,
     SchemaVersionUnsupported,
     SchemaMigrationFailed,
-    SchemaInvalid
+    SchemaInvalid,
+    CloseFailed
 };
 
 struct SqliteDatabaseConfig final {
@@ -52,7 +53,7 @@ public:
 
     [[nodiscard]] SqliteDatabaseResult open(
         const SqliteDatabaseConfig& config) noexcept;
-    void close() noexcept;
+    [[nodiscard]] bool close() noexcept;
 
     [[nodiscard]] bool is_open() const noexcept;
     [[nodiscard]] int schema_version() const noexcept;
