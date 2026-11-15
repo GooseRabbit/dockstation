@@ -117,6 +117,23 @@ attestation automatically. Operators must verify provenance on a trusted
 management computer before copying the bundle to Repka; installer success by
 itself does not establish artifact origin.
 
+## Recorded validation result
+
+GitHub Actions run [43746375584](https://github.com/GooseRabbit/dockstation/actions/runs/43746375584)
+completed successfully on both build architectures and the isolated signer job.
+Each architecture passed 23/23 CTest cases; x64 passed all 31 host test programs
+and 141 Python tests. Operator/QML/e2e, shell syntax and the full Repka shell-test
+loop also passed. The native ARM64 Release bundle passed verifier and two staging
+installations without CMake.
+
+The signed distribution artifact is ID `14174691384` (30-day retention). Its archive
+SHA-256 is `11c5024b765bc3f8311ca031d46288038bbfc269fd7235ccd6fce91cf68550a5`.
+GitHub attestation ID `67847564` was published to Rekor log index `3907782864`.
+CI verified the repository attestation and the detached JSONL bundle, then confirmed
+that altered archive bytes, an unexpected signer workflow, and a different source
+commit are rejected. The final archive, SHA sidecar and detached attestation JSONL
+were uploaded together.
+
 ## Automated tests
 
 - `verification/repka_gateway/test_install_gateway_hardening.sh` covers empty
