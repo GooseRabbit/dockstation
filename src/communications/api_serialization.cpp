@@ -308,7 +308,13 @@ std::string serialize_health_response() {
            "\"status\":\"PASS\",\"read_only\":true}";
 }
 
-std::string serialize_system_diagnostics() {
+std::string serialize_system_diagnostics(
+    const platform::linux_platform::ControllerLinkServiceStatus* controller_link_status) {
+    const bool hardware_controller_connected =
+        controller_link_status != nullptr &&
+        controller_link_status->tls_authenticated &&
+        controller_link_status->protocol_established;
+
     const auto timestamp = utc_timestamp();
     if (!timestamp.has_value()) {
         return {};
@@ -341,9 +347,10 @@ std::string serialize_system_diagnostics() {
            << serialize_platform(os, kernel, architecture, system)
            << ",\"network\":" << serialize_network(network)
            << ",\"scope\":{\"read_only\":true,"
-           << "\"hardware_controller_connected\":false,"
+           << "\"hardware_controller_connected\":"
+           << (hardware_controller_connected ? "true" : "false") << ","
            << "\"physical_sensors_configured\":false,"
-           << "\"note\":\"C++ Gateway reports Linux host and network state only; ESP32 and physical station telemetry are not included.\"}}";
+           << "\"note\":\"Linux host diagnostics are separate from controller link status; sensor measurements are not yet included.\"}}";
     return output.str();
 }
 
