@@ -1,7 +1,7 @@
 # Полный план реализации программного комплекса DockStation на Repka Pi 5
 
 **Статус:** мастер-план реализации; последовательность разработки согласована, открытые платформенные, сетевые, серверные и аппаратные детали требуют отдельной проверки и решения.  
-**Редакция:** 1.76.  
+**Редакция:** 1.77.  
 **Дата:** 2026-11-15.  
 **Вычислительная платформа:** Repka Pi 5.  
 **Предполагаемая ОС:** официальная Repka OS; образ и версия проверяются перед развёртыванием.
@@ -1212,6 +1212,8 @@ SQLite остаётся кандидатом, не решением. Сравн�
 | 1.75 | 2026-11-15 | Зафиксированы результаты предыдущих платформенных работ: GitHub Actions run 43730599989 и 43730790585 — SUCCESS для x64/ARM64, 23/23 CTest на каждой архитектуре; run 43731200878 — SUCCESS для ARM64/x64 и read-only platform preflight; run 43731476237 — SUCCESS после исправления thermal availability, 23/23 CTest на обеих архитектурах, 141 pytest и все network/platform shell checks. ARM64 Ubuntu CI и package/unit проверки не заменяют испытание официальной Repka OS 5 и физического UART. README обновлён: результаты больше не отмечены как ожидающие. |
 
 | 1.76 | 2026-11-15 | Добавлен `repka/install_gateway.sh`: Release Gateway-only сборка без SQLite, read-only preflight, CMake install, создание непривилегированной учётной записи, сохранение конфигурации, systemd verification и включение только базового loopback read-only service. Активный UART instance обновляется без смены режима; при заданном controller_uart_device без активного UART unit базовый профиль не запускается. Добавлен staging mode без изменения host accounts/systemd и shell acceptance test. Скрипт не использует apt и не меняет boot/pinmux/права/PSK. Физическая Repka OS ещё не проверялась. |
+
+| 1.77 | 2026-11-15 | Установщик `repka/install_gateway.sh` прошёл GitHub Actions run 43732075272 SUCCESS. На x64 и ARM64: builds, 23/23 CTest и systemd deployment package verification; на x64 также 31 host-программа и 141 pytest. Новый staging acceptance подтвердил повторную установку с сохранением пользовательской конфигурации, сборку без SQLite discovery и отсутствие package manager/systemd/accounts host mutations в staging mode. CI не выполнял реальную установку через systemd manager на Repka OS; аппаратный и target OS acceptance остаются открытыми. |
 
 **Ограничение:** это план. Функции не считаются реализованными до появления кода, проверок и, где требуется, аппаратных испытаний.
 
