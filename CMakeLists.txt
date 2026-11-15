@@ -11,7 +11,7 @@ include(GNUInstallDirs)
 
 find_package(Threads REQUIRED)
 find_package(OpenSSL 3.0 REQUIRED COMPONENTS SSL Crypto)
-find_package(SQLite3 REQUIRED)
+find_package(SQLite3 3.31 REQUIRED)
 
 option(DOCKSTATION_ENABLE_SANITIZERS
        "Enable AddressSanitizer and UndefinedBehaviorSanitizer for verification" OFF)
