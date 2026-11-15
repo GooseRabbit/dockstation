@@ -98,7 +98,7 @@ grep -Eq '^Compiler: .+' "$ROOT/BUNDLE-MANIFEST.txt" ||
     fail "Bundle manifest is missing Compiler."
 grep -Eq '^CMake: .+' "$ROOT/BUNDLE-MANIFEST.txt" ||
     fail "Bundle manifest is missing CMake."
-grep -Eq '^OpenSSL build version: 3\\.' "$ROOT/BUNDLE-MANIFEST.txt" ||
+grep -Eq '^OpenSSL build version: 3\.' "$ROOT/BUNDLE-MANIFEST.txt" ||
     fail "Bundle manifest must record an OpenSSL 3 build version."
 if [[ -n "${DOCKSTATION_EXPECTED_SOURCE_COMMIT:-}" ]]; then
     [[ "$SOURCE_COMMIT_VALUE" == "$DOCKSTATION_EXPECTED_SOURCE_COMMIT" ]] ||
@@ -242,9 +242,9 @@ for binary in "${BINARIES[@]}"; do
         awk '
             $1 == "linux-vdso.so.1" { next }
             $2 == "=>" { print $1; next }
-            $1 ~ /^\\// {
+            $1 ~ /^\// {
                 name = $1
-                sub(/^.*\\//, "", name)
+                sub(/^.*\//, "", name)
                 print name
             }
         ' <<< "$dependency_output" | sort -u
