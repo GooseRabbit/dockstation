@@ -257,7 +257,7 @@ jobs:
             sha256sum dockstation-repka-pi5-arm64.tar.gz > dockstation-repka-pi5-arm64.tar.gz.sha256
             sha256sum --check --strict dockstation-repka-pi5-arm64.tar.gz.sha256
           )
-          bash repka/verify_arm64_bundle.sh "$archive"
+          DOCKSTATION_REQUIRE_ABI_AUDIT=1 bash repka/verify_arm64_bundle.sh "$archive"
 
       - name: Exercise real ARM64 bundle installer in isolated staging
         env:

@@ -45,6 +45,20 @@ cat > "$BIN/file" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' 'ELF 64-bit LSB pie executable, ARM aarch64, version 1 (SYSV)'
 SH
+cat > "$BIN/readelf" <<'SH'
+#!/usr/bin/env bash
+case "$1" in
+    -h) printf '%s\n' '  Machine:                           AArch64' ;;
+    --version-info)
+        printf '%s\n' \
+            '  Name: GLIBC_2.34' \
+            "  Name: GLIBCXX_${FAKE_GLIBCXX_VERSION:-3.4.32}" \
+            '  Name: CXXABI_1.3.9' \
+            '  Name: OPENSSL_3.0.0'
+        ;;
+    *) exit 64 ;;
+esac
+SH
 cat > "$BIN/ldd" <<'SH'
 #!/usr/bin/env bash
 if [[ "${1:-}" == --version ]]; then
@@ -111,6 +125,12 @@ if grep -Fq 'cmake ' "$LOG"; then
     exit 1
 fi
 grep -Fq 'runtime-preflight' "$LOG"
+
+# A newer libstdc++ symbol requirement must fail the documented ABI floor.
+if FAKE_GLIBCXX_VERSION=3.4.33 bash "$INSTALLER" --bundle "$BUNDLE" >/dev/null 2>&1; then
+    echo "FAIL: bundle requiring GLIBCXX_3.4.33 above the ceiling was accepted." >&2
+    exit 1
+fi
 
 # Re-signing the outer archive must not hide a modified internal member.
 BADROOT="$TMP/bad-root"
