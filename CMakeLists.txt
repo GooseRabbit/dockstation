@@ -40,6 +40,7 @@ endfunction()
 add_library(dockstation_linux_runtime STATIC
     src/application/linux/application_bootstrap.cpp
     src/platform/linux/runtime_environment.cpp
+    src/platform/linux/platform_capabilities.cpp
     src/platform/linux/system_diagnostics.cpp
     src/platform/linux/network_diagnostics.cpp
     src/platform/linux/runtime_config.cpp
@@ -145,6 +146,15 @@ if(BUILD_TESTING)
     )
     dockstation_apply_compile_policy(test_runtime_environment)
     add_test(NAME runtime_environment COMMAND test_runtime_environment)
+
+    add_executable(test_platform_capabilities
+        verification/repka_gateway/test_platform_capabilities.cpp
+    )
+    target_link_libraries(test_platform_capabilities
+        PRIVATE dockstation_linux_runtime
+    )
+    dockstation_apply_compile_policy(test_platform_capabilities)
+    add_test(NAME platform_capabilities COMMAND test_platform_capabilities)
 
     add_executable(test_system_diagnostics
         verification/repka_gateway/test_system_diagnostics.cpp
@@ -356,6 +366,7 @@ if(BUILD_TESTING)
                     dockstation_linux_bootstrap
                     test_application_bootstrap
                     test_runtime_environment
+                    test_platform_capabilities
                     test_system_diagnostics
                     test_network_diagnostics
                     test_logger
@@ -390,6 +401,9 @@ if(BUILD_TESTING)
                 -fsanitize=address,undefined
             )
             target_link_options(test_runtime_environment PRIVATE
+                -fsanitize=address,undefined
+            )
+            target_link_options(test_platform_capabilities PRIVATE
                 -fsanitize=address,undefined
             )
             target_link_options(test_system_diagnostics PRIVATE

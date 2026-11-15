@@ -43,6 +43,16 @@ bash repka/collect_platform_diagnostics.sh ./repka-platform-report
 
 Запуск на существующей Ubuntu VM даст профиль именно этой Ubuntu — он полезен как базовая точка сравнения, но не является снимком Repka OS. Для фактических сведений Repka Pi 5 тот же сборщик запускается позднее непосредственно на плате. Отдельная виртуальная машина с Repka OS для этого этапа не требуется.
 
+## C++ LinuxPlatformCapabilities
+
+В C++ runtime добавлен компонент LinuxPlatformCapabilities (src/platform/linux/platform_capabilities.hpp/.cpp). Он пассивно распознаёт Repka Pi 5 по Device Tree или выбирает общий Generic Linux профиль, а также учитывает UART, GPIO, I2C, SPI, PWM и V4L2/media nodes и соответствующие sysfs controllers.
+
+Статусы: AVAILABLE — узел доступен текущему процессу для чтения/записи; DETECTED — узел существует, но права доступа текущего процесса не подтверждены; NOT_CONFIGURED — sysfs показывает контроллер, но userspace node не найден; UNAVAILABLE — прочитанные источники не показывают интерфейс; UNKNOWN — источники недоступны. Для UART отдельно фиксируется совпадение с kernel console=.
+
+Компонент только собирает сведения. Он не открывает устройство для обмена, не назначает контакты, не выбирает UART автоматически, не загружает драйверы и не меняет права. Выявленный путь устройства — диагностический кандидат, а не готовая настройка. Решение по WiringRP, модулю repka_gpio.ko, автозагрузке и минимальным правам службы остаётся открытым (DEC-069); установщик и Gateway не должны менять эти параметры до отдельного согласования.
+
+Тест: verification/repka_gateway/test_platform_capabilities.cpp, CTest platform_capabilities. Fixture проверки не являются аппаратным тестом.
+
 ## C++ Gateway и systemd
 
 Текущий C++ Gateway — отдельная исполняемая цель `dockstation_linux_bootstrap`.

@@ -1047,3 +1047,18 @@ Optional RuntimeConfig keys: controller_uart_device, controller_local_id, contro
 Соединение при каждом открытии устанавливает/проверяет DELETE rollback journal, synchronous=EXTRA, foreign_keys=ON и trusted_schema=OFF. Начальный кандидат предполагает одного сериализованного владельца соединения; WAL не включается. CMake требует SQLite >=3.31 для SQLITE_OPEN_NOFOLLOW. Read-only/commit repository adapters SSM/CFG, systemd StateDirectory, backup/restore, migration policy дальнейших версий и Gateway wiring не реализованы.
 
 Проверка: verification/repka_gateway/test_sqlite_persistence_probe.cpp, CTest sqlite_persistence_probe. GitHub Actions run 43699555707 SUCCESS: 23/23 CTest с ASan/UBSan, 31/31 C++ host-программ и 141 pytest. Probe проверяет transaction atomicity, ROLLBACK/COMMIT, close/reopen, hot-journal recovery после process exit, integrity_check, конкурирующего writer, symlink/foreign DB safety. Это host test, не внезапное отключение питания и не физическая Repka acceptance. Решение о выборе SQLite ещё не утверждено (DEC-068).
+
+
+## 12. Платформенный слой Linux — LinuxPlatformCapabilities
+
+### src/platform/linux/platform_capabilities.hpp / .cpp
+
+| Функция / тип | Назначение |
+|---|---|
+| LinuxPlatformKind | Профиль GENERIC_LINUX, REPKA_PI5 или UNKNOWN; Repka Pi 5 определяется по model/compatible активного Device Tree. |
+| PlatformCapabilityStatus | AVAILABLE — device node доступен текущему процессу для чтения/записи; DETECTED — node найден, но права текущего процесса не подтверждены; NOT_CONFIGURED — sysfs сообщает о контроллере, но подходящий userspace node отсутствует; UNAVAILABLE — доступные источники не показывают интерфейс; UNKNOWN — источники для проверки недоступны. |
+| LinuxPlatformProbePaths | Позволяет передать пути /dev, /sys/class, Device Tree и /proc/cmdline; production значения по умолчанию относятся к текущей Linux-системе, fixture paths используются в host-тесте. |
+| detect_linux_platform_capabilities() | Пассивно обнаруживает модель/compatible, UART, GPIO, I2C, SPI, PWM и V4L2/media device nodes, доступность текущего процесса, sysfs controller count и конфликты UART с console=. Не открывает устройства, не выполняет I/O, не загружает модули, не меняет pinmux/права/службы и не выбирает порт для Gateway. |
+| platform_kind_name() / platform_capability_status_name() | Даёт стабильные строковые названия профиля и статуса для будущей сериализации диагностики. |
+
+Проверка: verification/repka_gateway/test_platform_capabilities.cpp, CTest platform_capabilities. Fixture test использует временную файловую структуру и ссылки на /dev/null как безопасные character-device substitutes; он проверяет только логику обнаружения, а не GPIO/UART/V4L2 hardware. Выявленный кандидатный path — только информация для оператора. Repka WiringRP и repka_gpio.ko не используются; установка/загрузка драйвера и изменение permissions остаются открытыми по DEC-069.
