@@ -1005,6 +1005,20 @@ Host-проверка: `verification/repka_gateway/test_controller_psk_tls_clien
 
 
 
+
+### src/platform/linux/controller_link_service.hpp/.cpp
+
+| Функция / тип | Назначение |
+|---|---|
+| ControllerLinkServiceState / ControllerLinkServiceStatus | Отражают NOT_CONFIGURED, TLS_HANDSHAKE, PROTOCOL_HANDSHAKE, ESTABLISHED, LINK_LOST, ERROR и STOPPED; отдельно показывают TLS authentication и protocol establishment, счётчики принятых telemetry/error кадров и код ошибки без секретов. |
+| ControllerLinkService::start() | Принимает optional UART path и локальные/peer controller IDs. При полностью пустой конфигурации остаётся NOT_CONFIGURED; частичная/некорректная конфигурация отклоняется до открытия устройства. Credentials загружаются только из root-controlled credential store. |
+| ControllerLinkService::poll() | Ограниченный шаг event loop: продвигает TLS/UART, начинает HELLO только после TLS handshake, принимает HELLO_ACK, посылает один REQUEST_SNAPSHOT, обслуживает heartbeat, принимает/проверяет входные кадры и восстанавливает соединение полным TLS handshake при ошибке транспорта. |
+| ControllerLinkService::status() / stop() | Возвращает безопасный read-only статус без PSK/identity; завершает transport, сессию и очищает временные буферы. |
+| process_plaintext() / process_ready_frame() | Подаёт в ControllerFrameStreamDecoder только TLS application data; затем ControllerCodec и ControllerLinkSession проверяют frame, payload, peer, protocol version и sequence. TELEMETRY_SNAPSHOT/ERROR пока только учитываются; значений датчиков в SSM/хранилище данный срез не передаёт. |
+
+Optional RuntimeConfig keys: controller_uart_device, controller_local_id, controller_peer_id. Все три должны быть заданы вместе; PSK и identity в .conf не хранятся. Read-only Gateway продолжает запускаться при NOT_CONFIGURED. API: GET /api/v1/controller/link; system diagnostics отмечает controller connected только после успешных TLS и логического handshake. Проверка: verification/repka_gateway/test_controller_link_service.cpp, CTest controller_link_service; также расширены runtime config/parser и LocalApi tests. Тесты добавлены, но полный CI для кандидата ещё не выполнен. Repka ARM64, ESP32/Mbed TLS interop и физическая UART-линия не проверены.
+
+
 ---
 
 ## Дополнение: интеграция SourceSessionCoordinator в F13
