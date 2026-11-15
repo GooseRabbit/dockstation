@@ -1,7 +1,7 @@
 # Полный план реализации программного комплекса DockStation на Repka Pi 5
 
 **Статус:** мастер-план реализации; последовательность разработки согласована, открытые платформенные, сетевые, серверные и аппаратные детали требуют отдельной проверки и решения.  
-**Редакция:** 1.72.  
+**Редакция:** 1.73.  
 **Дата:** 2026-11-15.  
 **Вычислительная платформа:** Repka Pi 5.  
 **Предполагаемая ОС:** официальная Repka OS; образ и версия проверяются перед развёртыванием.
@@ -1111,6 +1111,8 @@ SQLite остаётся кандидатом, не решением. Сравн�
 
 **Разделение зависимостей CMake:** `dockstation_linux_bootstrap` не использует SQLite. Кандидат `dockstation_persistence_sqlite` и его CTest включаются параметром `DOCKSTATION_BUILD_SQLITE_PERSISTENCE` (по умолчанию ON для совместимости и полного host CI). Для целевой Gateway-only сборки параметр выключается; CMake не ищет SQLite3 и не создаёт persistence target. CI продолжает отдельную полную проверку с ON и добавляет нативную ARM64 сборку Gateway-only с OFF. Это не утверждает, что SQLite окончательно исключена из архитектуры, и не заменяет подтверждение пакетов/ABI официальной Repka OS 5.
 
+**Read-only Repka preflight:** добавлены `repka/check_target_platform.sh` и host-тест с подменёнными системными источниками. Скрипт не изменяет ОС; проверяет ARM64/64-bit, toolchain CMake/C++17, заголовки OpenSSL 3.x, systemd, установленные unit-файлы и кандидаты UART с сопоставлением `console=`. Физический pinmux, контакт разъёма, электрические уровни и UART↔ESP32 обмен не имитируются и остаются аппаратной приёмкой.
+
 ## 12. История изменений
 
 | Редакция | Дата | Изменения |
@@ -1203,6 +1205,7 @@ SQLite остаётся кандидатом, не решением. Сравн�
 | 1.70 | 2026-11-15 | В отдельной ветке work/sqlite-persistence-evaluation добавлена кандидатная основа SQLite: SqliteDatabase, CMake target, версия схемы и начальная миграция. Проверены DELETE journal/EXTRA, foreign keys, trusted_schema=OFF, final symlink/foreign DB protection, transaction rollback/commit, close/reopen, process-crash recovery и serialization competing writers. GitHub Actions run 43699555707 SUCCESS для HEAD 53f3289bb58d1fd9dc0f67111299a546aaf7b49e: 23/23 CTest, 31/31 C++ host-программ и 141 pytest. SQLite и расположение /var/lib/dockstation оформлены только предложением DEC-068; production repository adapters, Gateway wiring, target Repka package/power-loss tests остаются открытыми. |
 | 1.71 | 2026-11-15 | Подготовлен отдельный шаблон systemd `dockstation-gateway-uart@.service` для доступа к одному явно выбранному `/dev` character device через `DevicePolicy=closed` и `DeviceAllow=/dev/%i rw`; базовый read-only unit сохраняет `PrivateDevices=true`. Добавлены установка шаблона, статические deployment-проверки и инструкция включения только после проверки реального UART и его группы. В CI добавлен нативный ARM64 job (Ubuntu 24.04 ARM64: CMake build/CTest), но результат ещё не получен; это не эквивалент сборки на Repka OS 5. Systemd manager lifecycle и физический UART на плате не проверялись. |
 | 1.72 | 2026-11-15 | SQLite-кандидат отделён от обязательных зависимостей Gateway через `DOCKSTATION_BUILD_SQLITE_PERSISTENCE`: по умолчанию ON для сохранения полного host CI, OFF исключает SQLite target, CTest и `find_package(SQLite3)` для целевого Gateway-only deployment. CI явно сохраняет полный SQLite build и добавляет проверку Gateway-only конфигурации без обнаружения SQLite на ARM64 runner. Обновлены команды сборки Repka и мастер-план; выбор SQLite как production backend и DEC-068 не закрыты. |
+| 1.73 | 2026-11-15 | Добавлен read-only `repka/check_target_platform.sh`: проверка ARM64/64-bit, CMake, C++17, OpenSSL 3 headers, systemd, установленных Gateway unit-файлов, обнаружение UART character devices и сопоставление с kernel `console=`. Скрипт не запускает пакетный менеджер и не меняет boot/pinmux/права/службы. Добавлен host-тест с fake OS/devices/commands; физическая Repka OS, UART header mapping и электрический интерфейс остаются непроверенными. |
 
 **Ограничение:** это план. Функции не считаются реализованными до появления кода, проверок и, где требуется, аппаратных испытаний.
 
