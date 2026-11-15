@@ -82,6 +82,19 @@ target_link_libraries(dockstation_controller_transport
 )
 dockstation_apply_compile_policy(dockstation_controller_transport)
 
+# Initial SQLite foundation is isolated from station business logic.
+add_library(dockstation_persistence_sqlite STATIC
+    src/platform/persistence/sqlite_database.cpp
+)
+target_include_directories(dockstation_persistence_sqlite
+    PUBLIC "${PROJECT_SOURCE_DIR}/src"
+)
+target_link_libraries(dockstation_persistence_sqlite
+    PUBLIC SQLite::SQLite3
+)
+dockstation_apply_compile_policy(dockstation_persistence_sqlite)
+
+
 # The Gateway runtime owns the controller service and reuses the transport
 # library without introducing a dependency back from transport into Gateway.
 target_link_libraries(dockstation_linux_runtime
@@ -253,12 +266,11 @@ if(BUILD_TESTING)
     dockstation_apply_compile_policy(test_controller_link_service)
     add_test(NAME controller_link_service COMMAND test_controller_link_service)
 
-    # Backend-evaluation probe only: this does not add SQLite to the production runtime.
     add_executable(test_sqlite_persistence_probe
         verification/repka_gateway/test_sqlite_persistence_probe.cpp
     )
     target_link_libraries(test_sqlite_persistence_probe
-        PRIVATE SQLite::SQLite3
+        PRIVATE dockstation_persistence_sqlite
     )
     dockstation_apply_compile_policy(test_sqlite_persistence_probe)
     add_test(NAME sqlite_persistence_probe COMMAND test_sqlite_persistence_probe)
