@@ -5,6 +5,7 @@ REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 SOURCE_PREFLIGHT="${DOCKSTATION_PREFLIGHT_SCRIPT:-$REPO_ROOT/repka/check_target_platform.sh}"
 RUNTIME_PREFLIGHT="${DOCKSTATION_RUNTIME_PREFLIGHT_SCRIPT:-$REPO_ROOT/repka/check_target_runtime.sh}"
 BUNDLE_VERIFIER="${DOCKSTATION_BUNDLE_VERIFIER:-$REPO_ROOT/repka/verify_arm64_bundle.sh}"
+ACCOUNT_PREFLIGHT="${DOCKSTATION_ACCOUNT_PREFLIGHT_SCRIPT:-$REPO_ROOT/repka/check_service_identity.sh}"
 CMAKE="${DOCKSTATION_CMAKE_COMMAND:-cmake}"
 SYSTEMCTL="${DOCKSTATION_SYSTEMCTL_COMMAND:-systemctl}"
 SYSTEMD_ANALYZE="${DOCKSTATION_SYSTEMD_ANALYZE_COMMAND:-systemd-analyze}"
@@ -18,6 +19,8 @@ BUILD_DIR="${DOCKSTATION_BUILD_DIR:-$REPO_ROOT/build}"
 STAGE_ROOT="${DOCKSTATION_INSTALL_ROOT:-}"
 BUILD_JOBS="${DOCKSTATION_BUILD_JOBS:-2}"
 BUNDLE=""
+BUNDLE_TEMP=""
+BUNDLE_SNAPSHOT=""
 PREFIX="/usr/local"
 CONFIG_DIR="/etc/dockstation"
 CONFIG_FILE="$CONFIG_DIR/gateway.conf"
@@ -28,8 +31,14 @@ EXAMPLE_CONFIG="$PREFIX/share/dockstation/gateway.conf.example"
 fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 info() { printf '[INFO] %s\n' "$*"; }
 warn() { printf '[WARN] %s\n' "$*" >&2; }
+cleanup() {
+    if [[ -n "$BUNDLE_TEMP" && -d "$BUNDLE_TEMP" ]]; then
+        rm -rf -- "$BUNDLE_TEMP"
+    fi
+}
 
 if [[ "$#" -eq 2 && "$1" == "--bundle" ]]; then
+    [[ -n "$2" ]] || fail "После --bundle требуется путь к архиву."
     BUNDLE="$2"
 elif [[ "$#" -eq 1 && "$1" == "--help" ]]; then
     printf 'Usage: sudo bash repka/install_gateway.sh [--bundle /path/to/dockstation-repka-pi5-arm64.tar.gz]\n'
@@ -47,13 +56,84 @@ fi
     fail "DOCKSTATION_INSTALL_ROOT должен быть абсолютным путём."
 
 if [[ -n "$BUNDLE" ]]; then
+    [[ -f "$BUNDLE" && ! -L "$BUNDLE" ]] ||
+        fail "ARM64 bundle отсутствует, не является обычным файлом или является symlink: $BUNDLE"
+    [[ -f "$BUNDLE.sha256" && ! -L "$BUNDLE.sha256" ]] ||
+        fail "Sidecar SHA-256 отсутствует, не является обычным файлом или является symlink: $BUNDLE.sha256"
+    [[ -x "$BUNDLE_VERIFIER" ]] || fail "Не найден исполняемый verifier bundle: $BUNDLE_VERIFIER"
+    for tool in tar sha256sum mktemp cat chmod awk basename rm; do
+        command -v "$tool" >/dev/null 2>&1 || fail "Не найдена команда $tool."
+    done
+
+    # Snapshot once into a private directory. Verification and extraction below
+    # consume this exact file, never the caller-controlled source path again.
+    BUNDLE_TEMP="$(mktemp -d)"
+    trap cleanup EXIT
+    BUNDLE_SNAPSHOT="$BUNDLE_TEMP/dockstation-repka-pi5-arm64.tar.gz"
+    cat -- "$BUNDLE" > "$BUNDLE_SNAPSHOT"
+    chmod 0400 "$BUNDLE_SNAPSHOT"
+
+    mapfile -t checksum_lines < "$BUNDLE.sha256"
+    [[ "${#checksum_lines[@]}" -eq 1 ]] ||
+        fail "Sidecar должен содержать ровно одну строку SHA-256."
+    checksum_line="${checksum_lines[0]}"
+    [[ "${checksum_line:0:64}" =~ ^[[:xdigit:]]{64}$ && "${checksum_line:64:2}" == "  " ]] ||
+        fail "Sidecar должен иметь формат sha256sum: 64 hex-символа, два пробела, имя файла."
+    expected_hash="${checksum_line:0:64}"
+    sidecar_name="${checksum_line:66}"
+    bundle_name="$(basename -- "$BUNDLE")"
+    [[ "$sidecar_name" == "$bundle_name" ]] ||
+        fail "Sidecar относится к '$sidecar_name', а устанавливается '$bundle_name'."
+    actual_hash="$(sha256sum < "$BUNDLE_SNAPSHOT" | awk '{ print $1 }')"
+    [[ "${actual_hash,,}" == "${expected_hash,,}" ]] ||
+        fail "Внешняя SHA-256 bundle не совпадает."
+
+    "$BUNDLE_VERIFIER" "$BUNDLE_SNAPSHOT"
     PREFLIGHT="$RUNTIME_PREFLIGHT"
 else
     PREFLIGHT="$SOURCE_PREFLIGHT"
 fi
+
 [[ -f "$PREFLIGHT" ]] || fail "Не найден preflight: $PREFLIGHT"
 command -v "$INSTALL" >/dev/null 2>&1 || fail "Не найдена команда install."
 command -v "$SYSTEMD_ANALYZE" >/dev/null 2>&1 || fail "Не найдена команда systemd-analyze."
+
+# Validate destination paths before preflight/build/install can write anything.
+TARGET_CONFIG_DIR="$STAGE_ROOT$CONFIG_DIR"
+TARGET_CONFIG_FILE="$STAGE_ROOT$CONFIG_FILE"
+if [[ -n "$STAGE_ROOT" ]]; then
+    [[ ! -L "$STAGE_ROOT" ]] || fail "Staging root является symlink: $STAGE_ROOT"
+fi
+TARGET_DIRS=(
+    "$STAGE_ROOT/usr"
+    "$STAGE_ROOT/etc"
+    "$STAGE_ROOT$PREFIX"
+    "$STAGE_ROOT$PREFIX/bin"
+    "$STAGE_ROOT$PREFIX/lib"
+    "$STAGE_ROOT$PREFIX/lib/systemd"
+    "$STAGE_ROOT$PREFIX/lib/systemd/system"
+    "$STAGE_ROOT$PREFIX/share"
+    "$STAGE_ROOT$PREFIX/share/dockstation"
+    "$TARGET_CONFIG_DIR"
+)
+for target_dir in "${TARGET_DIRS[@]}"; do
+    [[ ! -L "$target_dir" ]] || fail "$target_dir является symlink; установка запрещена."
+    [[ ! -e "$target_dir" || -d "$target_dir" ]] ||
+        fail "$target_dir существует, но не является каталогом."
+done
+TARGET_FILES=(
+    "$STAGE_ROOT$PREFIX/bin/dockstation_linux_bootstrap"
+    "$STAGE_ROOT$PREFIX/bin/dockstation-credential-provision"
+    "$STAGE_ROOT$BASE_UNIT"
+    "$STAGE_ROOT$UART_UNIT"
+    "$STAGE_ROOT$EXAMPLE_CONFIG"
+    "$TARGET_CONFIG_FILE"
+)
+for target_file in "${TARGET_FILES[@]}"; do
+    [[ ! -L "$target_file" ]] || fail "$target_file является symlink; перезапись запрещена."
+    [[ ! -e "$target_file" || -f "$target_file" ]] ||
+        fail "$target_file существует, но не является обычным файлом."
+done
 
 # Exit 1 is warning-only (e.g. no verified UART); exit 2 is a hard blocker.
 preflight_status=0
@@ -92,6 +172,8 @@ if [[ -z "$STAGE_ROOT" ]]; then
     for cmd in "$SYSTEMCTL" "$GETENT" "$GROUPADD" "$USERADD" "$CHOWN" "$CHMOD"; do
         command -v "$cmd" >/dev/null 2>&1 || fail "Не найдена команда $cmd."
     done
+    [[ -f "$ACCOUNT_PREFLIGHT" ]] || fail "Не найден account preflight: $ACCOUNT_PREFLIGHT"
+    DOCKSTATION_GETENT_COMMAND="$GETENT" bash "$ACCOUNT_PREFLIGHT"
 
     if [[ -f "$CONFIG_FILE" ]] &&
        grep -Eq '^[[:space:]]*controller_uart_device[[:space:]]*=' "$CONFIG_FILE"; then
@@ -140,8 +222,8 @@ BUNDLE_TEMP=""
 if [[ -n "$BUNDLE" ]]; then
     BUNDLE_TEMP="$(mktemp -d)"
     trap 'rm -rf "$BUNDLE_TEMP"' EXIT
-    # The verifier has checked member paths, link types, manifest and internal hashes.
-    tar --no-same-owner -xzf "$BUNDLE" -C "$BUNDLE_TEMP"
+    # The same immutable snapshot was hashed and passed to the verifier above.
+    tar --no-same-owner --no-same-permissions -xzf "$BUNDLE_SNAPSHOT" -C "$BUNDLE_TEMP"
     BUNDLE_PREFIX="$BUNDLE_TEMP$PREFIX"
     [[ -x "$BUNDLE_PREFIX/bin/dockstation_linux_bootstrap" ]] ||
         fail "Bundle не содержит исполняемый Gateway."
@@ -193,9 +275,9 @@ EXAMPLE_FILE="$STAGE_ROOT$EXAMPLE_CONFIG"
     fail "Не все ожидаемые systemd/config files установлены."
 
 if [[ -n "$STAGE_ROOT" ]]; then
-    "$INSTALL" -d -m 0750 "$STAGE_ROOT$CONFIG_DIR"
-    [[ -e "$STAGE_ROOT$CONFIG_FILE" ]] ||
-        "$INSTALL" -m 0640 "$EXAMPLE_FILE" "$STAGE_ROOT$CONFIG_FILE"
+    "$INSTALL" -d -m 0750 "$TARGET_CONFIG_DIR"
+    [[ -e "$TARGET_CONFIG_FILE" ]] ||
+        "$INSTALL" -m 0640 "$EXAMPLE_FILE" "$TARGET_CONFIG_FILE"
     # In staging mode ExecStart paths intentionally do not exist on the host.
     # Target systemd verification runs after installing files into real /usr/local.
     info "Staging завершён; учётные записи и systemd manager хоста не затрагивались."
@@ -207,9 +289,7 @@ fi
     "$USERADD" --system --gid dockstation --no-create-home \
         --home-dir /nonexistent --shell /usr/sbin/nologin dockstation
 
-[[ ! -L "$CONFIG_DIR" ]] || fail "$CONFIG_DIR является symlink; установка конфигурации запрещена."
 "$INSTALL" -d -o root -g dockstation -m 0750 "$CONFIG_DIR"
-[[ ! -L "$CONFIG_FILE" ]] || fail "$CONFIG_FILE является symlink; перезапись запрещена."
 if [[ ! -e "$CONFIG_FILE" ]]; then
     "$INSTALL" -o root -g dockstation -m 0640 "$EXAMPLE_FILE" "$CONFIG_FILE"
     info "Создана начальная конфигурация."
