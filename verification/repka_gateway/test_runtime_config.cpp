@@ -36,6 +36,8 @@ int main() {
                RuntimeConfigValidationStatus::Valid,
            "default runtime configuration is valid");
 
+    RuntimeConfigValidationResult result{};
+
     config.controller_uart_device = "/dev/serial/by-id/usb-controller";
     config.controller_local_id = "repka-01";
     config.controller_peer_id = "esp32-01";
@@ -68,7 +70,7 @@ int main() {
            "rejects identical local and peer controller IDs");
 
     config.api_port = 0U;
-    auto result = validate_runtime_config(config);
+    result = validate_runtime_config(config);
     expect(result.status == RuntimeConfigValidationStatus::Invalid &&
                result.field == "api_port",
            "rejects port zero");
