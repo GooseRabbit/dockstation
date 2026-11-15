@@ -41,6 +41,7 @@ add_library(dockstation_linux_runtime STATIC
     src/hardware/interfaces/controller_codec.cpp
     src/hardware/interfaces/controller_frame_stream_decoder.cpp
     src/hardware/interfaces/controller_link_session.cpp
+    src/platform/linux/controller_link_service.cpp
     src/communications/api_serialization.cpp
     src/communications/local_api_server.cpp
 )
@@ -79,6 +80,12 @@ target_link_libraries(dockstation_controller_transport
     PUBLIC dockstation_controller_tls
 )
 dockstation_apply_compile_policy(dockstation_controller_transport)
+
+# The Gateway runtime owns the controller service and reuses the transport
+# library without introducing a dependency back from transport into Gateway.
+target_link_libraries(dockstation_linux_runtime
+    PUBLIC dockstation_controller_transport
+)
 
 # Local-only PSK provisioning utility. It is not part of the Gateway runtime.
 add_executable(dockstation-credential-provision
@@ -236,6 +243,15 @@ if(BUILD_TESTING)
     dockstation_apply_compile_policy(test_controller_transport_manager)
     add_test(NAME controller_transport_manager COMMAND test_controller_transport_manager)
 
+    add_executable(test_controller_link_service
+        verification/repka_gateway/test_controller_link_service.cpp
+    )
+    target_link_libraries(test_controller_link_service
+        PRIVATE dockstation_linux_runtime
+    )
+    dockstation_apply_compile_policy(test_controller_link_service)
+    add_test(NAME controller_link_service COMMAND test_controller_link_service)
+
     add_executable(test_controller_psk_credential_store
         verification/repka_gateway/test_controller_psk_credential_store.cpp
     )
@@ -319,6 +335,7 @@ if(BUILD_TESTING)
                     test_controller_psk_tls_client
                     test_controller_uart_port
                     test_controller_transport_manager
+                    test_controller_link_service
                     test_controller_psk_credential_store
                     test_local_api
                     test_source_cursor_reader
@@ -378,6 +395,9 @@ if(BUILD_TESTING)
                 -fsanitize=address,undefined
             )
             target_link_options(test_controller_transport_manager PRIVATE
+                -fsanitize=address,undefined
+            )
+            target_link_options(test_controller_link_service PRIVATE
                 -fsanitize=address,undefined
             )
             target_link_options(test_controller_psk_credential_store PRIVATE
