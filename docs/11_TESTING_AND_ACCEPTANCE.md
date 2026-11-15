@@ -1,7 +1,7 @@
 # Испытания и приёмка
 
 **Статус:** предварительный план.  
-**Редакция:** 3.2.
+**Редакция:** 3.3.
 **Дата актуализации:** 2026-11-15.
 
 ## 1. Назначение
@@ -657,8 +657,12 @@ Workflow \`.github/workflows/linux-cmake.yml\`, run [43499328759](https://github
 | TEST-SW-133 | Межстековый OpenSSL↔Mbed TLS handshake на точном ESP32 target | Подтверждены TLS 1.3 PSK-DHE, совместимые identity/cipher/group callbacks, отказ запрещённых режимов и отсутствие plaintext fallback; только host BIO test не засчитывается |
 | TEST-SW-134 | Linux `ControllerUartPort` на POSIX pseudo-terminal | Проверены absolute character-device path, raw 115200 8N1 без flow control, non-blocking I/O, точный учёт partial transfer, invalid arguments, закрытый порт и hard I/O disconnect; PTY test не подтверждает электрическую линию Repka—ESP32 |
 | TEST-SW-135 | Сквозная host-проверка `ControllerTransportManager` через POSIX pseudo-terminal и OpenSSL TLS peer | Подтверждены TLS 1.3 PSK-DHE handshake поверх POSIX PTY byte path, запрет plaintext до handshake, обмен application data в обе стороны, 64-KiB поток с backpressure, отказ неверного PSK и teardown при потере UART peer; не засчитывается как Mbed TLS interop или аппаратная проверка |
+| TEST-SW-136 | Gateway запускается без настроенного внутреннего контроллерного канала | GET /api/v1/controller/link возвращает NOT_CONFIGURED; health/diagnostics и остальной read-only Gateway продолжают работать; отсутствие PSK не выдаётся за успешное подключение |
+| TEST-SW-137 | Контроллерная конфигурация задана частично или с ошибочным UART path/ID | Значения отклоняются до открытия UART/чтения credentials; Gateway остаётся запущенным, статус канала показывает ERROR без утечки секретов |
+| TEST-SW-138 | Внутренний канал проходит TLS и логический handshake | REQUEST_SNAPSHOT отправляется только после обоих рукопожатий; sequence общий с HELLO/HEARTBEAT; telemetry/error frames проходят codec/session validation; физические команды отсутствуют |
+
 
 **TEST-HW-008 — физическая линия Repka—ESP32:** после определения точной платы/SoC выполнить target build и обмен по UART 3,3 В, 115200 8N1; измерить handshake latency и peak heap, проверить частичные чтения/записи, потерю/восстановление линии, отказ неверного PSK и отсутствие открытых прикладных данных. Этот критерий не пройден и не может быть закрыт host CI.
 
-**Текущее покрытие:** CTest отдельно проверяет host TLS client, POSIX UART adapter и их композицию в `ControllerTransportManager` через POSIX pseudo-terminal с OpenSSL server peer. Это проверяет host byte-path и управление частичными передачами, но не имитирует ESP32 и не подтверждает электрическую линию. Privileged acceptance script проверяет локальное создание, no-overwrite, защиту от небезопасного `--replace` и атомарную локальную замену. ESP32 provisioning, TEST-SW-133 и TEST-HW-008 остаются открытыми. Неблокирующее пустое чтение tty не позволяет надёжно распознать тихий физический обрыв; это контролирует будущий transport manager по heartbeat/состоянию линии.
+**Текущее покрытие:** отдельные host CTest проверяют TLS client, POSIX UART и ControllerTransportManager через PTY/OpenSSL peer. Новый ControllerLinkService test проверяет безопасный NOT_CONFIGURED и fail-closed поведение ошибочной конфигурации; runtime config/parser и LocalApi tests проверяют опциональные настройки и read-only статус. Эти тесты добавлены в кандидатную ветку, но ещё не подтверждены полным CI и не являются доказательством работы ESP32, Mbed TLS или электрической линии. Измерения датчиков пока не публикуются; TEST-SW-138 требует отдельного host/integration покрытия перед закрытием. Privileged credential acceptance остаётся локальной проверкой. ESP32 provisioning, TEST-SW-133 и TEST-HW-008 остаются открытыми.
 
