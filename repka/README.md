@@ -282,7 +282,12 @@ systemd-развёртывание на целевой плате, ESP32 и фи
 проверки. Для инструкции по архитектуре и результатам ручных VM-испытаний
 см. `docs/30_REPKA_NETWORK_IMPLEMENTATION_PLAN.md` и мастер-план `docs/31`.
 
-В GitHub Actions добавлен отдельный нативный Linux ARM64 job на Ubuntu 24.04 ARM64
-(CMake build и CTest); его результат ожидает первого запуска. Даже успешная ARM64
-сборка на Ubuntu не подтверждает ABI, библиотеки, systemd, настройки UART или
-драйверы официальной Repka OS 5 — целевая плата требует отдельной приёмки.
+Нативные ARM64 GitHub Actions runs 43730599989, 43730790585, 43731200878 и
+43731476237 завершились SUCCESS. Последние прогоны подтверждают CMake build,
+23/23 CTest на x86_64 и ARM64; дополнительно выполнена сборка Gateway-only без
+поиска SQLite development package, установка и проверка обоих systemd unit-файлов,
+а также host-проверка read-only Repka preflight. Run 43731476237 включает
+регрессионную проверку согласованности RuntimeEnvironment/SystemDiagnostics.
+Даже успешная ARM64-сборка на Ubuntu не подтверждает ABI и package set точной
+официальной Repka OS 5, настройки её ядра, физический UART и подключение ESP32 —
+целевая плата требует отдельной приёмки.
