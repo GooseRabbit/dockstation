@@ -235,8 +235,8 @@ int main() {
         execute(database, "COMMIT;");
     expect(committed, "COMMIT atomically stores related rows");
 
-    storage.close();
-    expect(!storage.is_open(), "closes the database connection");
+    const bool first_close = storage.close();
+    expect(first_close && !storage.is_open(), "closes the database connection");
     expect(open_database(storage, path),
            "reopens the same database through the production adapter");
     database = storage.native_handle();
@@ -250,7 +250,8 @@ int main() {
         parent_count == 1 && child_count == 1;
     expect(persisted, "committed rows remain available after close and reopen");
 
-    storage.close();
+    const bool close_before_crash_test = storage.close();
+    expect(close_before_crash_test, "closes the database before abrupt-process test");
     const bool child_exited = run_uncommitted_child_transaction(path);
     expect(child_exited, "child process exits after writing but before COMMIT");
 
@@ -285,8 +286,10 @@ int main() {
     expect(second_opened && first_writer_locked && competing_writer_blocked,
            "serializes competing writers instead of allowing overlapping write transactions");
 
-    competing_storage.close();
-    storage.close();
+    const bool competing_close = competing_storage.close();
+    const bool final_close = storage.close();
+    expect(competing_close && final_close,
+           "closes both serialized connections after the writer-conflict check");
     remove_database_files(path, directory);
 
     std::cout << "Checks: " << checks << ", failures: " << failures << '\n';
