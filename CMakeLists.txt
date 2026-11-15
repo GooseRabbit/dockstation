@@ -53,8 +53,8 @@ target_link_libraries(dockstation_linux_runtime
 )
 dockstation_apply_compile_policy(dockstation_linux_runtime)
 
-# Keep controller TLS independent from the current read-only Gateway runtime.
-# The transport manager will link this library when physical UART integration is added.
+# Keep the TLS adapter independent from Gateway orchestration. The transport
+# library composes it with POSIX UART; ControllerLinkService owns runtime wiring.
 add_library(dockstation_controller_tls STATIC
     src/platform/linux/controller_psk_tls_client.cpp
     src/platform/linux/controller_psk_credential_store.cpp
