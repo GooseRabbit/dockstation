@@ -1,7 +1,7 @@
 # Полный план реализации программного комплекса DockStation на Repka Pi 5
 
 **Статус:** мастер-план реализации; последовательность разработки согласована, открытые платформенные, сетевые, серверные и аппаратные детали требуют отдельной проверки и решения.  
-**Редакция:** 1.88.  
+**Редакция:** 1.89.  
 **Дата:** 2026-11-15.  
 **Вычислительная платформа:** Repka Pi 5.  
 **Предполагаемая ОС:** официальная Repka OS; образ и версия проверяются перед развёртыванием.
@@ -1286,6 +1286,7 @@ SQLite остаётся кандидатом, не решением. Сравн�
 | 1.86 | 2026-11-15 | Добавлен общий read-only C++ LinuxPlatformCapabilities: Generic Linux fallback/Repka Pi 5 Device Tree detection и passive inventory UART/GPIO/I2C/SPI/PWM/V4L2 с разделением наличия device node, доступа процесса, sysfs controller и UART console conflict. Добавлен CTest fixture suite; локально GCC 14.2 ASan/UBSan — 30/30 assertions. Платформенный профиль пока не подключён к HTTP API или автоматическому выбору UART; аппаратный обмен и физическая Repka не проверялись. WiringRP/repka_gpio.ko module-loading и permissions вынесены в незакрытый DEC-069. |
 | 1.87 | 2026-11-15 | GitHub Actions run 43757915843 завершился SUCCESS для HEAD 51d4afe44a0df1d75c68a4006d5e9957a270582d: 24/24 CTest на x64 и ARM64 (ASan/UBSan), 31/31 C++ host-программ, 141 Python-тест, Operator/QML/e2e, shell syntax и Repka shell checks. Нативный ARM64 job собрал Gateway-only и Release bundle без SQLite, проверил установщик в isolated staging без CMake; bundle подписан и provenance успешно проверен онлайн и локально. Signed artifact ID 14179072974; TAR.GZ SHA-256 f5a30dd3018d495c33fa61b57a6c9889573a091cf8c7a4eb10fb4287b5ab0a3a; attestation 67873005. Это программный CI для Ubuntu x64/ARM64, не проверка Repka OS или физического оборудования. |
 | 1.88 | 2026-11-15 | Введён целевой рубеж Software Complete / Hardware Pending и его критерии: весь согласованный софт наземного прототипа интегрирован, платформенные адаптеры и тесты закрыты, а после достижения остаются конфигурация и аппаратная приёмка. Рубеж не объявляется достигнутым до выполнения критериев; он не означает production readiness или завершённую физическую приёмку. |
+| 1.89 | 2026-11-15 | Platform capabilities подключены к read-only GET /api/v1/system/diagnostics как platform.capabilities: профиль, Device Tree metadata, статусы UART/GPIO/I2C/SPI/PWM/V4L2, счётчики nodes/sysfs, проверка прав R/W, UART console conflict и диагностический candidate path с candidate_only=true. Operator API-клиент валидирует новый раздел, сохраняя совместимость со старыми снимками; вкладка «Система» отображает профиль и интерфейсы. Физический I/O и выбор UART не выполняются; аппаратная приёмка Repka остаётся открытой. Полный CI для редакции 1.89 ожидает результата. |
 
 **Ограничение:** это план. Функции не считаются реализованными до появления кода, проверок и, где требуется, аппаратных испытаний.
 

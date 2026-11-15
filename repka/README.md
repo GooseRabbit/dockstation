@@ -53,6 +53,12 @@ bash repka/collect_platform_diagnostics.sh ./repka-platform-report
 
 Тест: verification/repka_gateway/test_platform_capabilities.cpp, CTest platform_capabilities. Fixture проверки не являются аппаратным тестом.
 
+## Аппаратные возможности в диагностике Gateway
+
+Read-only `GET /api/v1/system/diagnostics` включает `platform.capabilities`: профиль Generic Linux/Repka Pi 5, свойства Device Tree и статусы UART/GPIO/I2C/SPI/PWM/V4L2. Для каждого интерфейса публикуются числа обнаруженных device nodes, узлов с успешной проверкой R/W текущего процесса, sysfs-контроллеров, конфликтов UART с kernel `console=` и диагностический candidate path (`candidate_only: true`). Candidate не выбирается для обмена автоматически.
+
+Windows Operator принимает этот раздел как необязательное расширение schema 1.0 и отображает его на вкладке «Система». Старые диагностические снимки без `platform.capabilities` остаются допустимыми. Наличие node или успешная проверка прав не доказывает фактический обмен, электрическую исправность или корректную распиновку. Сборщик не выполняет I/O, не меняет Device Tree/pinmux, права, модули или службы.
+
 ## C++ Gateway и systemd
 
 Текущий C++ Gateway — отдельная исполняемая цель `dockstation_linux_bootstrap`.
