@@ -86,10 +86,10 @@ attestations.
 For online verification, use a current GitHub CLI:
 
 ```sh
-gh attestation verify dockstation-repka-pi5-arm64.tar.gz \\
-  --repo GooseRabbit/dockstation \\
-  --signer-workflow GooseRabbit/dockstation/.github/workflows/linux-cmake.yml \\
-  --source-ref refs/heads/chore/flatten-repka-directories \\
+gh attestation verify dockstation-repka-pi5-arm64.tar.gz \
+  --repo GooseRabbit/dockstation \
+  --signer-workflow GooseRabbit/dockstation/.github/workflows/linux-cmake.yml \
+  --source-ref refs/heads/chore/flatten-repka-directories \
   --source-digest <40-character-source-commit>
 ```
 

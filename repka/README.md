@@ -293,194 +293,30 @@ manifest/source commit, exact build SONAME inventory, ABI ceilings, ldd,
 
 ### Проверка криптографической подписи и происхождения ARM64 bundle
 
-Для обычной публикации в рабочую ветку CI дополнительно выпускает GitHub Artifact
-Attestation для точного файла `dockstation-repka-pi5-arm64.tar.gz`. Attestation
-подписывается краткоживущим сертификатом Sigstore через GitHub OIDC и связывает
-SHA-256 архива с репозиторием, workflow и source commit. В итоговом Actions artifact
-лежат три файла: сам архив, checksum sidecar и
-`dockstation-repka-pi5-arm64.tar.gz.attestation.jsonl`. Ссылка на запись attestation
-публикуется отдельно в workflow Summary.
+Для обычной публикации в рабочую ветку CI выпускает GitHub Artifact Attestation
+для точного файла `dockstation-repka-pi5-arm64.tar.gz`. Подпись формируется
+Sigstore с краткоживущим сертификатом GitHub OIDC и связывает SHA-256 архива
+с репозиторием, workflow и конкретным исходным commit.
 
-Signing выполняется отдельной job только для push/ручного запуска на
-`chore/flatten-repka-directories`; Pull Request не получает signing job. В job
-проверяется provenance по GitHub API и повторно по локально скачанному JSONL bundle.
-Дополнительно CI обязан отвергнуть изменённый архив, неверный workflow и неверный
-source commit. Это не заменяет code review и не доказывает безопасность исходного
-кода, но позволяет проверить, что переданный архив соответствует артефакту,
-подписанному ожидаемым GitHub Actions workflow.
+Signing выполняется отдельной job только для push или ручного запуска на
+`chore/flatten-repka-directories`; Pull Request не получает signing job.
+CI проверяет аттестацию через GitHub API и повторно по локально скачанному JSONL
+bundle. Отдельные negative checks должны отклонять изменённый архив, чужой
+workflow и неверный source commit. Итоговый Actions artifact хранит архив,
+его `.sha256` и `dockstation-repka-pi5-arm64.tar.gz.attestation.jsonl`.
+Срок хранения — 30 дней; ссылка на artifact и запись attestation попадают в Summary.
 
-**Проверка на Windows до копирования архива на Repka.** Установите актуальный
-GitHub CLI (`gh`), распакуйте Actions artifact ZIP и выполните в PowerShell:
+**Проверка на Windows до передачи архива на Repka (online).** Установите
+актуальный GitHub CLI (`gh`), распакуйте Actions artifact ZIP и выполните
+в PowerShell из каталога с архивом:
 
 ```powershell
-$archive = ".\\dockstation-repka-pi5-arm64.tar.gz"
-$sourceCommit = (tar -xOf $archive ./BUNDLE-MANIFEST.txt |
-  Select-String '^Source commit: ').Line -replace '^Source commit:\\s*', ''
-if ($sourceCommit -notmatch '^[0-9a-f]{40}
-Обычный \`dockstation-gateway.service\` намеренно использует \`PrivateDevices=true\`:
-он остаётся подходящим для read-only диагностики и не получает физические устройства.
-Для будущего соединения Repka—ESP32 устанавливается отдельный шаблон
-\`dockstation-gateway-uart@.service\`. Он не включается автоматически и требует
-явного выбора одного реального character device в имени экземпляра службы.
-
-Перед включением профиля на целевой Repka OS сначала установите фактический узел
-UART и проверьте, что это именно character device. Не считайте \`/dev/serial0\`,
-\`/dev/ttyS0\` или номер UART гарантированным до проверки конкретного образа:
-
-\`\`\`sh
-ls -l /dev/serial0 /dev/serial/by-id/* /dev/serial/by-path/* \\
-  /dev/ttyS* /dev/ttyAMA* /dev/ttyFIQ* /dev/ttyUSB* /dev/ttyACM* 2>/dev/null || true
-readlink -f /dev/serial0 2>/dev/null || true
-test -c /dev/ttyS0 && stat -c '%F %A %U:%G %n' /dev/ttyS0
-\`\`\`
-
-В командах ниже \`ttyS0\` — только пример. Замените его на basename реального
-устройства, подтверждённого предыдущей проверкой. Если \`/dev/serial0\` является
-символьной ссылкой, используйте конечный узел, на который она указывает, а не
-предполагаемое имя ссылки.
-
-Укажите в \`/etc/dockstation/gateway.conf\` тот же абсолютный путь:
-
-\`\`\`ini
-controller_uart_device=/dev/ttyS0
-\`\`\`
-
-Проверьте владельца, группу и режим доступа к этому узлу:
-
-\`\`\`sh
-stat -c '%F %A %U:%G %n' /dev/ttyS0
-\`\`\`
-
-Пользователь \`dockstation\` должен иметь обычное право доступа к устройству через
-его фактическую группу или отдельное узкое правило udev. Не добавляйте его в
-группу \`root\` и не меняйте права устройства на \`0666\`. Если группа устройства
-предназначена для доступа к UART, добавьте \`dockstation\` именно в эту группу
-(например, \`dialout\`, только если \`stat\` действительно показал \`dialout\`):
-
-\`\`\`sh
-sudo usermod -aG dialout dockstation
-\`\`\`
-
-После подтверждения пути, прав и настроек остановите базовый unit и явно
-включите экземпляр UART-профиля:
-
-\`\`\`sh
-sudo systemctl disable --now dockstation-gateway.service
-sudo systemctl daemon-reload
-sudo systemd-analyze verify /usr/local/lib/systemd/system/dockstation-gateway-uart@.service
-sudo systemctl enable --now dockstation-gateway-uart@ttyS0.service
-\`\`\`
-
-Замените \`ttyS0\` в последней команде на выбранный basename. \`DevicePolicy=closed\`
-совместно с \`DeviceAllow=/dev/%i rw\` добавляет адресное разрешение чтения и
-записи выбранного узла сверх штатных исключений systemd; wildcard-доступ к
-остальным классам устройств не добавляется. \`PrivateDevices=false\` здесь нужен
-только для видимости физического \`/dev\`, а не для снятия device-фильтра.
-Остальные ограничения
-(\`NoNewPrivileges\`, пустые capabilities, \`ProtectSystem=strict\`, защита \`/home\`,
-kernel и сетевых семейств) сохранены. Профиль не добавляет явных разрешений на GPIO,
-камеру, общие блочные устройства или другие UART.
-
-Проверьте состояние и журнал:
-
-\`\`\`sh
-systemctl show dockstation-gateway-uart@ttyS0.service -p User -p Group -p ActiveState -p SubState
-sudo journalctl -u dockstation-gateway-uart@ttyS0.service -n 50 --no-pager
-curl -i http://127.0.0.1:8080/api/v1/health
-curl -i http://127.0.0.1:8080/api/v1/controller/link
-\`\`\`
-
-Этот профиль подтверждает только конфигурацию доступа на уровне systemd. Он не
-подтверждает, что выбранный UART не занят системной консолью, соответствует
-нужному физическому разъёму и корректно связан с ESP32. Проверка console/DT/pinmux,
-прав и фактического обмена должна быть выполнена на точной версии Repka OS 5.
-Профили камеры и GPIO будут добавляться отдельно после появления соответствующих
-адаптеров и проверки минимальных device permissions.
-
-### Read-only preflight целевой Repka OS
-
-Перед установкой и особенно перед включением UART-профиля выполните из корня
-checkout репозитория:
-
-```sh
-bash repka/check_target_platform.sh
-```
-
-Скрипт только читает `/etc/os-release`, модель платы, архитектуру и ядро,
-проверяет CMake, C++17, заголовки OpenSSL 3.x, наличие systemd и установленные
-Gateway unit-файлы, если они уже есть. Он перечисляет UART character devices,
-сопоставляет их имена с параметрами `console=` в `/proc/cmdline` и сообщает
-владельца/группу обнаруженных узлов. SQLite отмечается как необязательная
-возможность: для Gateway-only сборки её development headers не требуются.
-
-Скрипт не запускает `apt`, не устанавливает/обновляет пакеты, не отключает
-системную консоль, не меняет Device Tree/pinmux, права устройств или службы.
-Код завершения: `0` — обязательные проверки пройдены без предупреждений,
-`1` — есть предупреждения, `2` — обязательное требование не выполнено.
-Предупреждение о непроверенных pinmux и физическом UART ожидаемо до аппаратной
-приёмки; его нельзя трактовать как разрешение включить порт.
-
-Проверка не подтверждает физическую распиновку, электрические уровни, свободность
-линии на разъёме или обмен с ESP32. Для включения UART всё равно требуется
-проверить точный device node, kernel console и его группу на конкретном образе.
-
-## Временный Python Gateway
-
-Временный read-only Gateway находится в `repka_gateway/`. Он использует только
-стандартную библиотеку Python 3.11+ и привязывается исключительно к `127.0.0.1`.
-Он сохранён для ранних VM-тестов и test-only сценария PING; это не текущая служба
-systemd и не production API.
-
-Запуск из корня репозитория:
-
-```sh
-python3 -m repka_gateway.dockstation_gateway.main --port 8080
-```
-
-Python и C++ Gateway используют один и тот же порт 8080 — не запускайте их
-одновременно.
-
-## Риск жизненного цикла и сопровождения ОС
-
-В официальном changelog Repka OS 5 Basic 1.0.6 указана база Ubuntu 25.10 и собственное
-ядро `6.1.115.1-repka-pi5` (образ датирован 9 ноября 2026 года). Стандартный срок
-поддержки Ubuntu 25.10 у Canonical закончился 9 июля 2026 года. Это не доказывает,
-что Repka прекратила выпускать исправления: производитель может сопровождать свой
-репозиторий и backport-ить security fixes через `repka-os-update`. Но срок, охват
-и политика этих обновлений пока не подтверждены. До production нужно получить от
-производителя подтверждение сопровождения kernel, glibc, OpenSSL, systemd и OpenSSH:
-срок поддержки, источники security updates и процедура перехода на следующий образ.
-
-Пока это не подтверждено, не выполнять `apt upgrade` или `do-release-upgrade` на
-Repka. Использовать только рекомендованный производителем механизм обновления и
-сохранять проверенный образ/резервную копию перед изменениями.
-
-## Границы текущей проверки
-
-Данные относятся к ОС и сетевому стеку виртуальной машины. Они не являются
-телеметрией ESP32, датчиков, приводов или физической док-станции. Состояние
-systemd unit не подтверждает успешный вход с Windows по SSH-ключу, а DNS-результат
-не подтверждает доступность конкретного внешнего сервера.
-
-Ubuntu VM x86_64 не является целевой Repka Pi 5: ARM64-сборка, Repka OS,
-systemd-развёртывание на целевой плате, ESP32 и физические узлы требуют отдельной
-проверки. Для инструкции по архитектуре и результатам ручных VM-испытаний
-см. `docs/30_REPKA_NETWORK_IMPLEMENTATION_PLAN.md` и мастер-план `docs/31`.
-
-GitHub Actions run 43736420005 завершился SUCCESS на x64 и ARM64. На каждой
-архитектуре прошли 23/23 CTest; x64 также прошёл 31 host-программу и 141 Python-
-тест. Нативный ARM64 job создал архив и установил его через реальный
-`install_gateway.sh --bundle` в isolated staging; повторная установка сохранила
-операторскую настройку. CI дополнительно закрепляет ABI symbol ceilings и
-отклоняет bundle с требованием `GLIBCXX_3.4.33`. Это подтверждает сборку,
-упаковку, checksum/ELF/ABI/ldd gates и installer copy path на Ubuntu 24.04 ARM64,
-но не заменяет запуск на официальной Repka OS 5. Точный пакетный набор Repka,
-systemd manager lifecycle на плате, UART/console/pinmux, электрические уровни и
-обмен с ESP32 остаются открытыми.
-) {
-  throw "Invalid or missing Source commit in bundle manifest."
+$archive = '.\dockstation-repka-pi5-arm64.tar.gz'
+$manifest = tar -xOf $archive ./BUNDLE-MANIFEST.txt
+$sourceCommit = ($manifest | Select-String '^Source commit: ').Line -replace '^Source commit:\s*', ''
+if ($sourceCommit -notmatch '^[0-9a-f]{40}$') {
+  throw 'Invalid or missing Source commit in bundle manifest.'
 }
-
 gh attestation verify $archive `
   --repo GooseRabbit/dockstation `
   --signer-workflow GooseRabbit/dockstation/.github/workflows/linux-cmake.yml `
@@ -488,44 +324,40 @@ gh attestation verify $archive `
   --source-digest $sourceCommit
 ```
 
-Успешная команда должна завершиться с кодом 0. Она обращается к GitHub attestation
-API и проверяет криптографическую подпись, subject digest архива, ожидаемый
-репозиторий/workflow, ветку и точный commit. Значение commit берётся из manifest
-самого архива; подмена содержимого архива приводит к несовпадению подписанного
-digest. Команда доступна в актуальном GitHub CLI:
-[gh attestation verify](https://cli.github.com/manual/gh_attestation_verify).
+Проверка обращается к GitHub и подтверждает подпись, digest архива, ожидаемые
+репозиторий и workflow, ветку и ровно тот commit, который записан в manifest.
+При изменении байтов архива его digest перестанет совпадать с подписанным subject.
 
-**Проверка без доступа к GitHub API.** JSONL sidecar уже входит в скачанный artifact.
-На машине с Интернетом заранее получите Sigstore trusted roots:
+**Проверка без GitHub API (offline).** На доверенной машине с Интернетом
+получите Sigstore trusted roots:
 
 ```powershell
-gh attestation trusted-root > .\\trusted_root.jsonl
+gh attestation trusted-root > .\trusted_root.jsonl
 ```
 
 Перенесите на изолированную машину GitHub CLI, архив, файл
-`dockstation-repka-pi5-arm64.tar.gz.attestation.jsonl` и
-`trusted_root.jsonl`. Затем выполните ту же проверку, добавив локальный bundle
-и trusted root:
+`dockstation-repka-pi5-arm64.tar.gz.attestation.jsonl` и `trusted_root.jsonl`.
+Затем выполните:
 
 ```powershell
 gh attestation verify $archive `
   --repo GooseRabbit/dockstation `
-  --bundle .\\dockstation-repka-pi5-arm64.tar.gz.attestation.jsonl `
-  --custom-trusted-root .\\trusted_root.jsonl `
+  --bundle .\dockstation-repka-pi5-arm64.tar.gz.attestation.jsonl `
+  --custom-trusted-root .\trusted_root.jsonl `
   --signer-workflow GooseRabbit/dockstation/.github/workflows/linux-cmake.yml `
   --source-ref refs/heads/chore/flatten-repka-directories `
   --source-digest $sourceCommit
 ```
 
-Для автономной проверки репозитория дополнительно сравните его неизменяемый
-numeric ID: на доверенной online-машине получите
-`gh api repos/GooseRabbit/dockstation --jq .id`; на offline-машине выполните:
+Для offline режима дополнительно сверьте неизменяемый numeric repository ID.
+На online-машине получите его командой `gh api repos/GooseRabbit/dockstation --jq .id`.
+На offline-машине извлеките ID из проверенного сертификата:
 
 ```powershell
 gh attestation verify $archive `
   --repo GooseRabbit/dockstation `
-  --bundle .\\dockstation-repka-pi5-arm64.tar.gz.attestation.jsonl `
-  --custom-trusted-root .\\trusted_root.jsonl `
+  --bundle .\dockstation-repka-pi5-arm64.tar.gz.attestation.jsonl `
+  --custom-trusted-root .\trusted_root.jsonl `
   --signer-workflow GooseRabbit/dockstation/.github/workflows/linux-cmake.yml `
   --source-ref refs/heads/chore/flatten-repka-directories `
   --source-digest $sourceCommit `
@@ -533,18 +365,16 @@ gh attestation verify $archive `
   --jq '.[].verificationResult.signature.certificate.sourceRepositoryIdentifier'
 ```
 
-Полученный numeric ID должен совпасть с ID, записанным online. Такая проверка
-нужна, потому что локальный bundle подтверждает имя репозитория из сертификата,
-но без GitHub API не может узнать, не был ли репозиторий позднее переименован
-или имя повторно использовано. Подробнее:
-[offline verification](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/verify-attestations-offline).
+Полученное число должно совпасть с online repository ID. Это дополнительная
+проверка нужна потому, что локальная аттестация не может сама запросить текущее
+состояние GitHub и проверить, не было ли имя репозитория переиспользовано.
+Подробности: [offline verification](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/verify-attestations-offline).
 
-**Граница ответственности установщика:** `repka/install_gateway.sh --bundle`
-по-прежнему проверяет checksum, manifest, состав архива и target runtime
-dependencies, но не запускает GitHub CLI и не проверяет attestation автоматически.
-Криптографическую проверку нужно выполнить на доверенной управляющей машине
-до передачи архива на Repka. Установка без этой проверки не доказывает
-подлинность источника.
+**Важно:** `repka/install_gateway.sh --bundle` не вызывает GitHub CLI и не
+проверяет attestation автоматически. Криптографическую проверку следует
+выполнить на доверенной управляющей машине до передачи архива на Repka.
+Установщик продолжает проверять sidecar SHA-256, manifest, состав архива и
+runtime dependencies; это не заменяет проверку происхождения.
 
 ### Отдельный профиль для одного UART-устройства
 
