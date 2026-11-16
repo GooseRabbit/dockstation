@@ -1,7 +1,7 @@
 # Идентичность станции и криптографическая защита
 
-**Статус:** техническая спецификация идентичности и доступа; правила изоляции OwnerSpace заданы владельцем проекта, базовый профиль внутреннего Repka—ESP32 канала DEC-066 утверждён владельцем проекта 2026-11-14; остальные криптографические решения остаются предметом отдельного согласования.  
-**Редакция:** 0.9.  
+**Статус:** техническая спецификация идентичности и доступа; правила изоляции OwnerSpace заданы владельцем проекта, базовый профиль внутреннего Repka—ESP32 канала DEC-066 утверждён владельцем проекта 2026-11-14; применение TLS exporter как основы channel-bound session proof согласовано владельцем 2026-11-16; остальные криптографические решения остаются предметом отдельного согласования.  
+**Редакция:** 1.0.  
 **Дата:** 2026-11-15.
 
 ## 1. Назначение
@@ -405,7 +405,7 @@ Wi-Fi WPA2/WPA3 и сегментация сети рассматриваютс�
 | Индивидуальная пара ключей и сертификат станции | Предложение; зависит от контроллера и PKI |
 | TPM/secure element | Рекомендуется; аппаратная платформа не выбрана |
 | TLS 1.3 по RFC 9846 | Предлагаемый защищённый транспорт; совместимость библиотек не проверена |
-| Внутренний Repka—ESP32 UART | DEC-066: предложение TLS 1.3 PSK-DHE с индивидуальным 256-битным PSK на пару; ESP-IDF/Mbed TLS и Linux/OpenSSL interop, provisioning и secure storage не проверены |
+| Внутренний Repka—ESP32 UART | DEC-066: утверждён TLS 1.3 PSK-DHE с индивидуальным 256-битным PSK на пару; на Linux/OpenSSL host реализован 32-байтовый TLS exporter proof с фиксированной DockStation label и versioned non-empty context, выдаваемый только после TLS handshake + HELLO_ACK. Mbed TLS interop, peer-side exporter, provisioning и secure storage не проверены |
 | mTLS станция — сервер | Предложение |
 | Argon2id для хранения паролей | Предложение; параметры не выбраны |
 | Шифрование локального накопителя | Требует выбора ОС/носителя и модели угроз |
@@ -444,6 +444,12 @@ Wi-Fi WPA2/WPA3 и сегментация сети рассматриваютс�
 
 Эти источники не являются доказательством соответствия проекта конкретному стандарту. Применимость формальных требований и законодательства должна быть проверена отдельно.
 
+### 15.1. Channel-bound proof внутреннего Repka—ESP32 канала
+
+Владелец проекта согласовал 2026-11-16 использование TLS 1.3 exporter как основы `session_proof`. Linux/OpenSSL реализация использует 32 байта `SSL_export_keying_material()`, label `EXPORTER-DockStation-ControllerLink-v1` и фиксированный непустой context `DockStation/ControllerLink/session-proof/v1`. Exporter доступен через `ControllerLinkService` только после полного TLS handshake и принятого `HELLO_ACK`; output очищается при отказе и закрытии. Proof не передаётся в логи/API и не сохраняется.
+
+Это доказательство привязки к текущему TLS-каналу, а не самостоятельная регистрация или авторизация устройства. `PSK identity → Station ID → source/controller_id` registry, production `SourceSessionVerifier`, `AuthenticatedEventTransportAdapter`, проверка статуса регистрации, Mbed TLS exporter на ESP32 и согласованное provisioning ещё не реализованы. Не допускается пропускать эти проверки или считать один exporter достаточным доказательством права источника отправлять события.
+
 ## 15. Правило согласования
 
 Владелец проекта отдельно согласует:
@@ -472,3 +478,4 @@ Wi-Fi WPA2/WPA3 и сегментация сети рассматриваютс�
 | 0.7 | 2026-11-14 | Добавлен отдельный Linux/OpenSSL `ControllerPskTlsClient` и CTest host peer: 13 проверок PSK-DHE, отказов по PSK/identity/TLS 1.2/сертификатному fallback/PSK-only, защищённой записи и запрета plaintext до handshake. Закреплено, что это только OpenSSL host check, не Mbed TLS interop, не UART, не ESP32 и не credential provisioning/storage. |
 | 0.8 | 2026-11-14 | Добавлен Linux `ControllerPskCredentialStore`: фиксированный 48-байтовый файл 32+16, покомпонентное no-follow открытие, root:dockstation ownership, режимы 0750/0640, ACL/hardlink/regular-file/size/stat checks и очистка буферов; `ControllerPskCredentials` получил RAII cleanse. Добавлен host filesystem acceptance script под service user. Provisioning, атомарная запись/ротация реальных ключей и интеграция с Gateway/UART остаются открытыми. |
 | 0.9 | 2026-11-15 | Добавлена локальная утилита dockstation-credential-provision для генерации 32+16 байт и атомарной установки/явной локальной замены файла на Repka; секреты не выводятся. Зафиксировано, что ESP32 не provisioned, coordinated rotation/revocation, interop и аппаратная приёмка остаются открытыми. Добавлены организационные вопросы IAM и размещения/резервирования данных; вопросы остаются предложениями до согласования владельцем проекта. |
+| 1.0 | 2026-11-16 | Владелец согласовал TLS exporter как основу session proof. На Linux/OpenSSL добавлен 32-байтовый exporter с фиксированными DockStation label/context и выдачей через ControllerLinkService только после TLS handshake + HELLO_ACK; host tests подтвердили совпадение peer output, context separation и очистку. Это не production SourceSessionEvidence/verifier/registry и не Mbed TLS/ESP32 interop. |

@@ -1098,12 +1098,19 @@ hardwarePlatformInfo публикует выбранный платформен�
  
 Буфер текстовых полей ограничен размером одного ControllerCodec frame (2048 байт), число измерений — 16. Это копия одного последнего снимка, без динамического накопления истории и без persistent storage.
 
+### src/platform/linux/controller_psk_tls_client.hpp / .cpp
+
+| Функция | Назначение |
+|---|---|
+| `ControllerPskTlsClient::export_session_proof(context, output)` | После полного TLS 1.3 PSK-DHE handshake выводит 32 байта `SSL_export_keying_material()` с фиксированной DockStation exporter label и обязательным непустым ограниченным context; очищает output при любой ошибке. Произвольная label не принимается, чтобы сохранять domain separation. |
+
 ### src/platform/linux/controller_link_service.cpp
 
 | Функция | Назначение |
 |---|---|
 | `ControllerLinkService::process_ready_frame()` | После успешного ControllerCodec decode и ControllerLinkSession acceptance передаёт TELEMETRY_SNAPSHOT в `ControllerTelemetrySnapshot::replace()`; счётчик snapshot растёт только после успешной публикации. Ошибка копирования закрывает кадр/транспорт fail-closed. |
 | `ControllerLinkService::telemetry_snapshot()` | Возвращает read-only доступ к последнему принятому snapshot для C++ Gateway serializer. |
+| `ControllerLinkService::export_authenticated_session_proof()` | Возвращает exporter proof только при установленном TLS и принятом ControllerLink HELLO_ACK; иначе очищает output и возвращает отказ. Не создаёт SSM evidence и не проверяет реестр источников. |
 
 ### src/communications/api_serialization.cpp / local_api_server.cpp
 
@@ -1121,3 +1128,7 @@ hardwarePlatformInfo публикует выбранный платформен�
 
 **Проверка:** GitHub Actions run 43818913284 SUCCESS для точного HEAD `a89b05eae1d3189bdb5306e4830f027421a4827c`: CTest 25/25 на x64 и ARM64, 31/31 C++ host programs и 158 Python/QML/e2e tests. Сквозной `controller_link_service` прошёл на обеих архитектурах, включая TLS peer/PTY и публикацию fixture-телеметрии. ARM64 Gateway-only build без обнаружения SQLite, Release bundle staging/installer, Sigstore provenance creation и verification также прошли. Signed artifact: [14203573374](https://github.com/GooseRabbit/dockstation/actions/runs/43818913284/artifacts/14203573374); attestation: [67996530](https://github.com/GooseRabbit/dockstation/attestations/67996530); archive SHA-256 `ac47e180e04bd721f4f39463a1f4944b021acc38e68a01168e073e3e5e70b7cf`. Physical Repka OS, UART, ESP32 and Mbed TLS interop remain open.
 
+
+### Host-проверка TLS exporter
+
+`verification/repka_gateway/test_controller_psk_tls_client.cpp` проверяет совпадение 32-байтового exporter результата на TLS client/server, разделение результатов для разных context, отказ до handshake и очистку output после close. `verification/repka_gateway/test_controller_link_service.cpp` проверяет gating на уровне сервиса: proof недоступен до аутентификации и доступен только после TLS + HELLO_ACK. GitHub Actions run 43821980151 SUCCESS: CTest 25/25 x64 и ARM64, 31/31 C++ host programs, 158 Python/QML/e2e; ARM64 Gateway-only build, release bundle staging и Sigstore provenance также прошли. Это host OpenSSL↔OpenSSL, не Mbed TLS interop и не аппаратная приёмка.
