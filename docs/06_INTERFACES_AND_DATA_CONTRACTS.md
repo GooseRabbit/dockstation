@@ -1,14 +1,14 @@
 # Интерфейсы и контракты данных
 
 **Статус:** предварительная спецификация.  
-**Редакция:** 1.34  
-**Дата актуализации:** 2026-11-15.
+**Редакция:** 1.35  
+**Дата актуализации:** 2026-11-16.
 
 ## 1. Назначение
 
 Документ определяет, какую информацию должны обменивать программные модули и внешние системы.
 
-Прикладной формат сообщений и сериализация определяются отдельно от физического канала. По DEC-062 для внутренней связи Repka Pi 5 ↔ ESP32 выбран UART 3,3 В, 115200 8N1. На host Linux реализованы ControllerCodec, TLS-клиент, POSIX UART-адаптер, ControllerTransportManager и ControllerLinkService, подключённый к C++ Gateway. Эти изменения ожидают полного CI; PTY-проверки не подтверждают физическую линию, целевую Repka или ESP32.
+Прикладной формат сообщений и сериализация определяются отдельно от физического канала. По DEC-062 для внутренней связи Repka Pi 5 ↔ ESP32 выбран UART 3,3 В, 115200 8N1. На host Linux реализованы ControllerCodec, TLS-клиент, POSIX UART-адаптер, ControllerTransportManager и ControllerLinkService, подключённый к C++ Gateway. Принятый TELEMETRY_SNAPSHOT копируется в ограниченный Gateway snapshot и публикуется через read-only diagnostics API; Operator валидирует и отображает измерения. Host CI проверяет копирование, контракт JSON и приложение, но не подтверждает физическую линию, целевую Repka или ESP32.
 
 ## 2. Общие правила для любого сообщения
 
@@ -504,7 +504,7 @@ StateChanged публикуется только после подтверждё
 
 ### 16.6. Защищённый транспорт Repka—ESP32 (утверждённый базовый профиль DEC-066)
 
-Этот раздел фиксирует утверждённую проектную границу защищённого канала. Базовый профиль DEC-066 утверждён владельцем проекта 2026-11-14. На Linux реализованы OpenSSL TLS-клиент, POSIX UART-адаптер и `ControllerTransportManager`; добавлен `ControllerLinkService`, который связывает loader credentials, transport, FrameStreamDecoder, ControllerCodec и ControllerLinkSession и подключён к C++ Gateway. Read-only статус доступен через `GET /api/v1/controller/link`. Изменения прошли полный host CI: run 43698392221, 22/22 CTest, 31/31 host-программ и 141 pytest. Host PTY/OpenSSL проверки не являются Mbed TLS interop или аппаратной приёмкой. Сквозной тест всей цепочки ControllerLinkService с TLS peer/телеметрией ещё остаётся открытым; физические Repka/ESP32 и ESP-IDF/Mbed TLS также не проверены.
+Этот раздел фиксирует утверждённую проектную границу защищённого канала. Базовый профиль DEC-066 утверждён владельцем проекта 2026-11-14. На Linux реализованы OpenSSL TLS-клиент, POSIX UART-адаптер и `ControllerTransportManager`; добавлен `ControllerLinkService`, который связывает loader credentials, transport, FrameStreamDecoder, ControllerCodec и ControllerLinkSession и подключён к C++ Gateway. Read-only статус доступен через `GET /api/v1/controller/link`; снимок телеметрии, принятый после TLS и логической проверки сессии, публикуется в `GET /api/v1/system/diagnostics`. Host-тесты проверяют отдельные компоненты, владение копией и JSON-контракт, но не являются сквозным TLS-peer interop, Mbed TLS interop или аппаратной приёмкой. Физические Repka/ESP32 и ESP-IDF/Mbed TLS также не проверены.
 
 **Утверждённая базовая схема:** Repka инициирует TLS 1.3 как client; ESP32 принимает соединение как server. Для каждой локальной пары используется индивидуальный внешний 256-битный PSK и только PSK-DHE/PSK-ephemeral режим с эфемерным (EC)DHE. Cipher suite candidate — TLS_AES_128_GCM_SHA256; общая эфемерная группа подлежит проверке совместимости. TLS 1.2 fallback, PSK-only, 0-RTT/early data и session resumption на первом этапе запрещены. Никакого plaintext fallback нет.
 
@@ -525,6 +525,20 @@ PSK identity — отдельный непрозрачный случайный 
 
 Подробный утверждённый профиль, хранение ключей, provisioning, ограничения и критерии проверки — docs/24 §6.4. Текущая композиция Linux Gateway прошла полный host CI run 43698392221 (22/22 CTest, 31/31 host-программ, 141 pytest); CTest `controller_link_service` проверяет безопасный NOT_CONFIGURED и отказ некорректной конфигурации, а `local_api` — read-only статус. Отдельный end-to-end сценарий с TLS peer и реальным потоком TELEMETRY_SNAPSHOT ещё не реализован. Даже успешные host-тесты не доказывают совместимость с Mbed TLS или физическую работу UART/ESP32. До подтверждения SoC, ESP-IDF, версии Mbed TLS и interop нельзя утверждать общий production cipher/group allow-list, board profile или выпускать production-прошивку. Host/interop проверки не заменяют физические испытания UART и secure storage.
 
+
+### 16.7. Сохранение и публикация принятого снимка телеметрии
+
+`ControllerTelemetrySnapshot` (`src/hardware/interfaces/controller_telemetry_snapshot.hpp/.cpp`) владеет bounded-копией последнего принятого `TELEMETRY_SNAPSHOT`. Декодированные `string_view` нельзя сохранять напрямую: они ссылаются на буфер временного кадра, который переиспользуется при следующем чтении. Поэтому слой копирует идентификаторы, единицы, временные метки и текстовые значения в фиксированный текстовый буфер размером не более `kControllerCodecMaximumFrameSize`, а числовые/boolean значения — в фиксированные типизированные поля. Число измерений ограничено `kControllerCodecMaximumMeasurements` (16).
+
+Обновление строится во временном объекте и публикуется только после успешного копирования всех измерений. Ошибка проверки, переполнение буфера или несовместимое тело не затирают предыдущий принятый снимок. Снимок содержит peer controller ID, controller instance ID, sequence, время получения на Gateway (Unix epoch milliseconds) и измерения `sensor_id/value/unit/quality/measured_at`. Значения и качество не нормализуются и не подменяются.
+
+C++ Gateway добавляет необязательный раздел `controller_telemetry` в `GET /api/v1/system/diagnostics`: статус, состояние канала, controller/instance IDs, sequence, `received_at_utc` и список типизированных измерений. При потере канала последний принятый снимок остаётся доступен как последний известный и получает WARN; это не подтверждает его текущую актуальность. Без снимка API возвращает NOT_CONFIGURED, а если канал уже установлен, но снимок ещё не принят — UNAVAILABLE. Пустой принятый snapshot обозначается WARN и не превращается в нулевые показания.
+
+Operator API validator проверяет enum типов и качества, тип значения, допустимые диапазоны int64/uint64, конечность NUMBER, обязательные поля и согласованность sequence/identity/received_at. Раздел является additive extension: старые diagnostics snapshots без `controller_telemetry` продолжают приниматься. На вкладке «Датчики» отображаются только фактически принятые измерения с исходным sensor_id, value, unit, quality и measured_at.
+
+**Ограничения текущего среза:** `REQUEST_SNAPSHOT` пока отправляется один раз после установления логической сессии; периодичность последующих запросов не выбрана и не реализована. Snapshot хранится только в памяти процесса Gateway и очищается при его остановке. Он ещё не превращён в SSM Event, не проходит через production `AuthenticatedEventTransportAdapter`/`SourceSessionEvidence`, production verifier/registry или `StationEventPipeline`; DiagnosticsManager не подключён. Постоянная запись в SQLite не выполняется, поскольку DEC-068 остаётся предложением. Поэтому этот срез является read-only публикацией последнего принятого кадра, а не историей измерений или постоянной моделью состояния станции.
+
+Host-проверки: CTest `controller_telemetry_snapshot` проверяет копирование после переиспользования исходных буферов, границы количества измерений, отклонение неверного типа/sequence, атомарность замены и пустой snapshot; CTest `local_api` проверяет JSON для всех типов значений и статусов. Operator pytest проверяет корректные/некорректные snapshots и обратную совместимость, QML smoke test — наличие панели телеметрии. Эти проверки не заменяют end-to-end ControllerLinkService + TLS peer, Mbed TLS interop и физический UART acceptance.
 
 ## 17. Контракт телеметрии и удалённых команд
 

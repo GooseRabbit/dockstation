@@ -1083,3 +1083,39 @@ _validate_platform_capabilities() проверяет профиль, согла�
 hardwarePlatformInfo публикует выбранный платформенный профиль и Device Tree metadata; hardwareInterfaces отображает статусы шести интерфейсов, counts, UART console conflicts и candidate path с явной пометкой «Кандидат (не выбран)». Панель system.hardware-platform расположена на вкладке «Система». Она отображает наблюдаемую доступность, но не подтверждает электрическую исправность, pin mapping или фактический обмен.
 
 **Проверка:** CTest local_api проверяет JSON и сериализацию инъецированного RepkaPi5 snapshot; pytest test_station_api_client.py проверяет валидный раздел, старый snapshot без capabilities и отрицательные случаи; QML tests проверяют bridge mapping и наличие панели. GitHub Actions run 43759675836 SUCCESS для HEAD 6e1272d5bbdd6ece441a44e227133114c544931a: 24/24 CTest на x64 и ARM64, 31/31 C++ host programs, 148 Python/QML/e2e tests, shell/network/target-preflight checks; ARM64 bundle installed in isolated staging and Sigstore provenance was created and verified. Это не аппаратная проверка Repka Pi 5. Решение по WiringRP/repka_gpio.ko остаётся открытым по DEC-069.
+
+
+
+## 14. Приём и публикация телеметрии Repka—ESP32 — Gateway / Operator
+
+### src/hardware/interfaces/controller_telemetry_snapshot.hpp / .cpp
+
+| Тип / функция | Назначение |
+|---|---|
+| `ControllerTelemetrySnapshot::replace(const ControllerCodecDecodedMessage&, uint64_t received_at_unix_ms) noexcept` | Проверяет тип TELEMETRY_SNAPSHOT, envelope и payload; копирует peer ID/instance, sequence и измерения в новый bounded-объект. Публикует его только после успешного копирования всех полей. |
+| `ControllerTelemetrySnapshot::measurement(size_t, ControllerTelemetryMeasurementView&) const noexcept` | Возвращает не владеющий view к уже принадлежащей snapshot памяти для одного измерения; view нельзя хранить после замены/очистки snapshot. |
+| `ControllerTelemetrySnapshot::clear()` | Очищает последний snapshot при остановке/повторном старте ControllerLinkService. |
+ 
+Буфер текстовых полей ограничен размером одного ControllerCodec frame (2048 байт), число измерений — 16. Это копия одного последнего снимка, без динамического накопления истории и без persistent storage.
+
+### src/platform/linux/controller_link_service.cpp
+
+| Функция | Назначение |
+|---|---|
+| `ControllerLinkService::process_ready_frame()` | После успешного ControllerCodec decode и ControllerLinkSession acceptance передаёт TELEMETRY_SNAPSHOT в `ControllerTelemetrySnapshot::replace()`; счётчик snapshot растёт только после успешной публикации. Ошибка копирования закрывает кадр/транспорт fail-closed. |
+| `ControllerLinkService::telemetry_snapshot()` | Возвращает read-only доступ к последнему принятому snapshot для C++ Gateway serializer. |
+
+### src/communications/api_serialization.cpp / local_api_server.cpp
+
+| Функция | Назначение |
+|---|---|
+| `serialize_controller_telemetry()` | Публикует link status, источник/instance, sequence, received_at_utc и типизированные измерения; качество датчика остаётся отдельным полем, JSON value сохраняет исходный тип. |
+| `serialize_system_diagnostics()` | Добавляет необязательный раздел `controller_telemetry` к существующему schema 1.0 diagnostics ответу. |
+| `dispatch_api_request_impl()` | Передаёт owned snapshot из ControllerLinkService в diagnostics serializer без удержания view на frame decoder buffer. |
+
+### Operator
+
+`_validate_controller_telemetry()` проверяет статус/состояние канала, sequence и identity, UTC received_at, максимум 16 элементов, все пять типов значения, диапазоны int64/uint64, finite NUMBER и quality enum. Старые снимки без раздела остаются допустимыми. `QmlOperatorBridge.controllerTelemetry` формирует generic list без предположений о типе датчика; `controllerTelemetrySummary` отображает sequence, время получения и состояние канала. QML panel `sensors.controller-telemetry` показывает реальные sensor_id/value/unit/quality/measured_at на странице «Датчики».
+
+**Ограничения:** один REQUEST_SNAPSHOT на логическую сессию; периодический запрос, SSM Event/StationEventPipeline, production SourceSessionEvidence adapter/verifier, DiagnosticsManager, постоянное хранение/история и backup/restore отсутствуют. Host test fixtures проверяют контракты, но не являются телеметрией физического ESP32.
+
