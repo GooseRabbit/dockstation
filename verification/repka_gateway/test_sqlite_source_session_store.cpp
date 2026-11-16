@@ -159,7 +159,7 @@ int main() {
                query_integer(database.native_handle(),
                    "SELECT count(*) FROM schema_migrations WHERE version IN (1,2,3);",
                    migration_count) &&
-               migration_count == 2,
+               migration_count == 3,
            "schema version and migration ledger agree");
 
     SqliteSourceSessionStore store{database};
@@ -336,15 +336,22 @@ int main() {
     SqliteDatabase upgraded{};
     const auto upgrade_result = upgraded.open(SqliteDatabaseConfig{legacy_path, 100});
     sqlite3_int64 upgraded_version = 0;
-    sqlite3_int64 cursor_table_count = 0;
+    sqlite3_int64 upgraded_migration_count = 0;
+    sqlite3_int64 subsystem_table_count = 0;
     expect(static_cast<bool>(upgrade_result) && upgrade_result.schema_version == 3 &&
                query_integer(upgraded.native_handle(), "PRAGMA user_version;", upgraded_version) &&
-               upgraded_version == 2 &&
+               upgraded_version == 3 &&
+               query_integer(upgraded.native_handle(),
+                   "SELECT count(*) FROM schema_migrations WHERE version IN (1,2,3);",
+                   upgraded_migration_count) &&
+               upgraded_migration_count == 3 &&
                query_integer(upgraded.native_handle(),
                    "SELECT count(*) FROM sqlite_schema WHERE type='table' "
-                   "AND name='source_cursors';", cursor_table_count) &&
-               cursor_table_count == 1,
-           "version-one database upgrades transactionally to subsystem-status schema v3");
+                   "AND name IN ('subsystem_registrations','accepted_events',"
+                   "'subsystem_status_history','subsystem_status_current');",
+                   subsystem_table_count) &&
+               subsystem_table_count == 4,
+           "version-one database upgrades transactionally through schema v3");
 
     const bool upgraded_close = upgraded.close();
     const bool final_close = database.close();
