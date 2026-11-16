@@ -28,6 +28,13 @@ idf.py build
 GitHub Actions runs the same target build in Espressif's official ESP-IDF
 container using `.github/workflows/esp32-firmware.yml`.
 
+The target build passed on commit `9708d31c9ee111c924b27ef120de42b74add3b73`:
+[ESP32 firmware build #43919541466](https://github.com/GooseRabbit/dockstation/actions/runs/43919541466).
+The log confirms that both `controller_mbedtls_psk_server` and
+`controller_uart_transport` were compiled and linked into the ESP32 image.
+This is compile/link acceptance only; the workflow does not flash or run the
+image on a physical board.
+
 ## Board identification and limitations
 
 The owner supplied FCC ID **`2A54N-ESP32`**. The FCC filing identifies the

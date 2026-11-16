@@ -1064,7 +1064,7 @@ Python/Operator/Gateway integration-тестов; ARM64 bundle/staging и Sigsto
 | `ControllerUartTransport::receive_callback()` | Mbed TLS-compatible receive callback: вызывает `uart_read_bytes(..., 0)`; возвращает фактически полученные байты либо `MBEDTLS_ERR_SSL_WANT_READ`, если данных пока нет. |
 | `ControllerUartTransport::close()` | Удаляет UART driver и закрывает адаптер. Класс non-copyable; один task должен владеть UART и TLS session. |
 
-Проверка: GitHub Actions ESP-IDF v5.5.6 target build [#43917303463](https://github.com/GooseRabbit/dockstation/actions/runs/43917303463) завершился SUCCESS; следующий workflow после добавления адаптера обязан повторно скомпилировать и слинковать этот код. Это compile acceptance, не проверка электрических уровней, выбранных GPIO, RX/TX на конкретной плате или полного TLS обмена. Адаптер не вызывается из `app_main`, пока точный pin profile не подтверждён.
+Проверка: GitHub Actions ESP-IDF v5.5.6 target build [#43919541466](https://github.com/GooseRabbit/dockstation/actions/runs/43919541466) завершился SUCCESS для commit `9708d31c9ee111c924b27ef120de42b74add3b73`; log подтверждает compilation и link `controller_uart_transport.cpp` в `libcontroller_uart_transport.a`, затем link ESP32 ELF/BIN. Это compile acceptance, не проверка электрических уровней, выбранных GPIO, RX/TX на конкретной плате или полного TLS обмена. Адаптер не вызывается из `app_main`, пока точный pin profile не подтверждён.
 
 ### src/hardware/interfaces/controller_link_peer_session.hpp/.cpp
 
