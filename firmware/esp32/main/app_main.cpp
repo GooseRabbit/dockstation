@@ -1,12 +1,26 @@
 #include "esp_log.h"
 #include "controller_psk_nvs_credential_store.hpp"
+#include "controller_instance_id_provider.hpp"
 
 namespace {
 constexpr char kTag[] = "DockStationESP32";
+
+// Kept for the lifetime of this controller boot. The later runtime composition
+// will pass value() into ControllerLinkPeerSessionConfig; it is not persisted.
+dockstation::firmware::esp32::ControllerInstanceIdProvider
+    g_controller_instance_id{};
 }
 
 extern "C" void app_main(void) {
     ESP_LOGI(kTag, "DockStation ESP32 firmware bootstrap started");
+
+    // Generate the per-boot identity before ADC, I2S or RF subsystems are used.
+    if (!g_controller_instance_id.generate_for_current_boot()) {
+        ESP_LOGE(kTag, "Could not generate controller instance identity");
+        return;
+    }
+    ESP_LOGI(kTag, "Per-boot controller instance identity generated");
+
     ESP_LOGW(
         kTag,
         "Diagnostic-only build: UART, GPIO, credentials and sensors are disabled "

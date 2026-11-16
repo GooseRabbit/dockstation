@@ -80,6 +80,17 @@ caller; it does not read or generate keys and does not acquire sensor data.
 `app_main` still does not start it until board GPIO and secure credential
 provisioning are defined. The link-only acceptance hook is retained by the linker but never called.
 
+The `controller_instance_identity/` component generates a fresh UUIDv4
+`controller_instance_id` once per ESP32 boot. It calls
+`bootloader_random_enable()`, fills 16 bytes with `esp_fill_random()`, and
+immediately calls `bootloader_random_disable()`. The call is made early in
+`app_main`, before ADC, I²S, Wi-Fi or Bluetooth are initialized; the ESP-IDF
+documentation warns against concurrent use of the entropy source with RF/ADC.
+The formatted 36-character value lives only in static RAM and is not logged or
+persisted. It is distinct from Station ID, stable `controller_id` and PSK
+identity. The current scaffold generates and retains it but does not yet pass
+it into `ControllerLinkFirmwareRuntime`; that integration is a later step.
+
 A separate `controller_psk_nvs_credential_store/` component provides a
 read-only PSK/identity loader. It requires runtime Flash Encryption to be
 already enabled, an encrypted `nvs_keys` partition, and the `nvs` data

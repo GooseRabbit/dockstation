@@ -51,6 +51,7 @@ add_library(dockstation_linux_runtime STATIC
     src/hardware/interfaces/controller_frame_stream_decoder.cpp
     src/hardware/interfaces/controller_link_session.cpp
     src/hardware/interfaces/controller_link_peer_session.cpp
+    src/hardware/interfaces/controller_instance_identity.cpp
     src/hardware/interfaces/controller_telemetry_snapshot.cpp
     src/platform/linux/controller_link_service.cpp
     src/communications/api_serialization.cpp
@@ -399,6 +400,16 @@ if(BUILD_TESTING)
     add_test(NAME controller_link_peer_session
         COMMAND test_controller_link_peer_session)
 
+    add_executable(test_controller_instance_identity
+        verification/repka_gateway/test_controller_instance_identity.cpp
+    )
+    target_link_libraries(test_controller_instance_identity
+        PRIVATE dockstation_linux_runtime
+    )
+    dockstation_apply_compile_policy(test_controller_instance_identity)
+    add_test(NAME controller_instance_identity
+        COMMAND test_controller_instance_identity)
+
     add_executable(test_controller_psk_tls_client
         verification/repka_gateway/test_controller_psk_tls_client.cpp
     )
@@ -624,6 +635,7 @@ if(BUILD_TESTING)
                     test_controller_frame_stream_decoder
                     test_controller_link_session
                     test_controller_link_peer_session
+                    test_controller_instance_identity
                     test_controller_psk_tls_client
                     test_controller_uart_port
                     test_controller_transport_manager
@@ -688,6 +700,9 @@ if(BUILD_TESTING)
                 -fsanitize=address,undefined
             )
             target_link_options(test_controller_link_peer_session PRIVATE
+                -fsanitize=address,undefined
+            )
+            target_link_options(test_controller_instance_identity PRIVATE
                 -fsanitize=address,undefined
             )
             target_link_options(test_controller_psk_tls_client PRIVATE

@@ -1054,6 +1054,25 @@ Python/Operator/Gateway integration-тестов; ARM64 bundle/staging и Sigsto
 
 Проверка: \`verification/repka_gateway/test_controller_mbedtls_server_interop.cpp\`, CTest \`controller_mbedtls_server_interop\`; GitHub Actions [run 43904071591](https://github.com/GooseRabbit/dockstation/actions/runs/43904071591) — PASS (1/1); отдельная опция \`DOCKSTATION_BUILD_MBEDTLS_INTEROP_TESTS=ON\` скачивает официальный upstream Mbed TLS 3.6.7 с проверкой SHA-256. GitHub Actions соединяет существующий OpenSSL client и Mbed TLS server через POSIX socket pair: проверяет handshake, exporter parity, application data в обе стороны и отказ при неверной PSK identity/PSK. Это upstream Mbed TLS host interop; Espressif Mbed TLS fork, точная ESP32 плата/SDK, UART, secure NVS/Flash Encryption/Secure Boot и физическая приёмка пока не проверены.
 
+### src/hardware/interfaces/controller_instance_identity.hpp / controller_instance_identity.cpp
+
+| Функция / тип | Назначение |
+|---|---|
+| `ControllerInstanceIdEntropyBytes` / `ControllerInstanceIdText` | Фиксированные типы для 16 байт исходной энтропии и 36 символов UUIDv4 без завершающего NUL. |
+| `format_controller_instance_id_uuid_v4()` | Форматирует UUIDv4 в lowercase 8-4-4-4-12, выставляет version=4 и RFC 9562 variant bits; не обращается к RNG, не выделяет память и детерминирован для заданных 16 байт. |
+
+Host-проверка: `verification/repka_gateway/test_controller_instance_identity.cpp`, CTest `controller_instance_identity`. Проверяются golden vector, lowercase/дефисы/длина, UUID version/variant и нулевой граничный вход. Это проверка форматтера, а не качества физического RNG.
+
+### firmware/esp32/components/controller_instance_identity/include/controller_instance_id_provider.hpp / controller_instance_id_provider.cpp
+
+| Функция / тип | Назначение |
+|---|---|
+| `ControllerInstanceIdProvider::generate_for_current_boot()` | Один раз за lifetime provider временно включает entropy source ESP-IDF, получает 16 байт через hardware RNG, выключает entropy source и форматирует UUIDv4. Повторный вызов на том же объекте отклоняется. |
+| `ControllerInstanceIdProvider::value()` | Возвращает пустой view до генерации либо стабильный 36-символьный view на время жизни provider. |
+| `ControllerInstanceIdProvider::is_generated()` | Показывает, сформирован ли instance ID текущего boot. |
+
+Provider должен вызываться в раннем `app_main` до ADC/I²S/Wi-Fi/Bluetooth. В текущем scaffold `app_main` создаёт ID и удерживает provider в static storage, но ещё не передаёт ID в `ControllerLinkFirmwareRuntime`; сам runtime остаётся не запущенным до board GPIO/credential provisioning.
+
 ### firmware/esp32/components/controller_psk_nvs_credential_store/include/controller_psk_nvs_credential_store.hpp / controller_psk_nvs_credential_store.cpp
 
 | Функция / тип | Назначение |
