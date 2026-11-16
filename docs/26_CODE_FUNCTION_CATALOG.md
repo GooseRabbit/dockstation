@@ -1384,6 +1384,6 @@ verification/repka_gateway/test_controller_link_service.cpp в SQLite-enabled bu
 |---|---|
 | `is_valid_controller_stable_id(std::string_view)` (`src/hardware/interfaces/controller_stable_identity.hpp`, реализована) | Проверяет непустой ASCII controller ID длиной 1–128 байт с ограниченным wire-safe набором символов. Не проверяет уникальность в реестре и не является аутентификацией. |
 | `ControllerStableIdPair::is_valid()` (реализован) | Проверяет две принадлежащие объекту строки, длины, завершающий NUL и различие local/peer ID. |
-| `ControllerPskNvsCredentialStore::load_controller_ids()` (read-only loader реализован) | Читает `controller_id` и `peer_controller_id` из уже инициализированного encrypted NVS namespace `dockstation`; не генерирует и не записывает значения. |
+| `ControllerPskNvsCredentialStore::load_controller_ids()` (read-only loader реализован) | Читает `controller_id` и `peer_ctrl_id` из уже инициализированного encrypted NVS namespace `dockstation`; не генерирует и не записывает значения. |
 
 Repka использует `controller_local_id` и `controller_peer_id` из системного RuntimeConfig. ESP32 использует зеркальную пару из NVS. Provisioning writer, назначение фактических значений и физическая проверка после записи остаются отдельными задачами.

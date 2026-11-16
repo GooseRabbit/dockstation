@@ -18,7 +18,13 @@ constexpr char kCredentialNamespace[] = "dockstation";
 constexpr char kPskBlobKey[] = "pair_psk";
 constexpr char kIdentityBlobKey[] = "pair_identity";
 constexpr char kControllerIdKey[] = "controller_id";
-constexpr char kPeerControllerIdKey[] = "peer_controller_id";
+constexpr char kPeerControllerIdKey[] = "peer_ctrl_id";
+constexpr std::size_t kNvsMaximumKeyLength = 15U;
+static_assert(sizeof(kCredentialNamespace) - 1U <= kNvsMaximumKeyLength);
+static_assert(sizeof(kPskBlobKey) - 1U <= kNvsMaximumKeyLength);
+static_assert(sizeof(kIdentityBlobKey) - 1U <= kNvsMaximumKeyLength);
+static_assert(sizeof(kControllerIdKey) - 1U <= kNvsMaximumKeyLength);
+static_assert(sizeof(kPeerControllerIdKey) - 1U <= kNvsMaximumKeyLength);
 constexpr std::size_t kMinimumNvsKeysPartitionSize =
     (2U * static_cast<std::size_t>(NVS_KEY_SIZE)) + 16U;
 

@@ -109,7 +109,7 @@ partition. It reads existing NVS encryption keys and explicitly initializes
 NVS with them; it never creates, repairs, writes, rotates or erases keys. The
 credential namespace is `dockstation` with binary blobs `pair_psk`
 (32 bytes) and `pair_identity` (16 bytes), plus NVS strings `controller_id`
-(this ESP32's stable ID) and `peer_controller_id` (the paired Repka ID).
+(this ESP32's stable ID) and `peer_ctrl_id` (the paired Repka ID).
 Both IDs must be distinct, non-empty ASCII identifiers of at most 128 bytes
 using only letters, digits, `_`, `-`, `.` or `:`. The read-only loader
 rejects missing, malformed or identical values and clears its output on
