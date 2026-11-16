@@ -28,15 +28,13 @@ idf.py build
 GitHub Actions runs the same target build in Espressif's official ESP-IDF
 container using `.github/workflows/esp32-firmware.yml`.
 
-The target build passed on commit
-`138294012b3e5d2a059fb9688347c591d0450b32`:
-[ESP32 firmware build #43923515234](https://github.com/GooseRabbit/dockstation/actions/runs/43923515234).
-The log confirms compilation of the TLS server, peer/runtime composition, UART
-transport and read-only NVS credential store, followed by a successful ESP32
-ELF/BIN link. A linker-forced, non-invoked acceptance hook also makes the final ELF
-resolve the NVS provider's external dependencies without running its NVS/eFuse
-calls during startup. This is compile/link acceptance only; the workflow does
-not flash or run the image on a physical board.
+The previous target build for the runtime integration passed on commit
+`6ae1f7e3981f4a3915ba56ce076a6ffd06ac8aa4`:
+[ESP32 firmware build #43932960270](https://github.com/GooseRabbit/dockstation/actions/runs/43932960270).
+The log confirms compilation and linking of the runtime, instance-ID provider,
+TLS server, UART adapter and read-only NVS credential store, followed by
+successful ESP32 ELF/BIN creation. This is compile/link
+acceptance only; the workflow does not flash or run the image on a physical board.
 
 ## Board identification and limitations
 
@@ -53,11 +51,11 @@ classic ESP32-WROOM-32 module; they are not configured or used by this project.
 
 ## Current firmware entry point
 
-`main/app_main.cpp` is intentionally diagnostic-only. It prints a startup
-message and explicitly reports that hardware paths are not enabled. The main
-component depends on `controller_mbedtls_psk_server` so the ESP-IDF build
-compiles the existing ESP32-side ControllerLink implementation as part of the
-target build.
+`main/app_main.cpp` remains diagnostic-only. It generates the per-boot
+instance ID, evaluates startup prerequisites and logs every blocker. It does
+not initialize NVS, install the UART driver, initialize TLS or call runtime
+`start()`. The main component depends on the existing ESP32-side ControllerLink
+components so the ESP-IDF build compiles the complete target path.
 
 The default Mbed TLS configuration enables the required TLS 1.3 server,
 PSK-Ephemeral key exchange, AES-128-GCM/SHA-256, P-256 and keying-material
@@ -73,19 +71,25 @@ ring-buffer overflow, framing/parity faults and BREAK; the firmware runtime
 closes TLS before UART whenever the protected byte stream may be damaged.
 UART2 is the logical candidate, but neither GPIO is assigned by this project.
 
-The `controller_link_firmware_runtime/` component composes the UART adapter
-and `ControllerLinkPeerService`: it owns startup, bounded polling, restart and
-shutdown order. `start()` requires an already-generated
-`ControllerInstanceIdProvider`; it injects that provider's UUIDv4 into
-`ControllerLinkPeerSessionConfig`, rejects an ungenerated provider or a
-conflicting caller-supplied instance ID, and validates the complete session
-configuration before opening UART. The peer-session object copies the ID into
-its own bounded storage. `restart_transport()` reuses that same object and
-does not rotate the ID or reset sequence/replay history. The runtime does not
-read or generate PSK credentials and does not acquire sensor data.
-`app_main` still does not start it until board GPIO and secure credential
-provisioning are defined. A linker-forced acceptance hook references the
-runtime/provider API but is never called.
+`controller_link_firmware_runtime/` composes the UART adapter and
+`ControllerLinkPeerService`. Its `start()` accepts a
+`ControllerLinkFirmwareRuntimeStartConfig`, caller-loaded pair credentials,
+and an already-generated `ControllerInstanceIdProvider`. Before opening UART,
+it requires an explicit `hardware_profile_confirmed` flag, a valid non-console
+UART port with explicit distinct TX/RX GPIOs, nonzero PSK and PSK identity,
+a generated boot instance ID, a nonzero major protocol version, and distinct valid local/peer controller IDs.
+A caller-supplied local instance ID must be empty or match the generated UUIDv4.
+The peer-session object copies that ID into bounded owned storage.
+`restart_transport()` reuses the same session, boot ID and sequence/replay
+history. The runtime does not load or generate PSK credentials and does not
+acquire sensor data.
+
+The pure `ControllerLinkStartupReadiness` evaluator exposes missing
+startup prerequisites as explicit blockers, including a zero major protocol version and conflicting boot ID, and is covered by host CTest.
+`app_main` evaluates the default-off configuration and logs the blockers.
+The current configuration deliberately has no confirmed board profile, no
+assigned UART GPIOs, no loaded pair credentials and no stable local/peer
+controller IDs. The NVS reader is not called during this bootstrap.
 
 The `controller_instance_identity/` component generates a fresh UUIDv4
 `controller_instance_id` once per ESP32 boot. It calls
@@ -95,8 +99,8 @@ immediately calls `bootloader_random_disable()`. The call is made early in
 documentation warns against concurrent use of the entropy source with RF/ADC.
 The formatted 36-character value lives only in static RAM and is not logged or
 persisted. It is distinct from Station ID, stable `controller_id` and PSK
-identity. The current scaffold generates and retains it but does not yet pass
-it into `ControllerLinkFirmwareRuntime`; that integration is a later step.
+identity. The runtime API requires this provider for every initial start;
+transport reconnects retain the same value.
 
 A separate `controller_psk_nvs_credential_store/` component provides a
 read-only PSK/identity loader. It requires runtime Flash Encryption to be

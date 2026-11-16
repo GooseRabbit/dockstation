@@ -6,6 +6,7 @@
 
 #include "controller_instance_id_provider.hpp"
 #include "controller_link_peer_service.hpp"
+#include "hardware/interfaces/controller_link_startup_readiness.hpp"
 #include "controller_mbedtls_psk_server.hpp"
 #include "controller_uart_transport.hpp"
 
@@ -18,11 +19,20 @@ enum class ControllerLinkFirmwareRuntimeState : std::uint8_t {
     Stopped
 };
 
+struct ControllerLinkFirmwareRuntimeStartConfig final {
+    // Must be true only after the exact module/SoC, Flash/partition layout,
+    // UART pinout and electrical compatibility have been physically verified.
+    bool hardware_profile_confirmed{false};
+    ControllerUartConfig uart{};
+    hardware::interfaces::ControllerLinkPeerSessionConfig session{};
+};
+
 struct ControllerLinkFirmwareRuntimeStatus final {
     ControllerLinkFirmwareRuntimeState state{
         ControllerLinkFirmwareRuntimeState::NotConfigured};
     esp_err_t last_uart_error{ESP_OK};
     ControllerLinkPeerServiceStatus peer{};
+    hardware::interfaces::ControllerLinkStartupReadiness startup_readiness{};
 };
 
 // Owns the UART and peer service in one place. The peer service is always
@@ -43,10 +53,9 @@ public:
     // injects its value into the peer-session config; a caller-supplied ID must
     // be empty or match it exactly.
     [[nodiscard]] bool start(
-        const ControllerUartConfig& uart_config,
+        const ControllerLinkFirmwareRuntimeStartConfig& startup_config,
         const ControllerMbedTlsPskCredentials& credentials,
-        const ControllerInstanceIdProvider& instance_identity,
-        const hardware::interfaces::ControllerLinkPeerSessionConfig& session_config) noexcept;
+        const ControllerInstanceIdProvider& instance_identity) noexcept;
 
     [[nodiscard]] bool restart_transport(
         const ControllerMbedTlsPskCredentials& credentials) noexcept;
@@ -73,6 +82,7 @@ private:
     esp_err_t last_uart_error_{ESP_OK};
     bool peer_session_created_{false};
     bool running_{false};
+    hardware::interfaces::ControllerLinkStartupReadiness last_startup_readiness_{};
 };
 
 }  // namespace dockstation::firmware::esp32

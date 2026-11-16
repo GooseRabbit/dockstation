@@ -1,8 +1,8 @@
 idf_component_register(
     SRCS "app_main.cpp"
-    INCLUDE_DIRS "."
+    INCLUDE_DIRS "." "../../../src"
     REQUIRES log controller_link_firmware_runtime controller_psk_nvs_credential_store
-        controller_instance_identity
+        controller_instance_identity controller_uart_transport
 )
 
 # Force the link-only acceptance hook into the ELF without executing it.

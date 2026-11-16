@@ -33,6 +33,10 @@ public:
     ControllerUartTransport(ControllerUartTransport&&) = delete;
     ControllerUartTransport& operator=(ControllerUartTransport&&) = delete;
 
+    // Pure validation used by the startup gate; performs no driver or GPIO I/O.
+    [[nodiscard]] static bool is_valid_config(
+        const ControllerUartConfig& config) noexcept;
+
     // Opens raw 8N1 UART with no flow control. Explicit TX/RX GPIOs are
     // mandatory; UART0 is rejected so the application cannot steal the console.
     [[nodiscard]] bool open(const ControllerUartConfig& config) noexcept;

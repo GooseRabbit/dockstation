@@ -1,33 +1,65 @@
 #include "controller_link_firmware_runtime.hpp"
 
 namespace dockstation::firmware::esp32 {
+namespace {
+
+template <std::size_t Size>
+[[nodiscard]] bool contains_nonzero(
+    const std::array<std::uint8_t, Size>& bytes) noexcept {
+    std::uint8_t combined = 0U;
+    for (const std::uint8_t byte : bytes) {
+        combined = static_cast<std::uint8_t>(combined | byte);
+    }
+    return combined != 0U;
+}
+
+}  // namespace
 
 ControllerLinkFirmwareRuntime::~ControllerLinkFirmwareRuntime() {
     stop();
 }
 
 bool ControllerLinkFirmwareRuntime::start(
-    const ControllerUartConfig& uart_config,
+    const ControllerLinkFirmwareRuntimeStartConfig& startup_config,
     const ControllerMbedTlsPskCredentials& credentials,
-    const ControllerInstanceIdProvider& instance_identity,
-    const hardware::interfaces::ControllerLinkPeerSessionConfig& session_config) noexcept {
-    if (peer_session_created_ || running_ || !instance_identity.is_generated()) {
+    const ControllerInstanceIdProvider& instance_identity) noexcept {
+    if (peer_session_created_ || running_) {
         return false;
     }
 
+    const auto& session_config = startup_config.session;
+    const bool credentials_available =
+        contains_nonzero(credentials.psk) &&
+        contains_nonzero(credentials.identity);
+    const bool instance_identity_generated = instance_identity.is_generated();
     const std::string_view generated_instance_id = instance_identity.value();
+    const bool instance_configuration_matches =
+        session_config.local_controller_instance_id.empty() ||
+        (instance_identity_generated &&
+         session_config.local_controller_instance_id == generated_instance_id);
+
+    last_startup_readiness_ =
+        hardware::interfaces::evaluate_controller_link_startup_readiness({
+            startup_config.hardware_profile_confirmed,
+            ControllerUartTransport::is_valid_config(startup_config.uart),
+            credentials_available,
+            instance_identity_generated,
+            instance_configuration_matches,
+            session_config.protocol_version.major,
+            session_config.local_controller_id,
+            session_config.peer_controller_id
+        });
+    if (!last_startup_readiness_.is_ready()) {
+        // Fail closed before opening UART, initializing TLS or touching NVS.
+        return false;
+    }
     if (generated_instance_id.size() !=
         hardware::interfaces::kControllerInstanceIdTextSize) {
         return false;
     }
 
-    // The generated provider is the single source of truth for this boot. An
-    // explicitly supplied different ID is a stale/static configuration error.
-    if (!session_config.local_controller_instance_id.empty() &&
-        session_config.local_controller_instance_id != generated_instance_id) {
-        return false;
-    }
-
+    // The generated provider is the single source of truth for this boot.
+    // Readiness above rejects a conflicting configured ID before UART access.
     auto resolved_session_config = session_config;
     resolved_session_config.local_controller_instance_id = generated_instance_id;
 
@@ -39,7 +71,7 @@ bool ControllerLinkFirmwareRuntime::start(
         return false;
     }
 
-    uart_config_ = uart_config;
+    uart_config_ = startup_config.uart;
     if (!uart_.open(uart_config_)) {
         last_uart_error_ = uart_.last_error();
         state_ = ControllerLinkFirmwareRuntimeState::Failed;
@@ -172,7 +204,8 @@ ControllerLinkFirmwareRuntimeStatus ControllerLinkFirmwareRuntime::status() cons
     return {
         state_,
         last_uart_error_,
-        peer_service_.status()
+        peer_service_.status(),
+        last_startup_readiness_
     };
 }
 

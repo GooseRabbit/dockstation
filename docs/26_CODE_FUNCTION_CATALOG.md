@@ -1073,6 +1073,16 @@ Host-проверка: `verification/repka_gateway/test_controller_instance_iden
 
 Provider вызывается в раннем `app_main` до ADC/I²S/Wi-Fi/Bluetooth. `ControllerLinkFirmwareRuntime::start()` принимает provider по const reference, требует `is_generated()==true`, использует его 36-символьный UUIDv4 вместо пустого поля `local_controller_instance_id` и отклоняет конфликтующее caller-значение. Полная peer-session config валидируется до UART open; shared `ControllerLinkPeerSession` копирует ID в bounded storage. `restart_transport()` не получает новый provider и сохраняет тот же ID и replay/sequence history. Сам runtime остаётся не запущенным из `app_main` до board GPIO/credential provisioning.
 
+### src/hardware/interfaces/controller_link_startup_readiness.hpp / controller_link_startup_readiness.cpp
+
+| Функция / тип | Назначение |
+|---|---|
+| `ControllerLinkStartupReadinessInput` | Передаёт только результаты предварительных проверок: подтверждение аппаратного профиля, валидность UART profile, наличие ненулевых pair credentials, состояние per-boot identity, major-версию протокола и stable controller IDs. |
+| `ControllerLinkStartupBlocker` | Bitmask причин отказа: неподтверждённый профиль, невалидный UART, недоступные credentials, отсутствующий/конфликтующий instance ID, нулевая major-версия, отсутствующий/невалидный local/peer ID и совпадение controller IDs. |
+| `evaluate_controller_link_startup_readiness()` | Чистая функция без I/O и выделения памяти; возвращает все причины блокировки одновременно. Пустой/overlong/NUL/невалидный UTF-8 ID и совпадающие local/peer ID fail closed. |
+
+Host-проверка: `verification/repka_gateway/test_controller_link_startup_readiness.cpp`, CTest `controller_link_startup_readiness`. Проверяет готовый случай, каждый отдельный blocker, malformed/overlong ID, невалидный UTF-8, нулевую major-версию и накопление нескольких blockers. Функция не доказывает правильность фактической распиновки или загрузку ключей; соответствующие факты предоставляет platform/application слой.
+
 ### firmware/esp32/components/controller_psk_nvs_credential_store/include/controller_psk_nvs_credential_store.hpp / controller_psk_nvs_credential_store.cpp
 
 | Функция / тип | Назначение |
@@ -1087,7 +1097,7 @@ Provider вызывается в раннем `app_main` до ADC/I²S/Wi-Fi/Blu
 
 | Функция / тип | Назначение |
 |---|---|
-| `ControllerLinkFirmwareRuntime::start()` | Требует сгенерированный `ControllerInstanceIdProvider`; использует его UUIDv4 и валидирует всю peer-session config до открытия UART, inject-ит boot ID в конфигурацию и только затем открывает UART и запускает Mbed TLS/peer service. При ошибке TLS сохраняет уже созданный peer-session object для retry и закрывает UART driver. |
+| `ControllerLinkFirmwareRuntime::start()` | Принимает `ControllerLinkFirmwareRuntimeStartConfig`; проверяет hardware_profile_confirmed, чистую проверку UART config, ненулевые PSK/identity, generated provider, отсутствие конфликта local instance ID, protocol major больше нуля и валидные разные local/peer IDs. Любой blocker возвращает false до UART open. После preflight inject-ит boot UUIDv4 в peer config, затем открывает UART и запускает TLS/peer service. |
 | `ControllerLinkFirmwareRuntime::poll()` | Сначала проверяет bounded UART event queue; при overflow/frame/parity/BREAK закрывает peer TLS service, затем UART и переводит runtime в Failed. При штатном I/O выполняет один bounded шаг peer service и закрывает UART после TLS при Error/Stopped. |
 | `ControllerLinkFirmwareRuntime::restart_transport()` | Повторно открывает сохранённый UART profile и запускает новый TLS handshake на прежнем peer-session object; boot instance ID, local transmit sequence и peer replay history не меняются. |
 | `ControllerLinkFirmwareRuntime::send_telemetry_snapshot()` | Передаёт только caller-supplied typed measurements после принятого REQUEST_SNAPSHOT; не читает датчики и не создаёт фиктивные значения. |
@@ -1102,6 +1112,7 @@ Provider вызывается в раннем `app_main` до ADC/I²S/Wi-Fi/Blu
 |---|---|
 | `ControllerUartConfig` | Задаёт UART port, TX/RX GPIO, baud rate и размер RX ring buffer. UART2 и 115200 заданы как стартовые программные значения; GPIO по умолчанию не назначены. |
 | `ControllerUartTransport::open()` | Проверяет UART port, обязательные различные TX/RX GPIO, baud rate и границы RX buffer; настраивает 8N1 без RTS/CTS, устанавливает RX ring buffer и оставляет TX ring buffer выключенным для неблокирующего FIFO I/O. UART0 отклоняется, чтобы не захватывать консоль. |
+| `ControllerUartTransport::is_valid_config()` | Чистая проверка тех же port/GPIO/baud/buffer ограничений без установки pinmux, driver или обращения к периферии; используется до открытия UART в startup readiness gate. |
 | `ControllerUartTransport::send_callback()` | Mbed TLS-compatible send callback: вызывает `uart_tx_chars()`, возвращает фактически записанное число байтов либо `MBEDTLS_ERR_SSL_WANT_WRITE`, если TX FIFO заполнен; не ждёт освобождения места. |
 | `ControllerUartTransport::receive_callback()` | Mbed TLS-compatible receive callback: вызывает `uart_read_bytes(..., 0)`; возвращает фактически полученные байты либо `MBEDTLS_ERR_SSL_WANT_READ`, если данных пока нет. |
 | `ControllerUartTransport::poll_transport_events()` | Ограниченно выгребает FreeRTOS UART event queue; RX FIFO/ring-buffer overflow, frame/parity errors и BREAK считаются повреждением потока и требуют закрытия TLS. Информационные UART_DATA события оставляют данные в RX ring buffer. |

@@ -40,13 +40,18 @@ ControllerUartTransport::~ControllerUartTransport() {
     close();
 }
 
+bool ControllerUartTransport::is_valid_config(
+    const ControllerUartConfig& config) noexcept {
+    return valid_config(config);
+}
+
 bool ControllerUartTransport::open(const ControllerUartConfig& config) noexcept {
     close();
     if (driver_installed_) {
         // Do not attempt to reuse a UART whose previous driver failed to close.
         return false;
     }
-    if (!valid_config(config)) {
+    if (!is_valid_config(config)) {
         last_error_ = ESP_ERR_INVALID_ARG;
         return false;
     }
