@@ -103,7 +103,8 @@ void ControllerLinkFirmwareRuntime::poll(std::string_view sent_at) noexcept {
     const auto peer_state = peer_service_.status().state;
     if (peer_state == ControllerLinkPeerServiceState::Error) {
         const esp_err_t transport_error = uart_.last_error();
-        peer_service_.stop();
+        // Error means the peer service has already closed TLS and retained
+        // its Mbed TLS diagnostic. Do not call stop() again and erase it.
         uart_.close();
         last_uart_error_ = transport_error != ESP_OK
             ? transport_error
@@ -112,7 +113,7 @@ void ControllerLinkFirmwareRuntime::poll(std::string_view sent_at) noexcept {
         state_ = ControllerLinkFirmwareRuntimeState::Failed;
     } else if (peer_state == ControllerLinkPeerServiceState::Stopped) {
         const esp_err_t transport_error = uart_.last_error();
-        peer_service_.stop();
+        // Stopped is also reached only after the peer service has closed TLS.
         uart_.close();
         last_uart_error_ = transport_error != ESP_OK
             ? transport_error
