@@ -62,11 +62,18 @@ export. TLS 1.2 and server session tickets are disabled in this initial
 profile. These compile-time settings do **not** mean that a live TLS session is
 started: there is no credential loading or UART transport in `app_main`.
 
-An ESP-IDF UART byte-stream adapter now exists in
+An ESP-IDF UART byte-stream adapter exists in
 `components/controller_uart_transport/`. It provides non-blocking Mbed TLS
 send/receive callbacks, uses the selected UART port with 8N1/no flow control,
 and requires explicit TX/RX GPIOs. UART2 is the logical candidate, but neither
-GPIO is assigned by this project and `app_main` does not open the peripheral.
+GPIO is assigned by this project.
+
+The `controller_link_firmware_runtime/` component composes the UART adapter
+and `ControllerLinkPeerService`: it owns startup, bounded polling, restart and
+shutdown order. The runtime accepts credentials and session IDs from its
+caller; it does not read or generate keys and does not acquire sensor data.
+`app_main` still does not start it until board GPIO and secure credential
+provisioning are defined.
 
 Not implemented by this scaffold:
 

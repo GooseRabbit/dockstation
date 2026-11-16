@@ -1054,6 +1054,19 @@ Python/Operator/Gateway integration-тестов; ARM64 bundle/staging и Sigsto
 
 Проверка: \`verification/repka_gateway/test_controller_mbedtls_server_interop.cpp\`, CTest \`controller_mbedtls_server_interop\`; GitHub Actions [run 43904071591](https://github.com/GooseRabbit/dockstation/actions/runs/43904071591) — PASS (1/1); отдельная опция \`DOCKSTATION_BUILD_MBEDTLS_INTEROP_TESTS=ON\` скачивает официальный upstream Mbed TLS 3.6.7 с проверкой SHA-256. GitHub Actions соединяет существующий OpenSSL client и Mbed TLS server через POSIX socket pair: проверяет handshake, exporter parity, application data в обе стороны и отказ при неверной PSK identity/PSK. Это upstream Mbed TLS host interop; Espressif Mbed TLS fork, точная ESP32 плата/SDK, UART, secure NVS/Flash Encryption/Secure Boot и физическая приёмка пока не проверены.
 
+### firmware/esp32/components/controller_link_firmware_runtime/include/controller_link_firmware_runtime.hpp / controller_link_firmware_runtime.cpp
+
+| Функция / тип | Назначение |
+|---|---|
+| `ControllerLinkFirmwareRuntime::start()` | Открывает явно настроенный UART, затем передаёт его Mbed TLS callbacks и caller-supplied credentials/session config в `ControllerLinkPeerService`. Если TLS setup не завершился, сохраняет созданный peer-session object для retry и закрывает UART driver. |
+| `ControllerLinkFirmwareRuntime::poll()` | Выполняет один bounded шаг peer service; при Error/Stopped закрывает UART только после закрытия TLS и переводит runtime в соответствующий статус. |
+| `ControllerLinkFirmwareRuntime::restart_transport()` | Повторно открывает сохранённый UART profile и запускает новый TLS handshake на прежнем peer-session object, сохраняя sequence/replay history текущего boot. |
+| `ControllerLinkFirmwareRuntime::send_telemetry_snapshot()` | Передаёт только caller-supplied typed measurements после принятого REQUEST_SNAPSHOT; не читает датчики и не создаёт фиктивные значения. |
+| `ControllerLinkFirmwareRuntime::export_authenticated_session_proof()` | Делегирует exporter proof только работающему peer service, который дополнительно требует полного TLS handshake и отправленного HELLO_ACK. |
+| `ControllerLinkFirmwareRuntime::stop()` | Останавливает TLS/peer service до удаления UART driver, на который указывает Mbed TLS BIO context. |
+
+Компонент — композиционный слой, не отдельный RTOS task: вызывающий firmware application сам задаёт частоту `poll()`, monotonic scheduling, timestamp, credential provider, instance ID и сбор физических измерений. Он не запускается автоматически из `app_main`, пока точный board pin profile и secure credential provider не утверждены.
+
 ### firmware/esp32/components/controller_uart_transport/include/controller_uart_transport.hpp / controller_uart_transport.cpp
 
 | Функция / тип | Назначение |
