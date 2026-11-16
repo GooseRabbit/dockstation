@@ -1,7 +1,7 @@
 # Полный план реализации программного комплекса DockStation на Repka Pi 5
 
 **Статус:** мастер-план реализации; последовательность разработки согласована, открытые платформенные, сетевые, серверные и аппаратные детали требуют отдельной проверки и решения.  
-**Редакция:** 2.02.
+**Редакция:** 2.03.
 **Дата:** 2026-11-16.  
 **Вычислительная платформа:** Repka Pi 5.  
 **Предполагаемая ОС:** официальная Repka OS; образ и версия проверяются перед развёртыванием.
@@ -581,9 +581,9 @@ public:
 **Остаётся проверить на целевой платформе и в интеграции:**
 1. Точную версию SQLite, права, файловую систему и путь StateDirectory в фактической Repka OS.
 2. Поведение при отказе/переполнении SD/eMMC/SSD и физической потере питания; host process-crash test не заменяет power-loss acceptance.
-3. Подключение `SqliteSourceSessionStore` к Gateway composition root с одним сериализованным владельцем соединения.
+3. Disable/revoke source и subsystem registrations, reconnect и повторную аутентификацию в целевом lifecycle.
 4. Интеграцию с ESP32/Mbed TLS и живым ControllerLink transport после появления прошивки.
-5. Production `SubsystemRegistrationReader`/`SubsystemStatusRepository` и атомарное сохранение subsystem report + Event/event_id + cursor.
+5. Backup/restore и восстановление после внезапного отключения питания на целевом накопителе.
 6. Смена source_instance без отдельного подтверждения остаётся UNORDERED; отсутствие source_sequence остаётся UNORDERED.
 
 Примечание о состоянии на момент первоначальной реализации source registry/session adapter: тогда он ещё не был подключён к Gateway composition root, а EventRepository/F09/F10 и subsystem-status commit находились в последующих срезах. Текущее состояние интеграции описано ниже в §5.4.3: production `SqliteSourceSessionStore`, EventRepository и `SqliteSubsystemStatusStore` подключены через `GatewayPersistenceContext`; продвижение `last_sequence` выполняется атомарно вместе с принятым subsystem status report.
@@ -606,7 +606,7 @@ public:
 
 **1. Регистрация источника.** До приёма событий логический `source` должен существовать в доверенном реестре и быть связан с конкретным Station ID и доверенной ссылкой на аппаратную/криптографическую идентичность контроллера. Для записи источника учитываются состояние `ACTIVE`, `DISABLED` или `REVOKED` и ревизия регистрации. Первое входящее событие не создаёт регистрацию и не может самостоятельно добавить неизвестный контроллер в доверенный список.
 
-Создание регистрации, привязка ключа/сертификата, физическое подтверждение владения устройством и аудит относятся к процессу provisioning из docs/24 и docs/25. Конкретная процедура, алгоритмы, носитель ключа и физический механизм активации остаются открытыми.
+Локальное создание source/subsystem records выполняет `dockstation-registry-provision` (§5.4.4). Физическое подтверждение владения устройством, безопасная доставка/сопряжение PSK на ESP32, координированная ротация ключей и аудит provisioning остаются отдельными вопросами docs/24 и docs/25; эта CLI не управляет устройством и не передаёт секрет по сети.
 
 **2. Подтверждение текущей сессии.** После установления канала отдельный verifier проверяет, что источник зарегистрирован и активен, предъявленная идентичность соответствует привязке регистрации, доказательство владения действительно для этого источника, а challenge/session proof свежий и не воспроизводит ранее принятую сессию. Точный протокол challenge-response, криптография и транспорт не выбираются этим контрактом.
 
@@ -761,7 +761,7 @@ SourceSessionVerifier вызывается для каждого события.
 
 ### 5.4.3. Доверенная граница входа событий
 
-**Статус: полный host ingress → F13 → SQLite путь интегрирован и проверен CI #498. ControllerLinkService → AuthenticatedEventTransportAdapter → RegistrySourceSessionVerifier/SourceSessionCoordinator → StationEventPipeline → SubsystemStatusEventProcessor → SqliteSubsystemStatusStore. x86_64 и ARM64: CTest 31/31; дополнительно 31/31 C++ host-программ и 158 Python/Operator/Gateway integration tests. Это host OpenSSL↔OpenSSL TLS/PTY verification, не подтверждение ESP32/Mbed TLS или физического UART.
+**Статус: полный host ingress → F13 → SQLite путь интегрирован и проверен CI #503. ControllerLinkService → AuthenticatedEventTransportAdapter → RegistrySourceSessionVerifier/SourceSessionCoordinator → StationEventPipeline → SubsystemStatusEventProcessor → SqliteSubsystemStatusStore. x86_64 и ARM64: CTest 34/34; дополнительно 31/31 C++ host-программ, 158 Python/Operator/Gateway integration tests и source/subsystem provisioning acceptance. Это host OpenSSL↔OpenSSL TLS/PTY verification, не подтверждение ESP32/Mbed TLS или физического UART.
 
 Аудит текущего дерева показал:
 
@@ -788,6 +788,32 @@ SourceSessionVerifier вызывается для каждого события.
 **Ограничения и запреты:** не подключать LocalApiServer/Python test route к StationEventPipeline; не принимать evidence из HTTP или пользовательского JSON; не считать loopback, SSH port-forward или source ID самостоятельной аутентификацией устройства. Не выводить subsystem_status из severity или error_code. Не добавлять F13 route для SUBSYSTEM_STATUS_UPDATED только ради прохождения теста: маршрут должен иметь реальный профильный обработчик и согласованный транзакционный контракт. Production registry reader, SourceSessionRepository и composition-root wiring реализованы и проходят host CI; остаются локальный доверенный provisioning workflow, Mbed TLS interoperability и аппаратная приёмка физического транспорта. Утверждение DEC-068 и host CI не означают готовность физического канала.
 
 **Следующие задачи после host provisioning:** реализовать/проверить disable/revoke lifecycle, reconnect и повторную аутентификацию; согласовать безопасную доставку и координированную ротацию PSK на ESP32; проверить Mbed TLS interoperability, физический UART и Repka OS; провести backup/restore, crash-recovery и power-loss acceptance.
+
+### 5.4.4. Локальная регистрация ControllerLink source и subsystem
+
+**Статус:** host provisioning utility реализована; запись выполняется только в локальную SQLite schema v3 и не открывается через HTTP.
+
+Утилита `tools/dockstation_registry_provision.cpp` устанавливается как `/usr/local/bin/dockstation-registry-provision` только в SQLite-enabled build. ARM64 release bundle v2 включает её вместе с SQLite-enabled Gateway; Gateway-only build с `DOCKSTATION_BUILD_SQLITE_PERSISTENCE=OFF` остаётся diagnostics-only и не содержит этот executable.
+
+```sh
+dockstation-registry-provision source --revision r1
+dockstation-registry-provision source --revision r1 --apply
+dockstation-registry-provision subsystem --subsystem-id weather.temperature --revision r1
+dockstation-registry-provision subsystem --subsystem-id weather.temperature --revision r1 --apply
+```
+
+Первая форма — preview, запись требует явного `--apply`. Утилита не принимает Station ID, source или PSK identity из CLI: Station ID/source читаются из root-owned `/etc/dockstation/gateway.conf`, а 16-байтовая binary PSK identity — из проверенного `/etc/dockstation/credentials/repka-esp32.psk`. Сам PSK secret не копируется в registry и не выводится.
+
+Source registration создаётся первой и привязывается к точной паре Station ID/source и локальной PSK identity. Subsystem registration разрешается только при наличии ACTIVE source с теми же Station ID/source. Duplicate identity, duplicate subsystem, несовпадение config/registration, неактивный source и ошибки storage fail closed. Существующие записи не заменяются и не реактивируются автоматически.
+
+Утилита требует системного пользователя `dockstation`; root invocation запрещён. Она использует один `GatewayPersistenceContext` и ту же SQLite schema/database, что и Gateway; обращения к adapters проходят через общий serialized callback. Режим без `--apply` не создаёт registry records. Отдельного HTTP/API provisioning route и автоматической регистрации при TLS handshake нет.
+
+Установщик создаёт `/var/lib/dockstation` с владельцем `dockstation:dockstation` и режимом 0700 до активации systemd unit. Provisioner может инициализировать SQLite database впервые из этого private StateDirectory; после открытия повторно проверяет владельца файла и режим 0600. Symlink, ACL, неверные owner/mode отклоняются.
+
+Локальная генерация credentials и pairing с реальным ESP32 — отдельная граница: `dockstation-credential-provision` создаёт только Repka-side PSK/identity и не передаёт секрет на ESP32. До включения authenticated ingress соответствующая пара должна быть provisioned на обоих концах доверенным внешним способом.
+
+Host acceptance test проверяет preview/apply, root denial, duplicate conflict, source-before-subsystem, config mismatch, отсутствие PSK secret в output и DB owner/mode. Это не проверка Mbed TLS, реального ESP32/UART или физической Repka OS.
+
 
 ### 5.5. Выбор физического хранилища
 
@@ -1170,9 +1196,10 @@ Production `ControllerSubsystemStatusEventProjector` реализован для
 
 **Read-only Repka preflight:** добавлены `repka/check_target_platform.sh` и host-тест с подменёнными системными источниками. Скрипт не изменяет ОС; проверяет ARM64/64-bit, toolchain CMake/C++17, заголовки OpenSSL 3.x, systemd, установленные unit-файлы и кандидаты UART с сопоставлением `console=`. Физический pinmux, контакт разъёма, электрические уровни и UART↔ESP32 обмен не имитируются и остаются аппаратной приёмкой.
 
-**Target deployment:** `repka/install_gateway.sh` собирает Release Gateway-only, устанавливает оба systemd unit и начальную конфигурацию, сохраняя существующую. Активный UART instance обновляется без смены режима; при заданном controller_uart_device без активного UART unit базовая служба не стартует. Staging mode позволяет проверить install layout без изменений host accounts/systemd. Установщик не использует apt и не меняет boot, pinmux, device permissions или PSK.
+**Target deployment:** `repka/install_gateway.sh` собирает SQLite-enabled Release Gateway, устанавливает Gateway, credential provisioner и local registry provisioner, оба systemd unit и начальную конфигурацию, сохраняя существующую. Создаёт системную учётную запись `dockstation` и private `/var/lib/dockstation` (0700). Активный UART instance обновляется без смены режима; при заданном controller_uart_device без активного UART unit базовая служба не стартует. Staging mode позволяет проверить install layout без изменений host accounts/systemd. Установщик не использует apt и не меняет boot, pinmux, device permissions или PSK.
 
 ## 12. История изменений
+| 2.03 | 2026-11-16 | Добавлена local-only `dockstation-registry-provision`: create-only source registration по точной локальной PSK identity + Station ID/source и subsystem registration по Station ID/subsystem ID/source. Station/source читаются из `gateway.conf`, identity из защищённого credential-файла; `--apply` обязателен для записи, preview — по умолчанию, root invocation, duplicates, mismatch и inactive source отклоняются. Установщик создаёт private StateDirectory 0700; provisioner может инициализировать SQLite file с umask 0077 и подтверждает owner/mode 0600. SQLite-enabled native install и ARM64 bundle включают утилиту; Gateway-only SQLite-disabled build остаётся diagnostics-only fallback. GitHub Actions [run 43872537777](https://github.com/GooseRabbit/dockstation/actions/runs/43872537777) SUCCESS: CTest 34/34 x86_64/ARM64, 31/31 C++ host programs, 158 Python/Operator/Gateway integration tests, registry provisioning acceptance, SQLite-enabled ARM64 bundle/staging and Sigstore provenance. Это host verification; physical Repka, ESP32/Mbed TLS, revoke/reconnect/re-authentication и power-loss acceptance остаются открытыми. |
 
 | Редакция | Дата | Изменения |
 |---|---|---|
