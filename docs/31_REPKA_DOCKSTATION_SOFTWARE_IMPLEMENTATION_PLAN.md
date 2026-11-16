@@ -1421,3 +1421,14 @@ Peer-side логика протокола уже реализована и до�
 Datasheet стандартного ESP32-WROOM-32 указывает 4 MB SPI Flash; при совпадении маркировки физического модуля это условно ожидаемый объём. Фактические Flash/PSRAM установленной платы и production partition table ещё не проверены. Текущие 2 MB в CI — только SDK default, не измерение Flash и не образ для прошивки. Default CI table не является production layout и не содержит provisioned `nvs_keys`. Не менять flash-size configuration, не создавать окончательный partition CSV и не прошивать плату до read-only определения Flash (`esptool flash_id`), физической проверки маркировки модуля/ревизии и header pin map.
 
 Подробная матрица источников, candidate pinout, безопасный план проверки и критерии подтверждения вынесены в `docs/33_ESP32_HARDWARE_PROFILE.md`. Этот срез не является аппаратной приёмкой и не объявляет GPIO/Flash/partition profile утверждённым.
+
+
+## Дополнение 2.20 — безопасный preflight ESP32
+
+В `firmware/esp32/main/app_main.cpp` подготовлен следующий этап ControllerLink startup. После генерации per-boot UUIDv4 приложение сначала проверяет два аппаратных допуска: `hardware_profile_confirmed` и полную валидность явной UART-конфигурации (порт, TX и RX). Пока хотя бы один допуск отсутствует, код завершается **до открытия NVS**.
+
+Только после обоих допусков startup path вызывает существующий read-only `ControllerPskNvsCredentialStore`: читает уже provisioned PSK/identity и пару стабильных `controller_id` / `peer_ctrl_id`, передаёт ID в общий `ControllerLinkStartupReadiness` и fail-closed блокирует продолжение при любом отсутствии/несоответствии. Секретные буферы очищаются после проверки и при ошибке. Никакие credentials или NVS encryption keys не создаются, не исправляются, не записываются и не ротируются.
+
+Фактический checked-in профиль остаётся `hardware_profile_confirmed=false`, TX/RX GPIO не назначены. Поэтому обычный запуск текущей прошивки по-прежнему завершится до NVS и не затронет UART/TLS. Даже после успешного preflight runtime не запускается: отдельной задачей остаются FreeRTOS polling/lifecycle loop и настоящий telemetry source; запуск транспорта без обслуживания оставил бы соединение без обработки.
+
+Это только программная интеграция безопасного read-side preflight. Provisioning writer/utility, production partition table, Flash Encryption/eFuse setup, физическая проверка платы/UART, FreeRTOS lifecycle, датчики и физическое TLS/UART испытание не выполнены. Профиль платы остаётся CANDIDATE / NOT_CONFIGURED.
