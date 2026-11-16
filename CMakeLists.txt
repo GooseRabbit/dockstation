@@ -355,6 +355,17 @@ if(BUILD_TESTING)
     dockstation_apply_compile_policy(test_source_session_contract)
     add_test(NAME source_session_contract COMMAND test_source_session_contract)
 
+    add_executable(test_source_session_verifier
+        src/core/source_session.cpp
+        src/core/source_session_verifier.cpp
+        verification/regression/test_source_session_verifier.cpp
+    )
+    target_include_directories(test_source_session_verifier
+        PRIVATE "${PROJECT_SOURCE_DIR}/src"
+    )
+    dockstation_apply_compile_policy(test_source_session_verifier)
+    add_test(NAME source_session_verifier COMMAND test_source_session_verifier)
+
     add_executable(test_station_event_pipeline
         src/core/event_processing.cpp
         src/core/event_validation.cpp
@@ -401,6 +412,7 @@ if(BUILD_TESTING)
                     test_local_api
                     test_source_cursor_reader
                     test_source_session_contract
+                    test_source_session_verifier
                     test_station_event_pipeline)
                 target_compile_options(${target_name} PRIVATE
                     -fsanitize=address,undefined
@@ -486,6 +498,9 @@ if(BUILD_TESTING)
                 -fsanitize=address,undefined
             )
             target_link_options(test_source_session_contract PRIVATE
+                -fsanitize=address,undefined
+            )
+            target_link_options(test_source_session_verifier PRIVATE
                 -fsanitize=address,undefined
             )
             target_link_options(test_station_event_pipeline PRIVATE

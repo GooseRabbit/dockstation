@@ -583,7 +583,7 @@ public:
 
 ### 5.4.2. Доверенная регистрация источника и подтверждение source session
 
-**Статус: архитектура и публичные C++-сигнатуры согласованы владельцем 2026-11-14. Логические порты, validators и SourceSessionCoordinator реализованы; Coordinator интегрирован в StationEventPipeline. Production verifier/registry/storage adapters, реальный transport context и production composition root ещё не реализованы.**
+**Статус: архитектура и публичные C++-сигнатуры согласованы владельцем 2026-11-14. Логические порты, validators и SourceSessionCoordinator реализованы; Coordinator интегрирован в StationEventPipeline. `RegistrySourceSessionVerifier` реализован как storage-neutral core policy поверх `SourceRegistrationReader`; реальный registry reader/storage adapter, production `SourceSessionRepository`, доверенный transport adapter, event mapping и composition-root wiring ещё не реализованы.**
 
 #### Разделение идентификаторов
 
@@ -609,6 +609,8 @@ public:
 - **`SourceSessionRepository`** — фиксирует уже подтверждённую сессию и её стартовый cursor. Кандидатные статусы: `Confirmed`, `AlreadyCurrent`, `CursorChanged`, `RegistrationChanged`, `Error`. Метод принимает ожидаемый результат `SourceCursorReader` (`Found` либо `NotFound`) и подтверждённые verifier-ом данные. `Error`, неизвестный статус или структурно некорректный результат чтения блокируют фиксацию.
 
 Verifier отвечает за проверку доказательства и связывание peer identity с регистрацией. Repository отвечает за согласованную транзакцию и не реализует криптографию. Публичные C++-сигнатуры ниже утверждены владельцем; рабочая координация этих портов вынесена в отдельный SourceSessionCoordinator.
+
+**Реализация registry policy (2026-11-16).** `RegistrySourceSessionVerifier` реализует проверку записи через read-only `SourceRegistrationReader` без выбора физического хранилища. Запись должна относиться к точному локальному Station ID и логическому source, иметь непустую revision и состояние ACTIVE; DISABLED/REVOKED блокируют источник. Неизвестные enum и структурно противоречивые ответы порта дают Error, а не разрешение. Для текущего DEC-066 evidence идентификатор пары PSK, загруженный Repka из локального credential store и использованный в завершённом TLS handshake, используется как непрозрачный ключ поиска; его нельзя брать из peer payload, и это не Station ID. Registry reader обязан обнаруживать дубликаты и возвращать Error. Проверяется только 32-байтовый размер exporter proof; verifier не проверяет байты или свежесть. Его происхождение из живого TLS session обязан гарантировать будущий transport adapter. Реальный registry reader и durable repository не созданы.
 
 **Утверждённые публичные сигнатуры и реализованный логический контракт:**
 
