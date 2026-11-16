@@ -50,6 +50,11 @@ jobs:
           sudo cmake --install build
           sudo install -d -o root -g dockstation -m 0750 /etc/dockstation
           sudo install -o root -g dockstation -m 0640 /usr/local/share/dockstation/gateway.conf.example /etc/dockstation/gateway.conf
+          # This smoke test starts the process outside systemd, so prepare
+          # the same state directory that StateDirectory creates for the unit.
+          sudo install -d -o dockstation -g dockstation -m 0700 /var/lib/dockstation
+          sudo -u dockstation test -r /var/lib/dockstation
+          sudo -u dockstation test -w /var/lib/dockstation
           sudo systemd-analyze verify /usr/local/lib/systemd/system/dockstation-gateway.service
           sudo systemd-analyze verify /usr/local/lib/systemd/system/dockstation-gateway-uart@.service
           sudo -u dockstation test -r /etc/dockstation/gateway.conf
@@ -83,6 +88,10 @@ jobs:
           fi
           curl -fsS --max-time 10 http://127.0.0.1:8080/api/v1/system/diagnostics >/dev/null
           ss -ltn | grep -F '127.0.0.1:8080'
+          database_file=/var/lib/dockstation/dockstation.sqlite3
+          sudo test -f "$database_file"
+          [[ "$(sudo stat -c '%U:%G' "$database_file")" == "dockstation:dockstation" ]]
+          [[ "$(sudo stat -c '%a' "$database_file")" == "600" ]]
           sudo kill -TERM "$gateway_pid"
           wait "$gateway_pid"
           gateway_pid=""
