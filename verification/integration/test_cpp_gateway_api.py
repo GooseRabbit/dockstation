@@ -77,7 +77,21 @@ def _gateway_command(port: int) -> list[str]:
     if service_account_access.returncode != 0:
         pytest.skip("dockstation service account has no prepared persistent state directory")
 
-    return [sudo, "-n", "-u", "dockstation", "--", *command]
+    # The build tree is under /home/runner and may not be traversable by the
+    # service account. Exercise the installed production binary instead.
+    installed_executable = Path("/usr/local/bin/dockstation_linux_bootstrap")
+    if not installed_executable.is_file():
+        pytest.skip("installed C++ Gateway binary is required for the service-account test")
+    service_command = [
+        "/bin/sh",
+        "-c",
+        'umask 0077; exec "$@"',
+        "sh",
+        str(installed_executable),
+        "--api-port",
+        str(port),
+    ]
+    return [sudo, "-n", "-u", "dockstation", "--", *service_command]
 
 
 def test_cpp_gateway_serves_only_loopback_read_only_api() -> None:
