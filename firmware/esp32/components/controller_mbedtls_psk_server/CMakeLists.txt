@@ -8,3 +8,6 @@ idf_component_register(
     INCLUDE_DIRS "include" "../../../../src"
     REQUIRES mbedtls
 )
+
+# Keep the firmware component on the same language baseline as the shared code.
+target_compile_features(${COMPONENT_LIB} PUBLIC cxx_std_17)

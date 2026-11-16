@@ -1,0 +1,33 @@
+name: ESP32 firmware build
+
+on:
+  push:
+    branches:
+      - chore/flatten-repka-directories
+    paths:
+      - "firmware/esp32/**"
+      - "src/hardware/interfaces/**"
+      - ".github/workflows/esp32-firmware.yml"
+  pull_request:
+    paths:
+      - "firmware/esp32/**"
+      - "src/hardware/interfaces/**"
+      - ".github/workflows/esp32-firmware.yml"
+  workflow_dispatch:
+
+jobs:
+  build-esp32:
+    name: ESP-IDF v5.5.6 / provisional ESP32 target
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Build ESP32 firmware
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v5.5.6
+          target: esp32
+          path: firmware/esp32
+          command: idf.py build
