@@ -65,8 +65,10 @@ started: there is no credential loading or UART transport in `app_main`.
 An ESP-IDF UART byte-stream adapter exists in
 `components/controller_uart_transport/`. It provides non-blocking Mbed TLS
 send/receive callbacks, uses the selected UART port with 8N1/no flow control,
-and requires explicit TX/RX GPIOs. UART2 is the logical candidate, but neither
-GPIO is assigned by this project.
+and requires explicit TX/RX GPIOs. Its bounded event queue exposes RX FIFO and
+ring-buffer overflow, framing/parity faults and BREAK; the firmware runtime
+closes TLS before UART whenever the protected byte stream may be damaged.
+UART2 is the logical candidate, but neither GPIO is assigned by this project.
 
 The `controller_link_firmware_runtime/` component composes the UART adapter
 and `ControllerLinkPeerService`: it owns startup, bounded polling, restart and

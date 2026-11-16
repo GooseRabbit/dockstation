@@ -85,16 +85,38 @@ void ControllerLinkFirmwareRuntime::poll(std::string_view sent_at) noexcept {
         return;
     }
 
+    if (!uart_.poll_transport_events()) {
+        const esp_err_t transport_error = uart_.last_error();
+        // An overrun or malformed UART frame invalidates the protected stream.
+        // Destroy TLS before closing its injected UART callback context.
+        peer_service_.stop();
+        uart_.close();
+        last_uart_error_ = transport_error != ESP_OK
+            ? transport_error
+            : uart_.last_error();
+        running_ = false;
+        state_ = ControllerLinkFirmwareRuntimeState::Failed;
+        return;
+    }
+
     peer_service_.poll(sent_at);
     const auto peer_state = peer_service_.status().state;
     if (peer_state == ControllerLinkPeerServiceState::Error) {
-        last_uart_error_ = uart_.last_error();
+        const esp_err_t transport_error = uart_.last_error();
+        peer_service_.stop();
         uart_.close();
+        last_uart_error_ = transport_error != ESP_OK
+            ? transport_error
+            : uart_.last_error();
         running_ = false;
         state_ = ControllerLinkFirmwareRuntimeState::Failed;
     } else if (peer_state == ControllerLinkPeerServiceState::Stopped) {
-        last_uart_error_ = uart_.last_error();
+        const esp_err_t transport_error = uart_.last_error();
+        peer_service_.stop();
         uart_.close();
+        last_uart_error_ = transport_error != ESP_OK
+            ? transport_error
+            : uart_.last_error();
         running_ = false;
         state_ = ControllerLinkFirmwareRuntimeState::Stopped;
     }
@@ -133,8 +155,8 @@ void ControllerLinkFirmwareRuntime::stop() noexcept {
         // Close TLS/BIO first; only then remove the UART driver referenced by BIO.
         peer_service_.stop();
     }
-    last_uart_error_ = uart_.last_error();
     uart_.close();
+    last_uart_error_ = uart_.last_error();
     running_ = false;
     state_ = ControllerLinkFirmwareRuntimeState::Stopped;
 }

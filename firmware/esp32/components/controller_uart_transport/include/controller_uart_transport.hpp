@@ -6,6 +6,8 @@
 #include "driver/gpio.h"
 #include "driver/uart.h"
 #include "esp_err.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
 
 namespace dockstation::firmware::esp32 {
 
@@ -36,6 +38,10 @@ public:
     [[nodiscard]] bool open(const ControllerUartConfig& config) noexcept;
     void close() noexcept;
 
+    // Drain a bounded number of driver events. RX overflow, frame/parity
+    // errors and BREAK invalidate the protected byte stream.
+    [[nodiscard]] bool poll_transport_events() noexcept;
+
     [[nodiscard]] bool is_open() const noexcept { return driver_installed_; }
     [[nodiscard]] esp_err_t last_error() const noexcept { return last_error_; }
     [[nodiscard]] uart_port_t port() const noexcept { return port_; }
@@ -51,6 +57,7 @@ private:
     uart_port_t port_{UART_NUM_MAX};
     esp_err_t last_error_{ESP_OK};
     bool driver_installed_{false};
+    QueueHandle_t event_queue_{nullptr};
 };
 
 }  // namespace dockstation::firmware::esp32

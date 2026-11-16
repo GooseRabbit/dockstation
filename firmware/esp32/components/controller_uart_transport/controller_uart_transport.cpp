@@ -10,6 +10,8 @@ namespace dockstation::firmware::esp32 {
 namespace {
 
 constexpr int kMaximumReceiveBufferSize = 64 * 1024;
+constexpr int kUartEventQueueLength = 8;
+constexpr std::size_t kMaximumEventsPerPoll = 8U;
 
 [[nodiscard]] bool valid_config(const ControllerUartConfig& config) noexcept {
     const int port_number = static_cast<int>(config.port);
@@ -40,6 +42,10 @@ ControllerUartTransport::~ControllerUartTransport() {
 
 bool ControllerUartTransport::open(const ControllerUartConfig& config) noexcept {
     close();
+    if (driver_installed_) {
+        // Do not attempt to reuse a UART whose previous driver failed to close.
+        return false;
+    }
     if (!valid_config(config)) {
         last_error_ = ESP_ERR_INVALID_ARG;
         return false;
@@ -78,10 +84,11 @@ bool ControllerUartTransport::open(const ControllerUartConfig& config) noexcept 
         config.port,
         config.receive_buffer_size,
         0,
-        0,
-        nullptr,
+        kUartEventQueueLength,
+        &event_queue_,
         0);
     if (result != ESP_OK) {
+        event_queue_ = nullptr;
         last_error_ = result;
         return false;
     }
@@ -96,11 +103,50 @@ void ControllerUartTransport::close() noexcept {
     if (driver_installed_) {
         const esp_err_t result = uart_driver_delete(port_);
         if (result != ESP_OK) {
+            // Retain ownership state so a later close() can retry; never
+            // pretend the callback's transport context is already gone.
             last_error_ = result;
+            return;
         }
     }
     driver_installed_ = false;
+    event_queue_ = nullptr;
     port_ = UART_NUM_MAX;
+    last_error_ = ESP_OK;
+}
+
+bool ControllerUartTransport::poll_transport_events() noexcept {
+    if (!driver_installed_ || event_queue_ == nullptr) {
+        last_error_ = ESP_ERR_INVALID_STATE;
+        return false;
+    }
+
+    for (std::size_t count = 0U; count < kMaximumEventsPerPoll; ++count) {
+        uart_event_t event{};
+        if (xQueueReceive(event_queue_, &event, 0) != pdTRUE) {
+            return true;
+        }
+
+        switch (event.type) {
+            case UART_FIFO_OVF:
+            case UART_BUFFER_FULL:
+            case UART_FRAME_ERR:
+            case UART_PARITY_ERR:
+            case UART_BREAK:
+                // A byte may have been lost or corrupted. Do not continue
+                // the authenticated stream and risk parsing a damaged record.
+                last_error_ = ESP_ERR_INVALID_RESPONSE;
+                return false;
+            default:
+                // UART_DATA and informational events leave bytes in the RX
+                // ring buffer; receive_callback() drains them without waiting.
+                break;
+        }
+    }
+
+    // Work is bounded per runtime poll. Any remaining events are checked
+    // before the next TLS/ControllerLink event-loop step.
+    return true;
 }
 
 int ControllerUartTransport::send_callback(
