@@ -1,7 +1,7 @@
 # Полный план реализации программного комплекса DockStation на Repka Pi 5
 
 **Статус:** мастер-план реализации; последовательность разработки согласована, открытые платформенные, сетевые, серверные и аппаратные детали требуют отдельной проверки и решения.  
-**Редакция:** 2.17.
+**Редакция:** 2.18.
 **Дата:** 2026-11-16.  
 **Вычислительная платформа:** Repka Pi 5.  
 **Предполагаемая ОС:** официальная Repka OS; образ и версия проверяются перед развёртыванием.
@@ -1401,3 +1401,11 @@ GitHub Actions [run 43699555707](https://github.com/GooseRabbit/dockstation/acti
 | 2.17 | 2026-11-16 | Введён общий `ControllerLinkStartupReadiness` и обязательный startup config runtime. Hardware profile должен быть явно подтверждён; UART конфигурация, pair credentials, instance identity и stable local/peer controller IDs проверяются до UART. `app_main` выводит blockers и сохраняет default-off режим без NVS/UART/TLS. Новый host CTest и ESP-IDF compile/link проверяют policy/API; физическая плата, pinout и encrypted provisioning по-прежнему не проверены. |
 
 Peer-side логика протокола уже реализована и дополнена host CTest для HELLO/HELLO_ACK, REQUEST_SNAPSHOT и TELEMETRY_SNAPSHOT. Следующие практические рубежи: подтвердить точную ESP32 плату/SoC, Flash capacity и production partition layout; согласовать и обеспечить источники стабильных local/peer `controller_id`; выполнить доверенное provisioning PSK/identity и NVS encryption; проверить UART pinout и электрическую совместимость обеих плат. До закрытия этих условий runtime остаётся отключённым. После этого отдельно выполняются физические ESP32/Repka UART и TLS испытания, а датчики и GPIO добавляются только после утверждения pin map и безопасной схемы выводов.
+
+## Дополнение 2.18 — стабильная идентичность контроллеров
+
+Реализован общий контракт стабильного `controller_id`: отдельный открытый ID для Repka и ESP32, отличный от Station ID и случайного per-boot `controller_instance_id`. Оба ID должны быть непустыми, различными между сторонами и соответствовать ASCII wire-safe формату длиной не более 128 байт.
+
+На Repka значения `controller_local_id` / `controller_peer_id` поступают из существующего системного RuntimeConfig. На ESP32 добавлен read-only NVS loader для ключей `controller_id` / `peer_controller_id` в уже защищённом namespace `dockstation`; загрузчик не пишет и не генерирует идентификаторы. Общая проверка используется startup readiness и Linux RuntimeConfig. Добавлен host CTest для формата и пары ID; ESP-IDF target build включает новый NVS API и link-only acceptance hook, но пока требует CI-проверки.
+
+Фактические значения не назначены. Provisioning writer/utility, безопасная процедура первой записи/восстановления, подтверждение Flash/NVS partition layout и аппаратная проверка остаются открытыми. `app_main` по-прежнему default-off: обычный старт не читает NVS, не открывает UART, не запускает TLS и не выполняет runtime auto-start.

@@ -107,11 +107,14 @@ read-only PSK/identity loader. It requires runtime Flash Encryption to be
 already enabled, an encrypted `nvs_keys` partition, and the `nvs` data
 partition. It reads existing NVS encryption keys and explicitly initializes
 NVS with them; it never creates, repairs, writes, rotates or erases keys. The
-credential namespace is `dockstation` with exact binary blobs `pair_psk`
-(32 bytes) and `pair_identity` (16 bytes). Missing partitions, unencrypted
-key storage, absent records or wrong blob lengths fail closed and clear the
-output credentials. This is a reader only: provisioning the pair secret and
-creating the production partition table remain separate tasks.
+credential namespace is `dockstation` with binary blobs `pair_psk`
+(32 bytes) and `pair_identity` (16 bytes), plus NVS strings `controller_id`
+(this ESP32's stable ID) and `peer_controller_id` (the paired Repka ID).
+Both IDs must be distinct, non-empty ASCII identifiers of at most 128 bytes
+using only letters, digits, `_`, `-`, `.` or `:`. The read-only loader
+rejects missing, malformed or identical values and clears its output on
+failure. It never creates or repairs records. Provisioning these two IDs and
+the pair secret, and creating the production partition table, remain separate tasks.
 
 Not implemented by this scaffold:
 

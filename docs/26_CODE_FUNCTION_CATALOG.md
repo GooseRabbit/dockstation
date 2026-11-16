@@ -1377,3 +1377,13 @@ RuntimeConfig получает необязательные station_id и contro
 ### Сквозная проверка
 
 verification/repka_gateway/test_controller_link_service.cpp в SQLite-enabled build использует настоящие SQLite adapters вместо fake repositories. Через POSIX PTY и OpenSSL TLS 1.3 PSK-DHE peer проходит HELLO/HELLO_ACK, TelemetrySnapshot остаётся вне F13, explicit DEGRADED ERROR сохраняет Event/history/current/cursor, второй PASS добавляет историю и двигает cursor; replayed sequence отклоняется до event adapter. SQLite-disabled build оставляет fail-closed Unsupported fixture.
+
+## Дополнение: стабильные ID контроллеров Repka—ESP32
+
+| Функция / интерфейс | Назначение |
+|---|---|
+| `is_valid_controller_stable_id(std::string_view)` (`src/hardware/interfaces/controller_stable_identity.hpp`, реализована) | Проверяет непустой ASCII controller ID длиной 1–128 байт с ограниченным wire-safe набором символов. Не проверяет уникальность в реестре и не является аутентификацией. |
+| `ControllerStableIdPair::is_valid()` (реализован) | Проверяет две принадлежащие объекту строки, длины, завершающий NUL и различие local/peer ID. |
+| `ControllerPskNvsCredentialStore::load_controller_ids()` (read-only loader реализован) | Читает `controller_id` и `peer_controller_id` из уже инициализированного encrypted NVS namespace `dockstation`; не генерирует и не записывает значения. |
+
+Repka использует `controller_local_id` и `controller_peer_id` из системного RuntimeConfig. ESP32 использует зеркальную пару из NVS. Provisioning writer, назначение фактических значений и физическая проверка после записи остаются отдельными задачами.
