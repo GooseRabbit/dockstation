@@ -177,7 +177,7 @@ AuthenticatedEventTransportAdapter::~AuthenticatedEventTransportAdapter() {
 
 void AuthenticatedEventTransportAdapter::on_authenticated_controller_message(
     ControllerLinkService& service,
-    const ControllerCodecDecodedMessage& message,
+    const hardware::interfaces::ControllerCodecDecodedMessage& message,
     std::uint64_t received_at_unix_ms) noexcept {
     if (!attached_ || &service != &service_) {
         statistics_.last_status =
