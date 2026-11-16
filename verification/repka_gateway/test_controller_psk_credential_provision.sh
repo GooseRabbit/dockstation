@@ -59,6 +59,31 @@ fi
 sudo -u dockstation -- "$loader_test" expect-readable "$credential_directory"
 first_digest="$(sudo sha256sum "$credential_file" | cut -d' ' -f1)"
 
+check_output="$(sudo "$binary" --check \
+    --local-controller-id repka-preflight-01 \
+    --peer-controller-id esp32-preflight-01)"
+if [[ "$check_output" != *"Preflight passed"* || "$check_output" == *"PSK="* ]]; then
+    echo "Read-only preflight did not return the expected non-secret success message" >&2
+    exit 1
+fi
+if sudo "$binary" --check \
+    --local-controller-id "repka invalid" \
+    --peer-controller-id esp32-preflight-01 >/dev/null 2>&1; then
+    echo "Preflight accepted a controller ID containing whitespace" >&2
+    exit 1
+fi
+if sudo "$binary" --check \
+    --local-controller-id duplicate-controller \
+    --peer-controller-id duplicate-controller >/dev/null 2>&1; then
+    echo "Preflight accepted identical local and peer controller IDs" >&2
+    exit 1
+fi
+preflight_digest="$(sudo sha256sum "$credential_file" | cut -d' ' -f1)"
+if [[ "$first_digest" != "$preflight_digest" ]]; then
+    echo "Read-only preflight modified the Repka credential file" >&2
+    exit 1
+fi
+
 if sudo "$binary" >/dev/null 2>&1; then
     echo "Provisioner unexpectedly overwrote an existing credential file" >&2
     exit 1
