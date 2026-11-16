@@ -255,9 +255,9 @@ bool complete_tls_handshake(
 
 bool read_service_message(
     ControllerLinkService& service, TlsPeer& peer, int master,
+    std::array<std::uint8_t, kControllerCodecMaximumFrameSize>& frame,
     ControllerCodecDecodeStorage& storage,
     ControllerCodecDecodedMessage& decoded) noexcept {
-    std::array<std::uint8_t, kControllerCodecMaximumFrameSize> frame{};
     for (std::size_t attempt = 0U; attempt < 256U; ++attempt) {
         service.poll();
         if (!uart_to_peer(master, peer.transport)) {
@@ -386,9 +386,10 @@ int main() {
                e2e_service.status().tls_authenticated,
            "authenticates the complete service-to-peer TLS 1.3 PSK-DHE handshake");
 
+    std::array<std::uint8_t, kControllerCodecMaximumFrameSize> peer_frame{};
     ControllerCodecDecodeStorage peer_storage{};
     ControllerCodecDecodedMessage peer_message{};
-    expect(read_service_message(e2e_service, peer, pty.master,
+    expect(read_service_message(e2e_service, peer, pty.master, peer_frame,
                                 peer_storage, peer_message) &&
                peer_message.envelope.type == ControllerMessageType::Hello &&
                peer_message.envelope.controller_id == "repka-01",
@@ -401,7 +402,7 @@ int main() {
 
     peer_storage = {};
     peer_message = {};
-    expect(read_service_message(e2e_service, peer, pty.master,
+    expect(read_service_message(e2e_service, peer, pty.master, peer_frame,
                                 peer_storage, peer_message) &&
                peer_message.envelope.type == ControllerMessageType::RequestSnapshot &&
                e2e_service.status().protocol_established,
