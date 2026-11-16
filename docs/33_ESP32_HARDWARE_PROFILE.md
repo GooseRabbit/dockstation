@@ -1,7 +1,7 @@
 # Предварительный аппаратный профиль ESP32 для DockStation
 
 **Статус:** документированный кандидат; физически не подтверждён.
-**Редакция:** 0.1.
+**Редакция:** 0.2.
 **Дата:** 2026-11-16.
 **Связанные решения:** DEC-062, DEC-064, DEC-065, DEC-066.
 
@@ -83,8 +83,10 @@ UART0 GPIO1/TX0 и GPIO3/RX0 не назначать для ControllerLink: он
 - ESP-IDF v5.5.6 / target `esp32` кросс-собирает прошивку и TLS/ControllerLink components.
 - `ControllerUartConfig.port` по умолчанию `UART_NUM_2`; TX/RX GPIO остаются `GPIO_NUM_NC`.
 - Baud rate по умолчанию 115200, receive buffer 4096, 8N1/no flow control.
-- `app_main` диагностический и default-off: не открывает NVS, UART или TLS, не вызывает runtime start.
-- `hardware_profile_confirmed` остаётся `false`.
+- `app_main` генерирует per-boot ID, затем проверяет `hardware_profile_confirmed` и явную валидную UART-конфигурацию **до обращения к NVS**.
+- В текущем checked-in профиле `hardware_profile_confirmed=false`, GPIO не назначены; обычный запуск завершается до открытия NVS и до установки UART/TLS.
+- Только после явного подтверждения физического профиля и задания валидного UART-кандидата `app_main` сможет прочитать уже существующие protected NVS credentials и stable controller IDs. Операций записи/генерации/ротации ключей этот путь не выполняет.
+- После успешной проверки prerequisites runtime всё ещё не запускается: требуется отдельный FreeRTOS polling/lifecycle task и реальный источник телеметрии.
 - CI build только компилирует и линкует; не прошивает физическую плату.
 
 ## 6. Критерии подтверждения аппаратного профиля
