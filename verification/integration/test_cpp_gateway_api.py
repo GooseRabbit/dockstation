@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import signal
 import socket
 import subprocess
@@ -38,6 +40,46 @@ def _get_json(url: str, timeout: float = 3.0) -> dict[str, object]:
     return payload
 
 
+def _gateway_command(port: int) -> list[str]:
+    command = [
+        "/bin/sh",
+        "-c",
+        'umask 0077; exec "$@"',
+        "sh",
+        str(GATEWAY_EXECUTABLE),
+        "--api-port",
+        str(port),
+    ]
+    state_directory = Path("/var/lib/dockstation")
+    if os.access(state_directory, os.W_OK):
+        return command
+
+    sudo = shutil.which("sudo")
+    if sudo is None:
+        pytest.skip("C++ Gateway integration test requires its protected state directory")
+
+    service_account_access = subprocess.run(
+        [
+            sudo,
+            "-n",
+            "-u",
+            "dockstation",
+            "--",
+            "test",
+            "-w",
+            str(state_directory),
+        ],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    if service_account_access.returncode != 0:
+        pytest.skip("dockstation service account has no prepared persistent state directory")
+
+    return [sudo, "-n", "-u", "dockstation", "--", *command]
+
+
 def test_cpp_gateway_serves_only_loopback_read_only_api() -> None:
     if not GATEWAY_EXECUTABLE.is_file():
         pytest.skip("C++ Gateway binary is available after the Linux CMake build")
@@ -45,7 +87,7 @@ def test_cpp_gateway_serves_only_loopback_read_only_api() -> None:
     port = _reserve_local_port()
     base_url = f"http://127.0.0.1:{port}"
     process = subprocess.Popen(
-        [str(GATEWAY_EXECUTABLE), "--api-port", str(port)],
+        _gateway_command(port),
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
