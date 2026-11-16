@@ -1432,3 +1432,17 @@ Datasheet стандартного ESP32-WROOM-32 указывает 4 MB SPI Fl
 Фактический checked-in профиль остаётся `hardware_profile_confirmed=false`, TX/RX GPIO не назначены. Поэтому обычный запуск текущей прошивки по-прежнему завершится до NVS и не затронет UART/TLS. Даже после успешного preflight runtime не запускается: отдельной задачей остаются FreeRTOS polling/lifecycle loop и настоящий telemetry source; запуск транспорта без обслуживания оставил бы соединение без обработки.
 
 Это только программная интеграция безопасного read-side preflight. Provisioning writer/utility, production partition table, Flash Encryption/eFuse setup, физическая проверка платы/UART, FreeRTOS lifecycle, датчики и физическое TLS/UART испытание не выполнены. Профиль платы остаётся CANDIDATE / NOT_CONFIGURED.
+
+## Дополнение 2.21 — read-only preflight ключей и ID пары Repka–ESP32
+
+Существующая утилита `dockstation-credential-provision` получила режим `--check` для предварительной проверки без изменений:
+
+```bash
+sudo dockstation-credential-provision --check \
+  --local-controller-id repka-01 \
+  --peer-controller-id esp32-01
+```
+
+Режим проверяет общий формат обоих стабильных controller ID (1–128 ASCII-символов, буквы/цифры и `_`, `-`, `.`, `:`), запрещает пустые/совпадающие ID и проверяет существующий файл PSK/identity на стороне Repka тем же защищённым read-only loader, который использует runtime. Ключи и identity не выводятся. Утилита не создаёт и не меняет файлы, не записывает NVS, не подключается к ESP32 и не меняет eFuse.
+
+Это именно preflight **стороны Repka**: он не доказывает, что та же самая пара PSK/identity уже установлена на ESP32. Сопоставление двух сторон возможно только после отдельной контролируемой процедуры provisioning и физической проверки платы. Добавлены CTest на недопустимый формат и одинаковые ID; shell acceptance проверяет успешный preflight, отказ для плохих ID и неизменность хеша файла ключей.
