@@ -136,6 +136,7 @@ private:
     bool configured_{false};
     bool tx_sequence_exhausted_{false};
     bool peer_sequence_known_{false};
+    bool snapshot_requested_{false};
 };
 
 }  // namespace dockstation::hardware::interfaces

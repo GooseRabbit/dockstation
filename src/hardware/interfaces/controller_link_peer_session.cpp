@@ -191,11 +191,13 @@ ControllerLinkPeerSessionResult ControllerLinkPeerSession::handle_message(
     }
 
     last_peer_sequence_ = *message.envelope.sequence_number;
-    return make_result(
-        ControllerLinkPeerSessionStatus::Success,
-        message.envelope.type == ControllerMessageType::Heartbeat
-            ? ControllerLinkPeerSessionEvent::PeerHeartbeatReceived
-            : ControllerLinkPeerSessionEvent::SnapshotRequested);
+    if (message.envelope.type == ControllerMessageType::RequestSnapshot) {
+        snapshot_requested_ = true;
+        return make_result(ControllerLinkPeerSessionStatus::Success,
+                           ControllerLinkPeerSessionEvent::SnapshotRequested);
+    }
+    return make_result(ControllerLinkPeerSessionStatus::Success,
+                       ControllerLinkPeerSessionEvent::PeerHeartbeatReceived);
 }
 
 ControllerLinkPeerSessionResult
@@ -207,7 +209,8 @@ ControllerLinkPeerSession::make_telemetry_snapshot(
             ControllerLinkPeerSessionStatus::InvalidConfiguration,
             ControllerLinkPeerSessionEvent::None);
     }
-    if (state_ != ControllerLinkPeerSessionState::Established) {
+    if (state_ != ControllerLinkPeerSessionState::Established ||
+        !snapshot_requested_) {
         return make_result(ControllerLinkPeerSessionStatus::InvalidState,
                            ControllerLinkPeerSessionEvent::None);
     }
@@ -223,10 +226,15 @@ ControllerLinkPeerSession::make_telemetry_snapshot(
                            ControllerLinkPeerSessionEvent::None);
     }
 
-    return make_outbound(
+    auto result = make_outbound(
         ControllerMessageType::TelemetrySnapshot,
         ControllerLinkPeerSessionEvent::None,
         ControllerMessagePayload{snapshot}, sent_at);
+    if (result.status == ControllerLinkPeerSessionStatus::Success &&
+        result.has_outbound_message) {
+        snapshot_requested_ = false;
+    }
+    return result;
 }
 
 ControllerLinkPeerSessionResult ControllerLinkPeerSession::make_result(
@@ -279,6 +287,7 @@ ControllerLinkPeerSessionResult ControllerLinkPeerSession::make_outbound(
 
 void ControllerLinkPeerSession::stop() noexcept {
     state_ = ControllerLinkPeerSessionState::Stopped;
+    snapshot_requested_ = false;
 }
 
 }  // namespace dockstation::hardware::interfaces

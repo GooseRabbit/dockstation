@@ -60,14 +60,14 @@ ControllerCodecDecodedMessage make_message(
 bool round_trip(
     const ControllerMessageEnvelope& envelope,
     const ControllerMessagePayload& payload,
-    ControllerCodecDecodedMessage& decoded) {
-    std::array<std::uint8_t, kControllerCodecMaximumFrameSize> frame{};
+    ControllerCodecDecodedMessage& decoded,
+    std::array<std::uint8_t, kControllerCodecMaximumFrameSize>& frame,
+    ControllerCodecDecodeStorage& storage) {
     const auto encoded = encode_controller_message(
         envelope, payload, frame.data(), frame.size());
     if (encoded.status != ControllerCodecStatus::Success) {
         return false;
     }
-    ControllerCodecDecodeStorage storage{};
     const auto result = decode_controller_message(
         frame.data(), encoded.frame_size, storage, decoded);
     return result.status == ControllerCodecStatus::Success;
@@ -146,12 +146,20 @@ int main() {
                result.outbound_message.sequence_number == 1U,
            "accepts HELLO and returns a sequenced HELLO_ACK");
 
+    std::array<std::uint8_t, kControllerCodecMaximumFrameSize> round_trip_frame{};
+    ControllerCodecDecodeStorage round_trip_storage{};
     ControllerCodecDecodedMessage decoded{};
-    expect(round_trip(result.outbound_message, result.outbound_payload, decoded) &&
+    expect(round_trip(result.outbound_message, result.outbound_payload, decoded,\n                   round_trip_frame, round_trip_storage) &&
                decoded.envelope.type == ControllerMessageType::HelloAck &&
                decoded.envelope.controller_id == "esp32-01" &&
                decoded.envelope.sequence_number == 1U,
            "HELLO_ACK round-trips through the production ControllerCodec");
+
+    result = session.make_telemetry_snapshot(
+        ControllerTelemetrySnapshotPayload{}, "time");
+    expect(result.status == ControllerLinkPeerSessionStatus::InvalidState &&
+               !result.has_outbound_message,
+           "does not emit telemetry without an accepted snapshot request");
 
     result = session.handle_message(
         make_message(ControllerMessageType::RequestSnapshot,
@@ -180,9 +188,13 @@ int main() {
                result.event == ControllerLinkPeerSessionEvent::PeerHeartbeatReceived,
            "accepts an increasing HEARTBEAT from the established peer");
 
+    const ControllerTelemetryMeasurement unexpected_measurement{
+        "sensor.unexpected", 1.0, "unit", SensorQualityStatus::Ok, "time"};
     result = session.handle_message(
         make_message(ControllerMessageType::TelemetrySnapshot,
-                     "repka-01", "repka-boot-01", 4U), "time");
+                     "repka-01", "repka-boot-01", 4U, {1U, 1U},
+                     ControllerMessagePayload{ControllerTelemetrySnapshotPayload{
+                         &unexpected_measurement, 1U}}), "time");
     expect(result.status == ControllerLinkPeerSessionStatus::UnexpectedMessage,
            "rejects controller-to-peer telemetry in the request direction");
 
@@ -219,7 +231,7 @@ int main() {
                result.outbound_message.sequence_number == 2U,
            "builds a typed telemetry response using the shared outbound sequence");
 
-    expect(round_trip(result.outbound_message, result.outbound_payload, decoded) &&
+    expect(round_trip(result.outbound_message, result.outbound_payload, decoded,\n                   round_trip_frame, round_trip_storage) &&
                decoded.envelope.type == ControllerMessageType::TelemetrySnapshot &&
                decoded.envelope.sequence_number == 2U &&
                std::get<ControllerTelemetrySnapshotPayload>(
