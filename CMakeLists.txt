@@ -356,6 +356,7 @@ if(BUILD_TESTING)
     add_test(NAME source_session_contract COMMAND test_source_session_contract)
 
     add_executable(test_source_session_verifier
+        src/core/event_processing.cpp
         src/core/source_session.cpp
         src/core/source_session_verifier.cpp
         verification/regression/test_source_session_verifier.cpp
