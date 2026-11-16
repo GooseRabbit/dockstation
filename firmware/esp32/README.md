@@ -40,8 +40,10 @@ only; the workflow does not flash or run the image on a physical board.
 The owner supplied FCC ID **`2A54N-ESP32`**. The FCC filing identifies an
 **ESP32 Development Board** from Shenzhen HiLetgo E-Commerce Co., Ltd. The
 user manual attached to the same FCC application identifies an ESP-WROOM-32
-module and shows a 38-pin board layout. In that manual's pin definition,
-GPIO17 is TX2 on board pin 28 and GPIO16 is RX2 on board pin 27.
+module and shows a 38-pin board layout. Its pin definition lists GPIO17 as
+TX2/U2TXD on board pin 28 and GPIO16 as RX2/U2RXD on board pin 27.
+Espressif's official ESP32-WROOM-32 datasheet specifies 4 MB integrated SPI
+Flash for the standard module.
 
 This is a documented **UART2 candidate**, not a physically verified
 profile. The FCC filing/manual do not prove that the particular board in the
@@ -52,11 +54,12 @@ The UART0 pins GPIO1/TX0 and GPIO3/RX0 remain reserved for the board's USB
 serial/console path and are not selected for the station link.
 
 `IDF_TARGET=esp32` remains a provisional family-level build target. The
-physical module revision, SPI Flash capacity, PSRAM presence, exact board
-revision and production partition layout are still unconfirmed. See
+physical module suffix/revision, actual Flash chip identity, PSRAM presence,
+exact board revision and production partition layout remain unconfirmed.
+4 MB is expected only if the installed module is verified as standard
+ESP32-WROOM-32; it is not yet a measured property of the board. See
 `docs/33_ESP32_HARDWARE_PROFILE.md` for the evidence matrix and acceptance
 steps.
-
 ## Current firmware entry point
 
 `main/app_main.cpp` remains diagnostic-only. It generates the per-boot
@@ -136,8 +139,9 @@ Not implemented by this scaffold:
 The CI build currently inherits ESP-IDF v5.5.6's default 2 MB SPI-flash
 selection because the board's actual Flash capacity has not been confirmed.
 This is only the SDK build default, not evidence that the physical board has
-2 MB. A generic Arduino IDE screenshot in third-party manual copies showing a
-4 MB selection is also not proof of the installed flash chip's capacity.
+2 MB. The 4 MB value in the standard ESP32-WROOM-32 datasheet is a module
+specification, but it becomes applicable to this particular board only after
+the actual module is confirmed and `flash_id` is read.
 The CI workflow only builds and never flashes the hardware. Do not flash or
 distribute this image for use on the board until the module/Flash capacity and
 partition layout are verified and configured.

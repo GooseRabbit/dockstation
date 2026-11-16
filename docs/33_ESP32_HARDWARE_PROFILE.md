@@ -24,12 +24,12 @@
 | Параметр | Наблюдение в источнике | Статус для DockStation |
 |---|---|---|
 | FCC ID | `2A54N-ESP32`, ESP32 Development Board, grantee Shenzhen HiLetgo E-Commerce Co., Ltd; FCC application от 2022-04-21 | Подтверждено для предоставленного FCC ID |
-| Модуль на схеме/manual | В user manual, приложенном к той же FCC application, показан ESP-WROOM-32 | Документированный кандидат; точное исполнение установленного модуля не прочитано с физической маркировки |
+| Модуль на схеме/manual | В user manual, приложенном к той же FCC application, показан ESP-WROOM-32; datasheet Espressif описывает модуль и выводы U2RXD/U2TXD | Документированный кандидат; точное исполнение установленного модуля не прочитано с физической маркировки |
 | Семейство SoC | ESP32 classic family implied by FCC/manual and ESP-WROOM-32 description | Семейство-кандидат; SoC stepping / package revision не подтверждены |
 | Тип платы | Manual содержит 38-pin board pin definition с USB и кнопками EN/IO0 | Кандидат по документации; ревизия фактической PCB и непрерывность дорожек до header не измерены |
-| SPI Flash | В FCC manual нет достоверного подтверждения объёма флеш-микросхемы конкретной платы | **UNKNOWN** |
+| SPI Flash | Официальный datasheet стандартного ESP32-WROOM-32 указывает интегрированную SPI Flash 4 MB | **Ожидается 4 MB при подтверждении точной модели установленного модуля; фактическая плата ещё не проверена через `flash_id`** |
 | PSRAM | Нет подтверждения установленной PSRAM | **UNKNOWN; не считать наличие PSRAM** |
-| UART2 | Manual указывает GPIO17 = TX2 (board pin 28), GPIO16 = RX2 (board pin 27) | Документированный pin-map candidate; физическая проверка не выполнена |
+| UART2 | Manual указывает GPIO17 = TX2/U2TXD (board pin 28), GPIO16 = RX2/U2RXD (board pin 27) | Документированный pin-map candidate; физическая проверка не выполнена |
 | UART0 | Manual указывает GPIO1 = TX0 (pin 35), GPIO3 = RX0 (pin 34) | Не использовать для штатного Repka—ESP32 канала; оставить сервисному USB-UART/console пути |
 | Flash pins | Manual помечает GPIO6–GPIO11 как SPI Flash signal pins | Не назначать их прикладной периферии |
 | Рабочий ESP-IDF target | `esp32` | Временный family-level build target; не является production board approval |
@@ -37,7 +37,7 @@
 Источники:
 - [FCC ID 2A54N-ESP32 — устройство и filing](https://fccid.io/2A54N-ESP32)
 - [FCC User Manual 5836477](https://fccid.io/2A54N-ESP32/User-Manual/User-Manual-5836477) — pin definition в §1.5, последняя страница документа
-- [Espressif ESP32-WROOM-32 datasheet](https://documentation.espressif.com/esp32-wroom-32_datasheet_en.html) — справочный datasheet модуля; не доказательство маркировки/ревизии экземпляра владельца
+- [Espressif ESP32-WROOM-32 datasheet](https://documentation.espressif.com/esp32-wroom-32_datasheet_en.html) — для стандартного модуля указывает ESP32-D0WDQ6 и 4 MB SPI Flash; это условный профиль, пока маркировка и физическая Flash не проверены
 - [Repka Pi 5 GPIO](https://repka-pi.com/docs/109) и [Repka pinout configuration](https://repka-pi.ru/docs/108)
 
 ## 3. Кандидатный UART pin map
@@ -66,9 +66,9 @@ UART0 GPIO1/TX0 и GPIO3/RX0 не назначать для ControllerLink: он
 
 ### 4.1. SPI Flash
 
-Фактическая Flash capacity не установлена. Запрещено выводить её из общего названия ESP32, FCC ID, семейства ESP-WROOM-32, выбранного в generic Arduino IDE screenshot значения или размера собранного firmware BIN.
+Официальный datasheet Espressif для стандартного ESP32-WROOM-32 указывает интегрированную SPI Flash объёмом **4 MB**. Поскольку связанный FCC manual указывает именно ESP-WROOM-32, 4 MB — наиболее вероятный профиль платы, но он остаётся условным до подтверждения физической маркировки модуля и read-only `flash_id`. Нельзя переносить это значение на иной suffix/модуль или на другую ревизию платы без проверки.
 
-Текущий GitHub Actions ESP-IDF v5.5.6 build наследует SDK default **2 MB** и формирует соответствующие flash arguments. Это настройка CI toolchain, а не результат чтения физической Flash. Сборка не выполняет flash operation.
+Текущий GitHub Actions ESP-IDF v5.5.6 build наследует SDK default **2 MB** и формирует соответствующие flash arguments. Это настройка CI toolchain, а не результат чтения физической Flash; она не соответствует условному ожидаемому профилю 4 MB и не должна использоваться для прошивки. Сборка не выполняет flash operation.
 
 Для определения на реальной плате использовать только read-only идентификацию, например `python -m esptool --chip esp32 --port COMx flash_id` (в Windows заменить `COMx` на фактический порт; на Linux — на `/dev/...`). Зафиксировать полный вывод, manufacturer/device ID и обнаруженный размер. Перед командой не выполнять `erase_flash`, `write_flash`, `idf.py flash` или настройку eFuse.
 
