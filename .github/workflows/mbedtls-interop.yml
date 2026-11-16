@@ -36,7 +36,7 @@ jobs:
           -DDOCKSTATION_BUILD_SQLITE_PERSISTENCE=ON
 
       - name: Build OpenSSL / Mbed TLS interop test
-        run: cmake --build build-mbedtls-interop --target test_controller_mbedtls_server_interop --parallel 2
+        run: cmake --build build-mbedtls-interop --target test_controller_mbedtls_server_interop test_controller_link_peer_service --parallel 2
 
       - name: Run OpenSSL / Mbed TLS interop acceptance
-        run: ctest --test-dir build-mbedtls-interop -R controller_mbedtls_server_interop --output-on-failure --verbose
+        run: ctest --test-dir build-mbedtls-interop -R 'controller_mbedtls_server_interop|controller_link_peer_service' --output-on-failure --verbose

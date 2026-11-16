@@ -125,6 +125,16 @@ if(DOCKSTATION_BUILD_MBEDTLS_INTEROP_TESTS)
         )
         dockstation_apply_compile_policy(test_controller_mbedtls_server_interop)
         add_test(NAME controller_mbedtls_server_interop COMMAND test_controller_mbedtls_server_interop)
+
+        add_executable(test_controller_link_peer_service
+            verification/repka_gateway/test_controller_link_peer_service.cpp
+        )
+        target_link_libraries(test_controller_link_peer_service
+            PRIVATE dockstation_controller_mbedtls_server dockstation_controller_tls Threads::Threads
+        )
+        dockstation_apply_compile_policy(test_controller_link_peer_service)
+        add_test(NAME controller_link_peer_service
+            COMMAND test_controller_link_peer_service)
     endif()
 endif()
 
