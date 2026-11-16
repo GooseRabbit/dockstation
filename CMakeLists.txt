@@ -277,6 +277,16 @@ if(BUILD_TESTING)
     dockstation_apply_compile_policy(test_controller_transport_manager)
     add_test(NAME controller_transport_manager COMMAND test_controller_transport_manager)
 
+    add_executable(test_controller_telemetry_snapshot
+        verification/repka_gateway/test_controller_telemetry_snapshot.cpp
+    )
+    target_link_libraries(test_controller_telemetry_snapshot
+        PRIVATE dockstation_linux_runtime
+    )
+    dockstation_apply_compile_policy(test_controller_telemetry_snapshot)
+    add_test(NAME controller_telemetry_snapshot
+        COMMAND test_controller_telemetry_snapshot)
+
     add_executable(test_controller_link_service
         verification/repka_gateway/test_controller_link_service.cpp
     )
