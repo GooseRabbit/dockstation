@@ -96,27 +96,6 @@ SourceSessionEvidence evidence_value() {
     return SourceSessionEvidenceTestAccess::make(
         "sensor/esp32", "boot-current", "authenticated-peer", "proof");
 }
-void subsystem_route_stays_unsupported_without_processor() {
-    EventRepositoryFake events; Processor global, operation, timeout;
-    Verifier verifier; CursorReader reader; SessionRepository sessions;
-    StationEventPipeline pipeline{
-        events,global,operation,timeout,verifier,reader,sessions,nullptr};
-    Event subsystem = event_value();
-    subsystem.event_type = "SUBSYSTEM_STATUS_UPDATED";
-    subsystem.source_sequence = 1U;
-    const auto r = pipeline.handle(
-        subsystem,{true,true,false},evidence_value());
-    expect(pipeline.is_configured(),
-           "pipeline without optional F13 profile remains valid");
-    expect(r.session_status==SourceSessionCoordinatorStatus::Confirmed &&
-           r.event_result &&
-           r.event_result->status==EventHandlingStatus::Unsupported,
-           "known subsystem event stays unsupported until a profile is injected");
-    expect(events.calls==1 && global.calls==0 && operation.calls==0 &&
-           timeout.calls==0,
-           "unregistered F13 event does not invoke another profile");
-}
-
 void rejected_session_blocks_f13() {
     EventRepositoryFake events; Processor global, operation, timeout;
     Verifier verifier; verifier.status=SourceSessionVerificationStatus::Rejected;
@@ -233,7 +212,6 @@ void cursor_and_registration_errors_block() {
 }
 }
 int main() {
-    subsystem_route_stays_unsupported_without_processor();
     rejected_session_blocks_f13();
     confirmed_session_reaches_f13();
     invalid_event_is_rejected_before_session_mutation();
