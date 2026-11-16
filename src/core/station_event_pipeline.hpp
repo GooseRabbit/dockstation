@@ -22,6 +22,8 @@ public:
         SourceSessionVerifier& session_verifier,
         SourceCursorReader& cursor_reader,
         SourceSessionRepository& session_repository,
+        // nullptr keeps SUBSYSTEM_STATUS_UPDATED known but unregistered:
+        // the router returns Unsupported until a real profile is injected.
         EventProcessorPort* subsystem_status_processor = nullptr) noexcept;
 
     StationEventPipeline(const StationEventPipeline&) = delete;

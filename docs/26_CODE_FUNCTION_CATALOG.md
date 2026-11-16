@@ -1229,7 +1229,7 @@ hardwarePlatformInfo публикует выбранный платформен�
 
 ### StationEventPipeline
 
-Добавлен точный маршрут SUBSYSTEM_STATUS_UPDATED категории Subsystem. Если профильный EventProcessorPort не передан, маршрут использует fail-closed обработчик Unsupported; прежние вызывающие коды сохраняют безопасное поведение.
+Добавлен точный маршрут SUBSYSTEM_STATUS_UPDATED категории Subsystem. Если профильный EventProcessorPort не передан, F13-маршрут не регистрируется: известный тип события остаётся в каталоге, но маршрутизатор возвращает Unsupported. Это важно, поскольку Unsupported от уже выбранного профильного обработчика трактуется как ошибка его контракта.
 
 ### ControllerSubsystemStatusEventProjector
 

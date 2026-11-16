@@ -1,24 +1,6 @@
 #include "station_event_pipeline.hpp"
 
 namespace dockstation::core {
-namespace {
-
-class UnsupportedSubsystemStatusProcessor final : public EventProcessorPort {
-public:
-    [[nodiscard]] EventProcessorStatus process(
-        const Event&, EventCategory,
-        const SourceCursor&) noexcept override {
-        return EventProcessorStatus::Unsupported;
-    }
-};
-
-EventProcessorPort& unavailable_subsystem_status_processor() noexcept {
-    static UnsupportedSubsystemStatusProcessor processor;
-    return processor;
-}
-
-}  // namespace
-
 StationEventPipeline::StationEventPipeline(
     EventRepository& event_repository,
     EventProcessorPort& global_processor,
@@ -35,11 +17,12 @@ StationEventPipeline::StationEventPipeline(
           {"OPERATION_STATUS_UPDATED", EventCategory::Operation, &operation_processor},
           {"OPERATION_TIMEOUT", EventCategory::Timer, &timeout_processor},
           {"SUBSYSTEM_STATUS_UPDATED", EventCategory::Subsystem,
-           subsystem_status_processor != nullptr
-               ? subsystem_status_processor
-               : &unavailable_subsystem_status_processor()}
+           subsystem_status_processor}
       },
-      router_(routes_, sizeof(routes_) / sizeof(routes_[0])),
+      // No injected F13 profile means no registered F13 route. The common
+      // router then returns Unsupported for this known catalogue event.
+      router_(routes_, (sizeof(routes_) / sizeof(routes_[0])) -
+          (subsystem_status_processor == nullptr ? 1U : 0U)),
       event_repository_(event_repository),
       session_coordinator_(session_verifier, cursor_reader, session_repository) {}
 
