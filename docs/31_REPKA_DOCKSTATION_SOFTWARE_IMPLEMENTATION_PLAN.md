@@ -1155,7 +1155,7 @@ SQLite утверждён как локальный backend по DEC-068. До �
 - https://repka-pi.ru/docs/109 — характеристики, 40-pin GPIO и электрические параметры.
 - https://repka-pi.ru/docs/108 — настройки pinout; таблица вариантов подтверждает включение UART0 в варианте 2 и UART1 в варианте 3.
 - https://documentation.espressif.com/esp32-wroom-32_datasheet_en.html — назначение U2RXD/U2TXD и GPIO16/GPIO17 для ESP32-WROOM-32.
-- https://fccid.io/2A53N-ESP32 — точная запись FCC ID `2A53N-ESP32` в доступном индексе не найдена; маркировка не используется как доказательство конкретного board profile.
+- https://fccid.io/2A54N-ESP32 — корректный FCC ID, сообщённый владельцем; связанные FCC filing/manual позволяют определить документированный кандидат HiLetgo ESP32 Development Board с ESP-WROOM-32. Это не подтверждает конкретный физический экземпляр; см. `docs/33_ESP32_HARDWARE_PROFILE.md`.
 - https://repka-pi.ru/docs/65 — GPIO и логические уровни.
 
 ## 9. Правила пофункциональной реализации
@@ -1418,6 +1418,6 @@ Peer-side логика протокола уже реализована и до�
 
 В коде UART2 остаётся логическим портом-кандидатом; TX/RX GPIO по умолчанию остаются `GPIO_NUM_NC`. Сборка и обычный `app_main` не включают GPIO, NVS, UART или TLS. UART0 GPIO1/GPIO3 не используются для межконтроллерного канала.
 
-SPI Flash capacity и PSRAM не установлены. Текущие 2 MB в CI — только default ESP-IDF v5.5.6; упоминание 4 MB в generic Arduino IDE example не считается доказательством Flash на установленной плате. Production partition table не определена: default CI table не является production layout и не содержит provisioned `nvs_keys`. Не менять flash-size configuration, не создавать окончательный partition CSV и не прошивать плату до read-only определения Flash (`esptool flash_id`), физической проверки маркировки модуля/ревизии и header pin map.
+Datasheet стандартного ESP32-WROOM-32 указывает 4 MB SPI Flash; при совпадении маркировки физического модуля это условно ожидаемый объём. Фактические Flash/PSRAM установленной платы и production partition table ещё не проверены. Текущие 2 MB в CI — только SDK default, не измерение Flash и не образ для прошивки. Default CI table не является production layout и не содержит provisioned `nvs_keys`. Не менять flash-size configuration, не создавать окончательный partition CSV и не прошивать плату до read-only определения Flash (`esptool flash_id`), физической проверки маркировки модуля/ревизии и header pin map.
 
 Подробная матрица источников, candidate pinout, безопасный план проверки и критерии подтверждения вынесены в `docs/33_ESP32_HARDWARE_PROFILE.md`. Этот срез не является аппаратной приёмкой и не объявляет GPIO/Flash/partition profile утверждённым.
