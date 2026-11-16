@@ -36,7 +36,13 @@ trap cleanup EXIT
 
 [[ -x "$registry" ]] || fail "Registry provisioner binary is not installed."
 [[ -x "$credential_provisioner" ]] || fail "Credential provisioner binary is not installed."
-[[ -f "$database" && ! -L "$database" ]] || fail "Gateway SQLite database is not initialized."
+state_directory="/var/lib/dockstation"
+[[ -d "$state_directory" && ! -L "$state_directory" ]] ||
+    fail "Private Gateway StateDirectory is missing or is a symbolic link."
+[[ "$(sudo stat -c '%U:%G' "$state_directory")" == "dockstation:dockstation" ]] ||
+    fail "Gateway StateDirectory has an unexpected owner/group."
+[[ "$(sudo stat -c '%a' "$state_directory")" == "700" ]] ||
+    fail "Gateway StateDirectory does not have mode 0700."
 [[ ! -e "$credential_directory" && ! -L "$credential_directory" ]] ||
     fail "Refusing to run: CI credential directory unexpectedly exists."
 
