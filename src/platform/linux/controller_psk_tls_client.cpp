@@ -11,10 +11,8 @@ namespace dockstation::platform::linux_platform {
 namespace {
 
 constexpr unsigned char kTlsAes128GcmSha256[] = {0x13U, 0x01U};
-constexpr const char* kTlsCipherSuite = "TLS_AES_128_GCM_SHA256";
-constexpr const char* kTlsNamedGroup = "P-256";
-constexpr char kSessionProofExporterLabel[] =
-    "EXPORTER-DockStation-ControllerLink-v1";
+constexpr const char* kTlsCipherSuite = hardware::interfaces::kControllerLinkTlsCipherSuite;
+constexpr const char* kTlsNamedGroup = hardware::interfaces::kControllerLinkTlsNamedGroup;
 
 [[nodiscard]] bool is_retryable_bio_result(BIO* bio) noexcept {
     return bio != nullptr && BIO_should_retry(bio) != 0;
@@ -134,7 +132,8 @@ bool ControllerPskTlsClient::export_session_proof(
 
     if (SSL_export_keying_material(
             ssl_, output.data(), output.size(),
-            kSessionProofExporterLabel, sizeof(kSessionProofExporterLabel) - 1U,
+            hardware::interfaces::kControllerLinkSessionProofExporterLabel,
+            sizeof(hardware::interfaces::kControllerLinkSessionProofExporterLabel) - 1U,
             context, context_size, 1) != 1) {
         OPENSSL_cleanse(output.data(), output.size());
         return false;

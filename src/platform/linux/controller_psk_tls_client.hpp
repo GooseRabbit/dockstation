@@ -6,13 +6,14 @@
 
 #include <openssl/ssl.h>
 
+#include "hardware/interfaces/controller_link_crypto_profile.hpp"
+
 namespace dockstation::platform::linux_platform {
 
-inline constexpr std::size_t kControllerPskSize = 32U;
-inline constexpr std::size_t kControllerPskIdentitySize = 16U;
-inline constexpr std::size_t kControllerSessionProofSize = 32U;
-inline constexpr char kControllerSessionProofContext[] =
-    "DockStation/ControllerLink/session-proof/v1";
+inline constexpr std::size_t kControllerPskSize = hardware::interfaces::kControllerLinkPskSize;
+inline constexpr std::size_t kControllerPskIdentitySize = hardware::interfaces::kControllerLinkPskIdentitySize;
+inline constexpr std::size_t kControllerSessionProofSize = hardware::interfaces::kControllerLinkSessionProofSize;
+inline constexpr auto& kControllerSessionProofContext = hardware::interfaces::kControllerLinkSessionProofContext;
 
 // Credentials are provisioned outside the application configuration and are
 // supplied by the caller. This value object is copyable only for explicit
