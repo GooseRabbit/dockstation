@@ -28,6 +28,7 @@ using hardware::interfaces::ControllerMessageType;
 using hardware::interfaces::EmptyControllerMessagePayload;
 
 constexpr std::uint64_t kReconnectDelayMilliseconds = 2000U;
+constexpr std::uint64_t kSnapshotRequestIntervalMilliseconds = 2000U;
 constexpr std::size_t kApplicationReadBufferSize = 1024U;
 constexpr std::size_t kMaximumReadsPerPoll = 8U;
 constexpr char kHexDigits[] = "0123456789abcdef";
@@ -37,6 +38,12 @@ constexpr char kHexDigits[] = "0123456789abcdef";
     const auto value =
         std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count();
     return value < 0 ? 0U : static_cast<std::uint64_t>(value);
+}
+
+[[nodiscard]] bool elapsed_at_least(
+    std::uint64_t now_ms, std::uint64_t previous_ms,
+    std::uint64_t interval_ms) noexcept {
+    return now_ms >= previous_ms && now_ms - previous_ms >= interval_ms;
 }
 
 [[nodiscard]] std::uint64_t unix_epoch_milliseconds() noexcept {
@@ -270,7 +277,12 @@ void ControllerLinkService::poll() noexcept {
         return;
     }
 
-    if (snapshot_request_pending_ && outbound_frame_size_ == 0U) {
+    const bool snapshot_request_due =
+        !snapshot_request_sent_this_session_ ||
+        elapsed_at_least(now_ms, last_snapshot_request_ms_,
+                         kSnapshotRequestIntervalMilliseconds);
+    if (state_ == ControllerLinkServiceState::Established &&
+        snapshot_request_due && outbound_frame_size_ == 0U) {
         const ControllerLinkSessionResult request =
             session_->request_snapshot(now_ms, sent_at);
         if (request.status != hardware::interfaces::ControllerLinkSessionStatus::Success ||
@@ -279,7 +291,8 @@ void ControllerLinkService::poll() noexcept {
             fail_transport("CONTROLLER_SNAPSHOT_REQUEST_FAILED", now_ms);
             return;
         }
-        snapshot_request_pending_ = false;
+        snapshot_request_sent_this_session_ = true;
+        last_snapshot_request_ms_ = now_ms;
     }
 
     if (outbound_frame_size_ == 0U) {
@@ -336,7 +349,8 @@ void ControllerLinkService::stop() noexcept {
     rejected_frames_ = 0U;
     configured_ = false;
     tls_authenticated_ = false;
-    snapshot_request_pending_ = false;
+    snapshot_request_sent_this_session_ = false;
+    last_snapshot_request_ms_ = 0U;
     local_controller_id_size_ = 0U;
     peer_controller_id_size_ = 0U;
     uart_device_path_.fill('\0');
@@ -480,7 +494,8 @@ void ControllerLinkService::attempt_transport_start(
         error_code_ = "CONTROLLER_UART_OPEN_FAILED";
         next_retry_ms_ = now_ms + kReconnectDelayMilliseconds;
         tls_authenticated_ = false;
-        snapshot_request_pending_ = false;
+        snapshot_request_sent_this_session_ = false;
+        last_snapshot_request_ms_ = 0U;
         decoder_.reset();
         OPENSSL_cleanse(authenticated_pair_identity_.data(),
                         authenticated_pair_identity_.size());
@@ -496,7 +511,8 @@ void ControllerLinkService::attempt_transport_start(
     state_ = ControllerLinkServiceState::TlsHandshake;
     error_code_ = "";
     tls_authenticated_ = false;
-    snapshot_request_pending_ = false;
+    snapshot_request_sent_this_session_ = false;
+    last_snapshot_request_ms_ = 0U;
     outbound_frame_size_ = 0U;
     outbound_frame_offset_ = 0U;
     decoder_.reset();
@@ -515,7 +531,8 @@ void ControllerLinkService::fail_transport(
     OPENSSL_cleanse(outbound_frame_.data(), outbound_frame_.size());
     outbound_frame_size_ = 0U;
     outbound_frame_offset_ = 0U;
-    snapshot_request_pending_ = false;
+    snapshot_request_sent_this_session_ = false;
+    last_snapshot_request_ms_ = 0U;
     tls_authenticated_ = false;
     state_ = ControllerLinkServiceState::LinkLost;
     error_code_ = error_code;
@@ -652,7 +669,8 @@ bool ControllerLinkService::process_ready_frame(std::uint64_t now_ms) noexcept {
             *this, decoded, received_at_unix_ms);
     }
     if (accepted.event == ControllerLinkSessionEvent::SessionEstablished) {
-        snapshot_request_pending_ = true;
+        snapshot_request_sent_this_session_ = false;
+        last_snapshot_request_ms_ = 0U;
         state_ = ControllerLinkServiceState::Established;
     }
 

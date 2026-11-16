@@ -73,8 +73,9 @@ public:
         const ControllerLinkServiceConfig& config) noexcept;
 
     // Bounded event-loop step. It advances TLS, performs HELLO/HELLO_ACK,
-    // requests one telemetry snapshot per logical session, handles heartbeat,
-    // and schedules a fresh TLS connection after UART/TLS failure.
+    // requests telemetry immediately after session establishment and every
+    // two seconds while established, handles heartbeat, and reconnects after
+    // UART/TLS failure.
     void poll() noexcept;
     void stop() noexcept;
 
@@ -150,7 +151,8 @@ private:
     const char* error_code_{""};
     bool configured_{false};
     bool tls_authenticated_{false};
-    bool snapshot_request_pending_{false};
+    std::uint64_t last_snapshot_request_ms_{0U};
+    bool snapshot_request_sent_this_session_{false};
     ControllerLinkMessageHandler* message_handler_{nullptr};
     std::array<std::uint8_t, kControllerPskIdentitySize>
         authenticated_pair_identity_{};

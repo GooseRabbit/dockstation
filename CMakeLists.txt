@@ -380,7 +380,7 @@ if(BUILD_TESTING)
         verification/repka_gateway/test_controller_link_service.cpp
     )
     target_link_libraries(test_controller_link_service
-        PRIVATE dockstation_event_transport
+        PRIVATE dockstation_event_transport Threads::Threads
     )
     if(DOCKSTATION_BUILD_SQLITE_PERSISTENCE)
         target_link_libraries(test_controller_link_service

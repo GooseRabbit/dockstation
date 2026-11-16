@@ -3,12 +3,14 @@
 #include <algorithm>
 #include <array>
 #include <cerrno>
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
 #include <optional>
 #include <string_view>
 #include <string>
+#include <thread>
 
 #include <fcntl.h>
 #include <openssl/crypto.h>
@@ -595,7 +597,17 @@ int main() {
                                 peer_storage, peer_message) &&
                peer_message.envelope.type == ControllerMessageType::RequestSnapshot &&
                e2e_service.status().protocol_established,
-           "establishes the logical session and emits one REQUEST_SNAPSHOT");
+           "establishes the logical session and emits the initial REQUEST_SNAPSHOT");
+
+    std::this_thread::sleep_for(std::chrono::milliseconds{2100U});
+    peer_storage = {};
+    peer_message = {};
+    expect(read_service_message(e2e_service, peer, pty.master, peer_frame,
+                                peer_storage, peer_message) &&
+               peer_message.envelope.type == ControllerMessageType::RequestSnapshot &&
+               e2e_service.status().protocol_established,
+           "emits another REQUEST_SNAPSHOT after the two-second polling interval");
+
     const std::string established_pair_identity =
         std::string{e2e_service.authenticated_pair_identity()};
     const std::string expected_local_identity{
