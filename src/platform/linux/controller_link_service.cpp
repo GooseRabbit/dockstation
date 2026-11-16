@@ -343,6 +343,19 @@ void ControllerLinkService::stop() noexcept {
     error_code_ = "";
 }
 
+bool ControllerLinkService::export_authenticated_session_proof(
+    std::array<std::uint8_t, kControllerSessionProofSize>& output) const noexcept {
+    OPENSSL_cleanse(output.data(), output.size());
+    if (state_ != ControllerLinkServiceState::Established || !session_.has_value() ||
+        session_->state() != ControllerLinkSessionState::Established ||
+        !transport_.is_handshake_complete()) {
+        return false;
+    }
+    return transport_.export_session_proof(
+        reinterpret_cast<const std::uint8_t*>(kControllerSessionProofContext),
+        sizeof(kControllerSessionProofContext) - 1U, output);
+}
+
 ControllerLinkServiceStatus ControllerLinkService::status() const noexcept {
     const bool protocol_established =
         session_.has_value() &&

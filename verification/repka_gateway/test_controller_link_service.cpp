@@ -1,5 +1,6 @@
 #define _XOPEN_SOURCE 600
 
+#include <algorithm>
 #include <array>
 #include <cerrno>
 #include <cstdlib>
@@ -407,6 +408,15 @@ int main() {
                peer_message.envelope.type == ControllerMessageType::RequestSnapshot &&
                e2e_service.status().protocol_established,
            "establishes the logical session and emits one REQUEST_SNAPSHOT");
+
+    std::array<std::uint8_t, kControllerSessionProofSize> session_proof{};
+    expect(e2e_service.export_authenticated_session_proof(session_proof),
+           "exposes the TLS exporter proof only after the authenticated logical session is established");
+    const bool proof_nonzero = std::any_of(
+        session_proof.begin(), session_proof.end(),
+        [](std::uint8_t value) noexcept { return value != 0U; });
+    expect(proof_nonzero, "the established session proof contains derived keying material");
+    OPENSSL_cleanse(session_proof.data(), session_proof.size());
 
     const ControllerTelemetryMeasurement fixture_measurement{
         "fixture.temperature", 21.5, "C",

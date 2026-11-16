@@ -4,6 +4,8 @@
 #include <cstddef>
 #include <cstdint>
 
+#include <openssl/crypto.h>
+
 #include "platform/linux/controller_psk_tls_client.hpp"
 #include "platform/linux/controller_uart_port.hpp"
 
@@ -63,6 +65,13 @@ public:
     [[nodiscard]] bool is_failed() const noexcept { return failed_; }
     [[nodiscard]] bool is_handshake_complete() const noexcept {
         return active_ && tls_.is_handshake_complete();
+    }
+    [[nodiscard]] bool export_session_proof(
+        const std::uint8_t* context, std::size_t context_size,
+        std::array<std::uint8_t, kControllerSessionProofSize>& output) const noexcept {
+        OPENSSL_cleanse(output.data(), output.size());
+        return is_handshake_complete() &&
+               tls_.export_session_proof(context, context_size, output);
     }
 
     // Bounded non-blocking progress step. It preserves any partially transferred

@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstdlib>
@@ -297,6 +298,55 @@ bool exchange_application_data(ControllerPskTlsClient& client, TestServer& serve
            CRYPTO_memcmp(buffer.data(), response.data(), response.size()) == 0;
 }
 
+bool exporter_matches_peer_and_is_context_bound(
+    const ControllerPskCredentials& credentials) noexcept {
+    ControllerPskTlsClient client;
+    TestServer server;
+    std::array<std::uint8_t, kControllerSessionProofSize> proof{};
+    constexpr std::array<std::uint8_t, 12U> context_a{{
+        'D','o','c','k','S','t','a','t','i','o','n','1'}};
+    constexpr std::array<std::uint8_t, 12U> context_b{{
+        'D','o','c','k','S','t','a','t','i','o','n','2'}};
+
+    proof.fill(0xA5U);
+    if (!client.initialize(credentials) ||
+        client.export_session_proof(context_a.data(), context_a.size(), proof)) {
+        return false;
+    }
+    if (!initialize_server(server, credentials) ||
+        !complete_handshake(client, server) ||
+        !client.export_session_proof(context_a.data(), context_a.size(), proof)) {
+        return false;
+    }
+
+    std::array<std::uint8_t, kControllerSessionProofSize> peer_proof{};
+    constexpr char label[] = "EXPORTER-DockStation-ControllerLink-v1";
+    if (SSL_export_keying_material(
+            server.ssl, peer_proof.data(), peer_proof.size(),
+            label, sizeof(label) - 1U,
+            context_a.data(), context_a.size(), 1) != 1 ||
+        CRYPTO_memcmp(proof.data(), peer_proof.data(), proof.size()) != 0) {
+        return false;
+    }
+
+    std::array<std::uint8_t, kControllerSessionProofSize> other_context{};
+    if (!client.export_session_proof(context_b.data(), context_b.size(),
+                                      other_context) ||
+        CRYPTO_memcmp(proof.data(), other_context.data(), proof.size()) == 0) {
+        return false;
+    }
+
+    client.close();
+    const bool unavailable_after_close =
+        !client.export_session_proof(context_a.data(), context_a.size(), proof);
+    const bool output_cleansed = std::all_of(
+        proof.begin(), proof.end(),
+        [](std::uint8_t value) noexcept { return value == 0U; });
+    OPENSSL_cleanse(peer_proof.data(), peer_proof.size());
+    OPENSSL_cleanse(other_context.data(), other_context.size());
+    return unavailable_after_close && output_cleansed;
+}
+
 bool tampered_record_is_rejected(
     const ControllerPskCredentials& credentials) noexcept {
     ControllerPskTlsClient client;
@@ -379,6 +429,9 @@ int main() {
                early_write.bytes_transferred == 0U,
            "does not expose application plaintext before authenticated handshake");
     unconnected_client.close();
+
+    expect(exporter_matches_peer_and_is_context_bound(credentials),
+           "exports a peer-matching 32-byte TLS 1.3 proof, binds context and cleanses it on close");
 
     expect(run_pair(credentials, credentials, true),
            "completes TLS 1.3 PSK-DHE handshake and exchanges encrypted application data");

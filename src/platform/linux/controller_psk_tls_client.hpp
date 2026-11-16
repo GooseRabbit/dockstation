@@ -10,6 +10,9 @@ namespace dockstation::platform::linux_platform {
 
 inline constexpr std::size_t kControllerPskSize = 32U;
 inline constexpr std::size_t kControllerPskIdentitySize = 16U;
+inline constexpr std::size_t kControllerSessionProofSize = 32U;
+inline constexpr char kControllerSessionProofContext[] =
+    "DockStation/ControllerLink/session-proof/v1";
 
 // Credentials are provisioned outside the application configuration and are
 // supplied by the caller. This value object is copyable only for explicit
@@ -75,6 +78,13 @@ public:
 
     [[nodiscard]] bool is_configured() const noexcept;
     [[nodiscard]] bool is_handshake_complete() const noexcept;
+
+    // Derives a 32-byte proof from the completed TLS 1.3 session using a
+    // DockStation-specific exporter label. The caller supplies a non-empty,
+    // protocol-defined context; output is cleansed on every failure.
+    [[nodiscard]] bool export_session_proof(
+        const std::uint8_t* context, std::size_t context_size,
+        std::array<std::uint8_t, kControllerSessionProofSize>& output) const noexcept;
     [[nodiscard]] bool is_failed() const noexcept { return failed_; }
 
     // Advance the non-blocking TLS handshake. NeedRead/NeedWrite tells the

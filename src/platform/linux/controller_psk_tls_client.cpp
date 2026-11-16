@@ -13,6 +13,8 @@ namespace {
 constexpr unsigned char kTlsAes128GcmSha256[] = {0x13U, 0x01U};
 constexpr const char* kTlsCipherSuite = "TLS_AES_128_GCM_SHA256";
 constexpr const char* kTlsNamedGroup = "P-256";
+constexpr char kSessionProofExporterLabel[] =
+    "EXPORTER-DockStation-ControllerLink-v1";
 
 [[nodiscard]] bool is_retryable_bio_result(BIO* bio) noexcept {
     return bio != nullptr && BIO_should_retry(bio) != 0;
@@ -119,6 +121,25 @@ bool ControllerPskTlsClient::is_configured() const noexcept {
 
 bool ControllerPskTlsClient::is_handshake_complete() const noexcept {
     return is_configured() && SSL_is_init_finished(ssl_) == 1;
+}
+
+bool ControllerPskTlsClient::export_session_proof(
+    const std::uint8_t* context, std::size_t context_size,
+    std::array<std::uint8_t, kControllerSessionProofSize>& output) const noexcept {
+    OPENSSL_cleanse(output.data(), output.size());
+    if (!is_handshake_complete() || context == nullptr || context_size == 0U ||
+        context_size > 256U) {
+        return false;
+    }
+
+    if (SSL_export_keying_material(
+            ssl_, output.data(), output.size(),
+            kSessionProofExporterLabel, sizeof(kSessionProofExporterLabel) - 1U,
+            context, context_size, 1) != 1) {
+        OPENSSL_cleanse(output.data(), output.size());
+        return false;
+    }
+    return true;
 }
 
 bool ControllerPskTlsClient::configure_context() noexcept {

@@ -68,6 +68,11 @@ public:
     [[nodiscard]] const hardware::interfaces::ControllerTelemetrySnapshot&
     telemetry_snapshot() const noexcept { return telemetry_snapshot_; }
 
+    // Available only after TLS authentication and the ControllerLink HELLO_ACK.
+    // The fixed non-empty context is versioned with the DockStation protocol.
+    [[nodiscard]] bool export_authenticated_session_proof(
+        std::array<std::uint8_t, kControllerSessionProofSize>& output) const noexcept;
+
 private:
 #ifdef DOCKSTATION_ENABLE_TEST_SEAMS
     // Present only in CMake verification builds; release Gateway builds always
