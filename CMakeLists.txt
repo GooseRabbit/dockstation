@@ -120,6 +120,7 @@ add_library(dockstation_station_events STATIC
     src/core/event_validation.cpp
     src/core/event_handling.cpp
     src/core/event_processor_router.cpp
+    src/core/subsystem_status_event_processor.cpp
     src/core/source_session.cpp
     src/core/source_session_coordinator.cpp
     src/core/source_session_verifier.cpp
