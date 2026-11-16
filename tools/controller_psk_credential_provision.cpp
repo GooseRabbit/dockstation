@@ -289,7 +289,7 @@ void print_usage() noexcept {
     using dockstation::hardware::interfaces::is_valid_controller_stable_id;
 
     if (local_controller_id == nullptr || peer_controller_id == nullptr) {
-        (void)std::fputs("ERROR: both controller IDs are required.\\n", stderr);
+        (void)std::fputs("ERROR: both controller IDs are required.\n", stderr);
         return 2;
     }
 
@@ -298,20 +298,20 @@ void print_usage() noexcept {
     if (!is_valid_controller_stable_id(local_id) ||
         !is_valid_controller_stable_id(peer_id)) {
         (void)std::fputs(
-            "ERROR: controller IDs must be 1-128 ASCII characters using letters, digits, '_', '-', '.' or ':'.\\n",
+            "ERROR: controller IDs must be 1-128 ASCII characters using letters, digits, '_', '-', '.' or ':'.\n",
             stderr);
         return 2;
     }
     if (local_id == peer_id) {
         (void)std::fputs(
-            "ERROR: local and peer controller IDs must be different.\\n",
+            "ERROR: local and peer controller IDs must be different.\n",
             stderr);
         return 2;
     }
 
     if (geteuid() != 0U) {
         (void)std::fputs(
-            "ERROR: run this read-only check as root to inspect the protected Repka credential file.\\n",
+            "ERROR: run this read-only check as root to inspect the protected Repka credential file.\n",
             stderr);
         return 1;
     }
@@ -322,7 +322,7 @@ void print_usage() noexcept {
     credentials.clear();
     if (status != ControllerPskCredentialFileStatus::Success) {
         (void)std::fputs(
-            "ERROR: the existing Repka credential file is missing or failed its security/format checks.\\n",
+            "ERROR: the existing Repka credential file is missing or failed its security/format checks.\n",
             stderr);
         return 1;
     }
