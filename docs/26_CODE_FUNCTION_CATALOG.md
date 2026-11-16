@@ -1054,6 +1054,18 @@ Python/Operator/Gateway integration-тестов; ARM64 bundle/staging и Sigsto
 
 Проверка: \`verification/repka_gateway/test_controller_mbedtls_server_interop.cpp\`, CTest \`controller_mbedtls_server_interop\`; GitHub Actions [run 43904071591](https://github.com/GooseRabbit/dockstation/actions/runs/43904071591) — PASS (1/1); отдельная опция \`DOCKSTATION_BUILD_MBEDTLS_INTEROP_TESTS=ON\` скачивает официальный upstream Mbed TLS 3.6.7 с проверкой SHA-256. GitHub Actions соединяет существующий OpenSSL client и Mbed TLS server через POSIX socket pair: проверяет handshake, exporter parity, application data в обе стороны и отказ при неверной PSK identity/PSK. Это upstream Mbed TLS host interop; Espressif Mbed TLS fork, точная ESP32 плата/SDK, UART, secure NVS/Flash Encryption/Secure Boot и физическая приёмка пока не проверены.
 
+### firmware/esp32/components/controller_uart_transport/include/controller_uart_transport.hpp / controller_uart_transport.cpp
+
+| Функция / тип | Назначение |
+|---|---|
+| `ControllerUartConfig` | Задаёт UART port, TX/RX GPIO, baud rate и размер RX ring buffer. UART2 и 115200 заданы как стартовые программные значения; GPIO по умолчанию не назначены. |
+| `ControllerUartTransport::open()` | Проверяет UART port, обязательные различные TX/RX GPIO, baud rate и границы RX buffer; настраивает 8N1 без RTS/CTS, устанавливает RX ring buffer и оставляет TX ring buffer выключенным для неблокирующего FIFO I/O. UART0 отклоняется, чтобы не захватывать консоль. |
+| `ControllerUartTransport::send_callback()` | Mbed TLS-compatible send callback: вызывает `uart_tx_chars()`, возвращает фактически записанное число байтов либо `MBEDTLS_ERR_SSL_WANT_WRITE`, если TX FIFO заполнен; не ждёт освобождения места. |
+| `ControllerUartTransport::receive_callback()` | Mbed TLS-compatible receive callback: вызывает `uart_read_bytes(..., 0)`; возвращает фактически полученные байты либо `MBEDTLS_ERR_SSL_WANT_READ`, если данных пока нет. |
+| `ControllerUartTransport::close()` | Удаляет UART driver и закрывает адаптер. Класс non-copyable; один task должен владеть UART и TLS session. |
+
+Проверка: GitHub Actions ESP-IDF v5.5.6 target build [#43917303463](https://github.com/GooseRabbit/dockstation/actions/runs/43917303463) завершился SUCCESS; следующий workflow после добавления адаптера обязан повторно скомпилировать и слинковать этот код. Это compile acceptance, не проверка электрических уровней, выбранных GPIO, RX/TX на конкретной плате или полного TLS обмена. Адаптер не вызывается из `app_main`, пока точный pin profile не подтверждён.
+
 ### src/hardware/interfaces/controller_link_peer_session.hpp/.cpp
 
 | Функция / тип | Назначение |

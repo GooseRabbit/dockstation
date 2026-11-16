@@ -55,14 +55,27 @@ export. TLS 1.2 and server session tickets are disabled in this initial
 profile. These compile-time settings do **not** mean that a live TLS session is
 started: there is no credential loading or UART transport in `app_main`.
 
+An ESP-IDF UART byte-stream adapter now exists in
+`components/controller_uart_transport/`. It provides non-blocking Mbed TLS
+send/receive callbacks, uses the selected UART port with 8N1/no flow control,
+and requires explicit TX/RX GPIOs. UART2 is the logical candidate, but neither
+GPIO is assigned by this project and `app_main` does not open the peripheral.
+
 Not implemented by this scaffold:
 
-- UART driver or board-specific UART pin profile;
+- board-specific UART pin profile or a running UART connection;
 - GPIO, lid limit switches, motor control or interlocks;
 - DHT22 acquisition or any other sensor driver;
 - PSK provisioning or secure NVS storage;
 - Flash Encryption, Secure Boot policy or OTA update;
 - production partition/Flash sizing and final board profile.
+
+The CI build currently inherits ESP-IDF v5.5.6's default 2 MB SPI-flash
+selection because the board's actual Flash capacity has not been confirmed.
+That default appears in the generated image/flash arguments; it is **not** a
+claim about this board. The CI workflow only builds and never flashes the
+hardware. Do not flash or distribute this image for use on the board until the
+module/Flash capacity and partition layout are verified and configured.
 
 ## Architecture boundaries
 
