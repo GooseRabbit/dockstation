@@ -28,13 +28,12 @@ idf.py build
 GitHub Actions runs the same target build in Espressif's official ESP-IDF
 container using `.github/workflows/esp32-firmware.yml`.
 
-The previous target build for the runtime integration passed on commit
-`6ae1f7e3981f4a3915ba56ce076a6ffd06ac8aa4`:
-[ESP32 firmware build #43932960270](https://github.com/GooseRabbit/dockstation/actions/runs/43932960270).
-The log confirms compilation and linking of the runtime, instance-ID provider,
-TLS server, UART adapter and read-only NVS credential store, followed by
-successful ESP32 ELF/BIN creation. This is compile/link
-acceptance only; the workflow does not flash or run the image on a physical board.
+The ESP-IDF target build including the stable controller-ID NVS reader passed
+on commit `8219cd5023a881bd66139a4365b5fd3fbdb43ea3`:
+[ESP32 firmware build #43939967553](https://github.com/GooseRabbit/dockstation/actions/runs/43939967553).
+The log confirms that the NVS credential/identity component compiled and
+linked, and the ESP32 ELF/BIN were generated. This is compile/link acceptance
+only; the workflow does not flash or run the image on a physical board.
 
 ## Board identification and limitations
 
