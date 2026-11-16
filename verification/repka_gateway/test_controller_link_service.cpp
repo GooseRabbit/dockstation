@@ -6,6 +6,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <optional>
+#include <string_view>
 #include <string>
 
 #include <fcntl.h>
@@ -15,6 +17,13 @@
 #include <openssl/rand.h>
 #include <openssl/ssl.h>
 #include <unistd.h>
+
+#if defined(DOCKSTATION_WITH_SQLITE_PERSISTENCE)
+#include <sqlite3.h>
+#include "platform/persistence/sqlite_database.hpp"
+#include "platform/persistence/sqlite_source_session_store.hpp"
+#include "platform/persistence/sqlite_subsystem_status_store.hpp"
+#endif
 
 #include "communications/api_serialization.hpp"
 #include "communications/authenticated_event_transport_adapter.hpp"
@@ -304,6 +313,39 @@ bool send_peer_message(
            peer_to_uart(peer.transport, master);
 }
 
+#if defined(DOCKSTATION_WITH_SQLITE_PERSISTENCE)
+bool query_integer(sqlite3* database, const char* sql, sqlite3_int64& value) {
+    sqlite3_stmt* statement = nullptr;
+    if (sqlite3_prepare_v2(database, sql, -1, &statement, nullptr) != SQLITE_OK) {
+        return false;
+    }
+    bool valid = false;
+    if (sqlite3_step(statement) == SQLITE_ROW) {
+        value = sqlite3_column_int64(statement, 0);
+        valid = sqlite3_step(statement) == SQLITE_DONE;
+    }
+    return sqlite3_finalize(statement) == SQLITE_OK && valid;
+}
+
+bool query_text(sqlite3* database, const char* sql, std::string& value) {
+    sqlite3_stmt* statement = nullptr;
+    if (sqlite3_prepare_v2(database, sql, -1, &statement, nullptr) != SQLITE_OK) {
+        return false;
+    }
+    bool valid = false;
+    if (sqlite3_step(statement) == SQLITE_ROW) {
+        const auto* bytes = sqlite3_column_text(statement, 0);
+        const int length = sqlite3_column_bytes(statement, 0);
+        if (bytes != nullptr && length > 0) {
+            value.assign(reinterpret_cast<const char*>(bytes),
+                         static_cast<std::size_t>(length));
+            valid = sqlite3_step(statement) == SQLITE_DONE;
+        }
+    }
+    return sqlite3_finalize(statement) == SQLITE_OK && valid;
+}
+#endif
+
 ControllerMessageEnvelope peer_envelope(
     ControllerMessageType type, std::uint64_t sequence) noexcept {
     ControllerMessageEnvelope envelope{};
@@ -456,17 +498,55 @@ int main() {
 
     ControllerLinkService e2e_service{};
 
-    RecordingEventRepository event_repository{};
     RecordingEventProcessor global_processor{};
     RecordingEventProcessor operation_processor{};
     RecordingEventProcessor timeout_processor{};
+    dockstation::communications::ControllerSubsystemStatusEventProjector event_projector{};
+
+#if defined(DOCKSTATION_WITH_SQLITE_PERSISTENCE)
+    const std::string database_path =
+        "/tmp/dockstation_authenticated_ingress_" +
+        std::to_string(static_cast<long long>(::getpid())) + ".sqlite3";
+    (void)std::remove(database_path.c_str());
+    dockstation::platform::persistence::SqliteDatabase database{};
+    const auto database_opened = database.open(
+        dockstation::platform::persistence::SqliteDatabaseConfig{database_path, 100});
+    expect(static_cast<bool>(database_opened) && database_opened.schema_version == 3,
+           "opens production SQLite schema before the authenticated ingress test");
+
+    dockstation::platform::persistence::SqliteSourceSessionStore source_store{database};
+    dockstation::platform::persistence::SqliteSubsystemStatusStore status_store{database};
+    const std::string registered_peer_identity{
+        reinterpret_cast<const char*>(credentials.identity.data()),
+        credentials.identity.size()};
+    expect(source_store.create_source_registration(
+               "station-1", "sensor/esp32", "source-rev-1",
+               registered_peer_identity).status ==
+               dockstation::platform::persistence::SqliteSourceRegistrationWriteStatus::Created,
+           "provisions the exact local PSK identity as an ACTIVE source registration");
+    expect(status_store.create_subsystem_registration(
+               "station-1", "weather.temperature", "sensor/esp32",
+               "subsystem-rev-1").status ==
+               dockstation::platform::persistence::SqliteSubsystemRegistrationWriteStatus::Created,
+           "provisions the subsystem only under its matching ACTIVE source");
+
+    dockstation::core::RegistrySourceSessionVerifier source_verifier{
+        source_store, "station-1"};
+    dockstation::core::SubsystemStatusEventProcessor subsystem_status_processor{
+        "station-1", event_projector, status_store, status_store};
+    dockstation::core::StationEventPipeline event_pipeline{
+        status_store, global_processor, operation_processor, timeout_processor,
+        source_verifier, source_store, source_store, &subsystem_status_processor};
+#else
+    RecordingEventRepository event_repository{};
     CaptureVerifier source_verifier{};
     NotFoundCursorReader cursor_reader{};
     ConfirmingSessionRepository session_repository{};
     dockstation::core::StationEventPipeline event_pipeline{
         event_repository, global_processor, operation_processor, timeout_processor,
         source_verifier, cursor_reader, session_repository};
-    dockstation::communications::ControllerSubsystemStatusEventProjector event_projector{};
+#endif
+
     dockstation::communications::AuthenticatedEventTransportAdapter event_adapter{
         e2e_service, event_pipeline, event_projector, "sensor/esp32",
         dockstation::core::EventValidationPolicy{true, true, false}};
@@ -587,40 +667,9 @@ int main() {
         e2e_service.poll();
     }
 
-    expect(event_adapter.statistics().authenticated_messages_received == 2U &&
-               event_adapter.statistics().projected_events == 1U &&
-               event_adapter.statistics().pipeline_invocations == 1U &&
-               event_adapter.statistics().unmapped_messages == 1U &&
-               event_adapter.statistics().last_status ==
-                   dockstation::communications::AuthenticatedEventTransportStatus::PipelineInvoked &&
-               event_adapter.statistics().last_session_status ==
-                   dockstation::core::SourceSessionCoordinatorStatus::Confirmed &&
-               event_adapter.statistics().last_event_status ==
-                   dockstation::core::EventHandlingStatus::Unsupported,
-           "only an explicit subsystem report reaches the session-gated pipeline; F13 remains fail-closed without a profile route");
-    expect(source_verifier.calls == 1 && cursor_reader.calls == 1 &&
-               session_repository.calls == 1 && event_repository.calls == 1 &&
-               event_repository.last_event_id.find(":3") != std::string::npos,
-           "one projected status event is bound to the accepted source sequence");
-
     const std::string expected_pair_identity{
         reinterpret_cast<const char*>(credentials.identity.data()),
         credentials.identity.size()};
-    expect(source_verifier.source == "sensor/esp32" &&
-               source_verifier.source_instance == "esp32-boot-01" &&
-               source_verifier.peer_identity == expected_pair_identity,
-           "Event and evidence use the configured source, accepted peer instance and local TLS PSK identity");
-    std::array<std::uint8_t, kControllerSessionProofSize> adapter_bound_proof{};
-    const bool exporter_still_available =
-        e2e_service.export_authenticated_session_proof(adapter_bound_proof);
-    const std::string exported_proof{
-        reinterpret_cast<const char*>(adapter_bound_proof.data()),
-        adapter_bound_proof.size()};
-    expect(exporter_still_available &&
-               source_verifier.session_proof.size() == kControllerSessionProofSize &&
-               source_verifier.session_proof == exported_proof,
-           "SourceSessionEvidence carries the exact exporter proof from the live TLS session");
-    OPENSSL_cleanse(adapter_bound_proof.data(), adapter_bound_proof.size());
     std::string expected_event_id = "controller-event:v1:";
     constexpr char hex_digits[] = "0123456789abcdef";
     for (const std::uint8_t byte : credentials.identity) {
@@ -628,8 +677,122 @@ int main() {
         expected_event_id.push_back(hex_digits[byte & 0x0FU]);
     }
     expected_event_id += ":12:sensor/esp32:13:esp32-boot-01:3";
+
+    expect(event_adapter.statistics().authenticated_messages_received == 2U &&
+               event_adapter.statistics().projected_events == 1U &&
+               event_adapter.statistics().pipeline_invocations == 1U &&
+               event_adapter.statistics().unmapped_messages == 1U &&
+               event_adapter.statistics().last_status ==
+                   dockstation::communications::AuthenticatedEventTransportStatus::PipelineInvoked &&
+               event_adapter.statistics().last_session_status ==
+                   dockstation::core::SourceSessionCoordinatorStatus::Confirmed
+#if defined(DOCKSTATION_WITH_SQLITE_PERSISTENCE)
+               && event_adapter.statistics().last_event_status ==
+                   dockstation::core::EventHandlingStatus::NoStateChange,
+           "authenticated subsystem report passes the production F13 processor and commits to SQLite");
+
+    const auto stored_event = status_store.find_by_id(expected_event_id);
+    sqlite3_int64 history_count = 0;
+    std::string current_event_id;
+    expect(stored_event.status ==
+               dockstation::core::EventRepositoryLookupStatus::Found &&
+               stored_event.event.source == "sensor/esp32" &&
+               stored_event.event.source_instance ==
+                   std::optional<std::string_view>{"esp32-boot-01"} &&
+               stored_event.event.source_sequence == std::optional<std::uint64_t>{3U} &&
+               stored_event.event.event_type == "SUBSYSTEM_STATUS_UPDATED" &&
+               stored_event.event.payload.has_value() &&
+               stored_event.event.payload->find("\"status\":\"DEGRADED\"") !=
+                   std::string_view::npos &&
+               query_integer(database.native_handle(),
+                   "SELECT count(*) FROM subsystem_status_history;", history_count) &&
+               history_count == 1 &&
+               query_text(database.native_handle(),
+                   "SELECT last_event_id FROM subsystem_status_current "
+                   "WHERE station_id='station-1' AND subsystem_id='weather.temperature';",
+                   current_event_id) &&
+               current_event_id == expected_event_id,
+           "SQLite stores the original Event, typed history and current pointer together");
+    const auto cursor = source_store.read_source_cursor("sensor/esp32");
+    expect(cursor.status == dockstation::core::SourceCursorReadStatus::Found &&
+               cursor.cursor.source_instance ==
+                   std::optional<std::string_view>{"esp32-boot-01"} &&
+               cursor.cursor.last_sequence == std::optional<std::uint64_t>{3U},
+           "source cursor advances only with the committed subsystem report");
+#else
+               && event_adapter.statistics().last_event_status ==
+                   dockstation::core::EventHandlingStatus::Unsupported,
+           "without production persistence the subsystem route remains fail-closed");
+    expect(source_verifier.calls == 1 && cursor_reader.calls == 1 &&
+               session_repository.calls == 1 && event_repository.calls == 1 &&
+               event_repository.last_event_id == expected_event_id,
+           "one projected status event is bound to the accepted source sequence");
+#endif
+#if !defined(DOCKSTATION_WITH_SQLITE_PERSISTENCE)
+    expect(source_verifier.source == "sensor/esp32" &&
+               source_verifier.source_instance == "esp32-boot-01" &&
+               source_verifier.peer_identity == expected_pair_identity,
+           "Event and evidence use the configured source, accepted peer instance and local TLS PSK identity");
+#endif
+    std::array<std::uint8_t, kControllerSessionProofSize> adapter_bound_proof{};
+    expect(e2e_service.export_authenticated_session_proof(adapter_bound_proof) &&
+               std::any_of(adapter_bound_proof.begin(), adapter_bound_proof.end(),
+                   [](std::uint8_t value) noexcept { return value != 0U; }),
+           "exporter proof remains available only while the authenticated TLS session is live");
+    OPENSSL_cleanse(adapter_bound_proof.data(), adapter_bound_proof.size());
+#if defined(DOCKSTATION_WITH_SQLITE_PERSISTENCE)
+    expect(stored_event.event.event_id == expected_event_id,
+           "Event ID is bound to pair identity, source, authenticated instance and sequence");
+#else
     expect(event_repository.last_event_id == expected_event_id,
-           "Event ID is bound to pair identity, local source, authenticated instance and accepted sequence");
+           "Event ID is bound to pair identity, source, authenticated instance and sequence");
+#endif
+
+#if defined(DOCKSTATION_WITH_SQLITE_PERSISTENCE)
+    const ControllerErrorPayload recovered_subsystem{
+        "STATE_RESTORED", ControllerErrorSeverity::Info,
+        "Temperature sensor responding again", {},
+        std::string_view{"weather.temperature"},
+        ControllerSubsystemStatus::Pass};
+    const auto recovered_envelope =
+        peer_envelope(ControllerMessageType::Error, 4U);
+    expect(send_peer_message(peer, pty.master, recovered_envelope,
+                             ControllerMessagePayload{recovered_subsystem}),
+           "sends a newer authenticated PASS observation for the same subsystem");
+    for (std::size_t attempt = 0U;
+         attempt < 64U && event_adapter.statistics().pipeline_invocations < 2U;
+         ++attempt) {
+        e2e_service.poll();
+    }
+    std::string second_event_id = expected_event_id;
+    second_event_id.replace(second_event_id.size() - 1U, 1U, "4");
+    const auto second_event = status_store.find_by_id(second_event_id);
+    sqlite3_int64 second_history_count = 0;
+    std::string second_current_event_id;
+    expect(event_adapter.statistics().pipeline_invocations == 2U &&
+               event_adapter.statistics().last_session_status ==
+                   dockstation::core::SourceSessionCoordinatorStatus::AlreadyCurrent &&
+               event_adapter.statistics().last_event_status ==
+                   dockstation::core::EventHandlingStatus::NoStateChange &&
+               second_event.status ==
+                   dockstation::core::EventRepositoryLookupStatus::Found &&
+               second_event.event.payload.has_value() &&
+               second_event.event.payload->find("\"status\":\"PASS\"") !=
+                   std::string_view::npos &&
+               query_integer(database.native_handle(),
+                   "SELECT count(*) FROM subsystem_status_history;", second_history_count) &&
+               second_history_count == 2 &&
+               query_text(database.native_handle(),
+                   "SELECT last_event_id FROM subsystem_status_current "
+                   "WHERE station_id='station-1' AND subsystem_id='weather.temperature';",
+                   second_current_event_id) &&
+               second_current_event_id == second_event_id,
+           "newer PASS appends history and updates the current pointer without changing StationState");
+    const auto advanced_cursor = source_store.read_source_cursor("sensor/esp32");
+    expect(advanced_cursor.status == dockstation::core::SourceCursorReadStatus::Found &&
+               advanced_cursor.cursor.last_sequence == std::optional<std::uint64_t>{4U},
+           "second status commit advances the source cursor from sequence 3 to 4");
+#endif
 
     const auto established_link_status = e2e_service.status();
     const auto diagnostics = dockstation::communications::serialize_system_diagnostics(
@@ -654,9 +817,15 @@ int main() {
                e2e_service.telemetry_snapshot().available() &&
                e2e_service.telemetry_snapshot().sequence_number() == 2U,
            "rejects the replayed sequence, closes the link and retains the last accepted snapshot");
+#if defined(DOCKSTATION_WITH_SQLITE_PERSISTENCE)
+    expect(event_adapter.statistics().authenticated_messages_received == 3U &&
+               event_adapter.statistics().pipeline_invocations == 2U,
+           "a replayed sequence never reaches the authenticated event adapter or SSM pipeline");
+#else
     expect(event_adapter.statistics().authenticated_messages_received == 2U &&
                event_adapter.statistics().pipeline_invocations == 1U,
            "a replayed sequence never reaches the authenticated event adapter or SSM pipeline");
+#endif
     expect(e2e_service.authenticated_pair_identity().empty(),
            "pair identity is no longer exposed after the TLS/ControllerLink session is lost");
 
@@ -672,6 +841,14 @@ int main() {
     e2e_service.stop();
     expect(!e2e_service.telemetry_snapshot().available(),
            "explicit service stop clears the process-local telemetry snapshot");
+
+#if defined(DOCKSTATION_WITH_SQLITE_PERSISTENCE)
+    expect(database.close(), "closes the SQLite ingress test database cleanly");
+    (void)std::remove(database_path.c_str());
+    (void)std::remove((database_path + "-journal").c_str());
+    (void)std::remove((database_path + "-wal").c_str());
+    (void)std::remove((database_path + "-shm").c_str());
+#endif
 
     test_credentials = nullptr;
     credentials.clear();

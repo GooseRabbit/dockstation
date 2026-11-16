@@ -1,5 +1,6 @@
 #include <cstdlib>
 #include <iostream>
+#include <optional>
 #include <string_view>
 
 #include "communications/controller_subsystem_status_event_projector.hpp"
@@ -76,6 +77,31 @@ int main() {
                output.payload.find("\"severity\":\"WARNING\"") !=
                std::string_view::npos,
            "event payload preserves subsystem ID, reported status and independent severity");
+
+    dockstation::core::Event decoded_event{};
+    decoded_event.event_type = output.event_type;
+    decoded_event.payload = output.payload;
+    decoded_event.quality_status = output.quality_status;
+    decoded_event.schema_version = output.schema_version;
+    decoded_event.reason_code = output.reason_code;
+    decoded_event.reason_text = output.reason_text;
+    const auto decoded_report = projector.decode(decoded_event);
+    expect(decoded_report.status ==
+               dockstation::core::SubsystemStatusDecodeStatus::Decoded &&
+               decoded_report.report.subsystem_id == "weather.temperature" &&
+               decoded_report.report.status ==
+                   dockstation::core::ReportedSubsystemStatus::Degraded &&
+               decoded_report.report.error_code == "DHT22_READ_FAILED" &&
+               decoded_report.report.severity == "WARNING" &&
+               decoded_report.report.reason_text ==
+                   std::optional<std::string_view>{"I2C timeout"},
+           "decodes typed status from the same validated ControllerLink frame without reparsing JSON");
+
+    dockstation::core::Event altered_event = decoded_event;
+    altered_event.payload = std::string_view{"{}"};
+    expect(projector.decode(altered_event).status ==
+               dockstation::core::SubsystemStatusDecodeStatus::Error,
+           "rejects a payload that does not match the immediately projected authenticated frame");
 
     const ControllerErrorPayload unknown_state{
         "STATE_UNCERTAIN", ControllerErrorSeverity::Error,

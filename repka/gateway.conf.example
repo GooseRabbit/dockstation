@@ -10,3 +10,10 @@ log_stderr=true
 # controller_uart_device=/dev/serial0
 # controller_local_id=repka-01
 # controller_peer_id=esp32-01
+#
+# Optional authenticated subsystem-event ingestion. These values are not the
+# PSK identity and do not create a trusted registration. The source must first
+# be provisioned locally in SQLite for this Station ID and the PSK identity.
+# Leave both commented until the station identity/source registration exists.
+# station_id=station-01
+# controller_source=esp32.main

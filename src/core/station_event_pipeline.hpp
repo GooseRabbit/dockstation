@@ -21,7 +21,8 @@ public:
         EventProcessorPort& timeout_processor,
         SourceSessionVerifier& session_verifier,
         SourceCursorReader& cursor_reader,
-        SourceSessionRepository& session_repository) noexcept;
+        SourceSessionRepository& session_repository,
+        EventProcessorPort* subsystem_status_processor = nullptr) noexcept;
 
     StationEventPipeline(const StationEventPipeline&) = delete;
     StationEventPipeline& operator=(const StationEventPipeline&) = delete;
@@ -39,7 +40,7 @@ public:
         const SourceSessionEvidence& evidence) noexcept;
 
 private:
-    const EventProcessorRoute routes_[5];
+    const EventProcessorRoute routes_[6];
     EventProcessorRouter router_;
     EventRepository& event_repository_;
     SourceSessionCoordinator session_coordinator_;

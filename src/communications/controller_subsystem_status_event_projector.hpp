@@ -5,6 +5,7 @@
 #include <string_view>
 
 #include "communications/authenticated_event_transport_adapter.hpp"
+#include "core/subsystem_status_event_processor.hpp"
 #include "hardware/interfaces/controller_codec.hpp"
 
 namespace dockstation::communications {
@@ -13,7 +14,8 @@ namespace dockstation::communications {
 // its reported state. TELEMETRY_SNAPSHOT and generic ERROR reports remain in
 // the separate diagnostics/report stream and never enter the SSM event pipe.
 class ControllerSubsystemStatusEventProjector final
-    : public ControllerEventProjector {
+    : public ControllerEventProjector,
+      public core::SubsystemStatusEventDecoderPort {
 public:
     static constexpr std::size_t kPayloadCapacity =
         hardware::interfaces::kControllerCodecMaximumFrameSize * 6U + 256U;
@@ -22,6 +24,11 @@ public:
         const hardware::interfaces::ControllerCodecDecodedMessage& message,
         ControllerEventProjection& output) noexcept override;
 
+    // Uses typed fields retained from the same accepted ControllerLink frame.
+    // StationEventPipeline runs synchronously before the codec frame is consumed.
+    [[nodiscard]] core::SubsystemStatusDecodeResult decode(
+        const core::Event& event) noexcept override;
+
 private:
     [[nodiscard]] bool append(std::string_view value) noexcept;
     [[nodiscard]] bool append_json_string(std::string_view value) noexcept;
@@ -29,6 +36,7 @@ private:
 
     std::array<char, kPayloadCapacity> payload_{};
     std::size_t payload_size_{0U};
+    core::DecodedSubsystemStatus decoded_report_{};
 };
 
 }  // namespace dockstation::communications

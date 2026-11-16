@@ -26,6 +26,21 @@ using hardware::interfaces::ControllerSubsystemStatus;
     return {};
 }
 
+[[nodiscard]] core::ReportedSubsystemStatus reported_status(
+    ControllerSubsystemStatus status) noexcept {
+    switch (status) {
+        case ControllerSubsystemStatus::Pass:
+            return core::ReportedSubsystemStatus::Pass;
+        case ControllerSubsystemStatus::Degraded:
+            return core::ReportedSubsystemStatus::Degraded;
+        case ControllerSubsystemStatus::Fail:
+            return core::ReportedSubsystemStatus::Fail;
+        case ControllerSubsystemStatus::Unknown:
+            return core::ReportedSubsystemStatus::Unknown;
+    }
+    return core::ReportedSubsystemStatus::Unknown;
+}
+
 [[nodiscard]] std::string_view subsystem_status_name(
     ControllerSubsystemStatus status) noexcept {
     switch (status) {
@@ -52,6 +67,7 @@ using hardware::interfaces::ControllerSubsystemStatus;
 void ControllerSubsystemStatusEventProjector::reset() noexcept {
     payload_.fill('\0');
     payload_size_ = 0U;
+    decoded_report_ = {};
 }
 
 bool ControllerSubsystemStatusEventProjector::append(
@@ -163,6 +179,17 @@ ControllerSubsystemStatusEventProjector::project(
         return ControllerEventProjectionStatus::Error;
     }
 
+    decoded_report_ = {
+        *error->subsystem_id,
+        reported_status(*error->subsystem_status),
+        error->error_code,
+        severity,
+        error->description,
+        has_reason
+            ? std::optional<std::string_view>{error->reason_text}
+            : std::nullopt
+    };
+
     output.event_type = "SUBSYSTEM_STATUS_UPDATED";
     output.payload = {payload_.data(), payload_size_};
     // VALID describes the authenticated, structurally valid report; the
@@ -174,6 +201,24 @@ ControllerSubsystemStatusEventProjector::project(
         output.reason_text = error->reason_text;
     }
     return ControllerEventProjectionStatus::Projected;
+}
+
+core::SubsystemStatusDecodeResult
+ControllerSubsystemStatusEventProjector::decode(
+    const core::Event& event) noexcept {
+    if (event.event_type != "SUBSYSTEM_STATUS_UPDATED") {
+        return {core::SubsystemStatusDecodeStatus::UnsupportedPayload, {}};
+    }
+    if (payload_size_ == 0U ||
+        event.quality_status != "VALID" ||
+        event.schema_version != "1" ||
+        event.payload.size() != payload_size_ ||
+        !std::equal(event.payload.begin(), event.payload.end(), payload_.begin()) ||
+        !core::is_known_reported_subsystem_status(decoded_report_.status) ||
+        decoded_report_.subsystem_id.empty()) {
+        return {core::SubsystemStatusDecodeStatus::Error, {}};
+    }
+    return {core::SubsystemStatusDecodeStatus::Decoded, decoded_report_};
 }
 
 }  // namespace dockstation::communications

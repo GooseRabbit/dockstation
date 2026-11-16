@@ -41,4 +41,12 @@ private:
     const volatile std::sig_atomic_t* shutdown_requested,
     platform::linux_platform::ControllerLinkServiceConfig controller_config = {});
 
+// Composition-root overload: the caller may attach a trusted message handler
+// before this function starts the externally owned ControllerLink service.
+[[nodiscard]] int run_local_api_server(
+    std::uint32_t port,
+    const volatile std::sig_atomic_t* shutdown_requested,
+    platform::linux_platform::ControllerLinkService& controller_link,
+    platform::linux_platform::ControllerLinkServiceConfig controller_config);
+
 }  // namespace dockstation::communications

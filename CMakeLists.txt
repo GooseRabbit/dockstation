@@ -182,7 +182,7 @@ target_link_libraries(dockstation_linux_bootstrap
 )
 if(DOCKSTATION_BUILD_SQLITE_PERSISTENCE)
     target_link_libraries(dockstation_linux_bootstrap
-        PRIVATE dockstation_gateway_persistence_context
+        PRIVATE dockstation_gateway_persistence_context dockstation_event_transport
     )
     target_compile_definitions(dockstation_linux_bootstrap
         PRIVATE DOCKSTATION_WITH_SQLITE_PERSISTENCE
@@ -368,6 +368,14 @@ if(BUILD_TESTING)
     target_link_libraries(test_controller_link_service
         PRIVATE dockstation_event_transport
     )
+    if(DOCKSTATION_BUILD_SQLITE_PERSISTENCE)
+        target_link_libraries(test_controller_link_service
+            PRIVATE dockstation_gateway_persistence_context
+        )
+        target_compile_definitions(test_controller_link_service
+            PRIVATE DOCKSTATION_WITH_SQLITE_PERSISTENCE
+        )
+    endif()
     dockstation_apply_compile_policy(test_controller_link_service)
     add_test(NAME controller_link_service COMMAND test_controller_link_service)
 

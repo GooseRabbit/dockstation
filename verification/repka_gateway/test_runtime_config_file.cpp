@@ -91,14 +91,32 @@ int main() {
     result = parse_runtime_config_text(
         "controller_uart_device=/dev/serial0\n"
         "controller_local_id=repka-01\n"
-        "controller_peer_id=esp32-01\n");
+        "controller_peer_id=esp32-01\n"
+        "station_id=station-01\n"
+        "controller_source=sensor/esp32\n");
     expect(result.status == RuntimeConfigFileStatus::Loaded &&
                result.config.controller_uart_device == "/dev/serial0" &&
                result.config.controller_local_id == "repka-01" &&
                result.config.controller_peer_id == "esp32-01" &&
+               result.config.station_id == "station-01" &&
+               result.config.controller_source == "sensor/esp32" &&
                validate_runtime_config(result.config).status ==
                    RuntimeConfigValidationStatus::Valid,
-           "parses a complete optional controller link configuration");
+           "parses the optional station/source event-ingress binding");
+
+    result = parse_runtime_config_text(
+        "station_id=station-01\n"
+        "station_id=station-02\n");
+    expect(result.status == RuntimeConfigFileStatus::Invalid &&
+               result.field == "station_id",
+           "rejects a duplicate Station ID setting");
+
+    result = parse_runtime_config_text(
+        "controller_source=sensor/esp32\n"
+        "controller_source=sensor/other\n");
+    expect(result.status == RuntimeConfigFileStatus::Invalid &&
+               result.field == "controller_source",
+           "rejects a duplicate controller source setting");
 
     result = parse_runtime_config_text(
         "controller_uart_device=/dev/serial0\n"

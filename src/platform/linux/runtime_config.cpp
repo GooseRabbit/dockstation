@@ -74,6 +74,39 @@ bool valid_controller_id(const std::string& value) {
     }
     return true;
 }
+
+bool valid_controller_source(const std::string& value) {
+    if (value.empty() || value.size() > 128U || contains_null_byte(value)) {
+        return false;
+    }
+
+    // Source names may use slash-separated namespaces, but empty, "." and ".."
+    // components are forbidden so the identifier is never treated as a path.
+    std::size_t offset = 0U;
+    while (offset < value.size()) {
+        const std::size_t separator = value.find('/', offset);
+        const std::size_t end = separator == std::string::npos
+            ? value.size() : separator;
+        const std::string_view component{value.data() + offset, end - offset};
+        if (component.empty() || component == "." || component == "..") {
+            return false;
+        }
+        for (const unsigned char ch : component) {
+            const bool alpha = (ch >= 'A' && ch <= 'Z') ||
+                               (ch >= 'a' && ch <= 'z');
+            const bool digit = ch >= '0' && ch <= '9';
+            if (!alpha && !digit && ch != '_' && ch != '-' &&
+                ch != '.' && ch != ':') {
+                return false;
+            }
+        }
+        if (separator == std::string::npos) {
+            return true;
+        }
+        offset = separator + 1U;
+    }
+    return false;
+}
 }  // namespace
 
 RuntimeConfigValidationResult validate_runtime_config(const RuntimeConfig& config) {
@@ -114,6 +147,23 @@ RuntimeConfigValidationResult validate_runtime_config(const RuntimeConfig& confi
             config.controller_local_id == config.controller_peer_id) {
             return invalid("controller_link",
                            "controller IDs must be distinct non-empty ASCII identifiers of at most 128 bytes");
+        }
+    }
+
+    const bool event_ingress_configured =
+        !config.station_id.empty() || !config.controller_source.empty();
+    if (event_ingress_configured) {
+        if (!controller_link_configured) {
+            return invalid("controller_event_ingress",
+                           "station_id and controller_source require a configured ControllerLink");
+        }
+        if (!valid_controller_id(config.station_id)) {
+            return invalid("station_id",
+                           "station ID must be a non-empty ASCII identifier of at most 128 bytes");
+        }
+        if (!valid_controller_source(config.controller_source)) {
+            return invalid("controller_source",
+                           "controller source must be a non-empty wire-safe identifier of at most 128 bytes");
         }
     }
 

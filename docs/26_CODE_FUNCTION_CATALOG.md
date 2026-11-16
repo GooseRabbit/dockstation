@@ -1223,3 +1223,24 @@ hardwarePlatformInfo публикует выбранный платформен�
 
 
 **Проверка Gateway persistence composition root:** GitHub Actions [run 43852667632](https://github.com/GooseRabbit/dockstation/actions/runs/43852667632), exact HEAD `6d8acf7f9f3a3df3003e1b3602f5127d6c25c186`, SUCCESS. CTest 31/31 на x86_64 и ARM64 (ASan/UBSan); `gateway_persistence_context` проходит с многопоточной проверкой сериализации. Дополнительно: 31/31 C++ host-программа, 158 Python/Operator/integration-тестов, systemd unit validation, запуск non-root Gateway с проверкой владельца `dockstation:dockstation` и режима файла БД 0600, ARM64 Gateway-only build без SQLite, Release bundle staging и Sigstore provenance. Это host CI на Ubuntu 24.04 x86_64/ARM64, а не проверка физической Repka OS или потери питания.
+
+
+## Дополнение: authenticated subsystem-event ingress → SQLite
+
+### StationEventPipeline
+
+Добавлен точный маршрут SUBSYSTEM_STATUS_UPDATED категории Subsystem. Если профильный EventProcessorPort не передан, маршрут использует fail-closed обработчик Unsupported; прежние вызывающие коды сохраняют безопасное поведение.
+
+### ControllerSubsystemStatusEventProjector
+
+Projector теперь также реализует SubsystemStatusEventDecoderPort. Он сохраняет типизированные поля из уже валидированного ControllerLink codec frame и возвращает их синхронно в Pipeline. Event payload/schema/quality проверяются на точное совпадение с последним projection; повторного JSON parsing нет. Borrowed string_views остаются живы до завершения синхронного callback.
+
+### Gateway composition root
+
+repka_gateway/main.cpp связывает RegistrySourceSessionVerifier, ControllerSubsystemStatusEventProjector, SubsystemStatusEventProcessor, StationEventPipeline и AuthenticatedEventTransportAdapter. Handler прикрепляется до ControllerLinkService::start. Все repository calls идут через один GatewayPersistenceContext::with_serialized_stores callback; этот mutex удерживается на время синхронного controller/API loop и освобождается до close базы. Для API сервера добавлен overload с внешним ControllerLinkService; прежний overload сохранён.
+
+RuntimeConfig получает необязательные station_id и controller_source. Они задаются только вместе с полной ControllerLink config. Без них ingress NOT_CONFIGURED; без SQLite ingress также отключён. Конфигурация не создаёт доверенные записи: заранее должны существовать source registration с точной локальной TLS PSK identity + Station ID + source и subsystem registration с Station ID + subsystem ID + тем же source. HTTP provisioning/API не добавлялся.
+
+### Сквозная проверка
+
+verification/repka_gateway/test_controller_link_service.cpp в SQLite-enabled build использует настоящие SQLite adapters вместо fake repositories. Через POSIX PTY и OpenSSL TLS 1.3 PSK-DHE peer проходит HELLO/HELLO_ACK, TelemetrySnapshot остаётся вне F13, explicit DEGRADED ERROR сохраняет Event/history/current/cursor, второй PASS добавляет историю и двигает cursor; replayed sequence отклоняется до event adapter. SQLite-disabled build оставляет fail-closed Unsupported fixture.

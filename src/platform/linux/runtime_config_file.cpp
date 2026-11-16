@@ -97,6 +97,8 @@ RuntimeConfigFileResult parse_runtime_config_text(const std::string& contents) {
     bool controller_uart_device_seen{false};
     bool controller_local_id_seen{false};
     bool controller_peer_id_seen{false};
+    bool station_id_seen{false};
+    bool controller_source_seen{false};
     bool log_level_seen{false};
     bool log_file_seen{false};
     bool log_stderr_seen{false};
@@ -160,6 +162,18 @@ RuntimeConfigFileResult parse_runtime_config_text(const std::string& contents) {
                 }
                 controller_peer_id_seen = true;
                 config.controller_peer_id.assign(value.data(), value.size());
+            } else if (key == "station_id") {
+                if (station_id_seen) {
+                    return invalid(line_number, "station_id", "duplicate key");
+                }
+                station_id_seen = true;
+                config.station_id.assign(value.data(), value.size());
+            } else if (key == "controller_source") {
+                if (controller_source_seen) {
+                    return invalid(line_number, "controller_source", "duplicate key");
+                }
+                controller_source_seen = true;
+                config.controller_source.assign(value.data(), value.size());
             } else if (key == "log_level") {
                 if (log_level_seen) return invalid(line_number, "log_level", "duplicate key");
                 log_level_seen = true;

@@ -17,6 +17,10 @@ struct RuntimeConfig {
     std::string controller_uart_device{};
     std::string controller_local_id{};
     std::string controller_peer_id{};
+    // Optional authenticated subsystem-event binding; Station ID is not
+    // controller_local_id. The source must have a matching local DB registration.
+    std::string station_id{};
+    std::string controller_source{};
     logging::LoggerConfig logger{};
 };
 

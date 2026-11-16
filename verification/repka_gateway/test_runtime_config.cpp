@@ -69,6 +69,45 @@ int main() {
                result.field == "controller_link",
            "rejects identical local and peer controller IDs");
 
+    config = RuntimeConfig{};
+    config.controller_uart_device = "/dev/serial0";
+    config.controller_local_id = "repka-01";
+    config.controller_peer_id = "esp32-01";
+    config.station_id = "station-01";
+    config.controller_source = "sensor/esp32";
+    result = validate_runtime_config(config);
+    expect(result.status == RuntimeConfigValidationStatus::Valid,
+           "accepts a complete authenticated event-ingress binding");
+
+    config.station_id.clear();
+    result = validate_runtime_config(config);
+    expect(result.status == RuntimeConfigValidationStatus::Invalid &&
+               result.field == "station_id",
+           "requires a local Station ID when a controller source is configured");
+
+    config = RuntimeConfig{};
+    config.station_id = "station-01";
+    result = validate_runtime_config(config);
+    expect(result.status == RuntimeConfigValidationStatus::Invalid &&
+               result.field == "controller_event_ingress",
+           "does not configure event ingress without a ControllerLink");
+
+    config = RuntimeConfig{};
+    config.controller_uart_device = "/dev/serial0";
+    config.controller_local_id = "repka-01";
+    config.controller_peer_id = "esp32-01";
+    config.station_id = "station-01";
+    config.controller_source = "sensor/esp32";
+    result = validate_runtime_config(config);
+    expect(result.status == RuntimeConfigValidationStatus::Valid,
+           "accepts a slash-delimited source identifier from local configuration");
+
+    config.controller_source = "sensor/../esp32";
+    result = validate_runtime_config(config);
+    expect(result.status == RuntimeConfigValidationStatus::Invalid &&
+               result.field == "controller_source",
+           "rejects unsafe source identifier characters");
+
     config.api_port = 0U;
     result = validate_runtime_config(config);
     expect(result.status == RuntimeConfigValidationStatus::Invalid &&

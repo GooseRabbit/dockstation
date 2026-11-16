@@ -515,13 +515,22 @@ int run_local_api_server(
     std::uint32_t port,
     const volatile std::sig_atomic_t* shutdown_requested,
     platform::linux_platform::ControllerLinkServiceConfig controller_config) {
+    platform::linux_platform::ControllerLinkService controller_link;
+    return run_local_api_server(
+        port, shutdown_requested, controller_link, controller_config);
+}
+
+int run_local_api_server(
+    std::uint32_t port,
+    const volatile std::sig_atomic_t* shutdown_requested,
+    platform::linux_platform::ControllerLinkService& controller_link,
+    platform::linux_platform::ControllerLinkServiceConfig controller_config) {
     if (shutdown_requested == nullptr) {
         (void)write_log(platform::logging::LogLevel::Error,
                         "Для локального API не передан флаг штатного завершения");
         return 1;
     }
 
-    platform::linux_platform::ControllerLinkService controller_link;
     const auto controller_status = controller_link.start(controller_config);
     if (controller_status.state ==
         platform::linux_platform::ControllerLinkServiceState::Error) {
@@ -538,6 +547,7 @@ int run_local_api_server(
                         {{"reason", server.status().reason},
                          {"bind_address", "127.0.0.1"},
                          {"port", std::to_string(port)}});
+        controller_link.stop();
         return 1;
     }
 
