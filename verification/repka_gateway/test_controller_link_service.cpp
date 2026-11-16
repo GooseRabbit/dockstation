@@ -17,6 +17,8 @@
 #include <unistd.h>
 
 #include "communications/api_serialization.hpp"
+#include "communications/authenticated_event_transport_adapter.hpp"
+#include "core/station_event_pipeline.hpp"
 #include "hardware/interfaces/controller_codec.hpp"
 #include "platform/linux/controller_link_service.hpp"
 
@@ -313,6 +315,108 @@ ControllerMessageEnvelope peer_envelope(
     return envelope;
 }
 
+class CaptureVerifier final : public dockstation::core::SourceSessionVerifier {
+public:
+    int calls{0};
+    std::string source{};
+    std::string source_instance{};
+    std::string peer_identity{};
+    std::string session_proof{};
+
+    dockstation::core::SourceSessionVerificationResult verify_source_session(
+        const dockstation::core::SourceSessionEvidence& evidence) noexcept override {
+        ++calls;
+        source.assign(evidence.source().data(), evidence.source().size());
+        source_instance.assign(evidence.source_instance().data(),
+                               evidence.source_instance().size());
+        peer_identity.assign(evidence.peer_identity_evidence().data(),
+                             evidence.peer_identity_evidence().size());
+        session_proof.assign(evidence.session_proof().data(),
+                             evidence.session_proof().size());
+        return {
+            dockstation::core::SourceSessionVerificationStatus::Verified,
+            {evidence.source(), evidence.source_instance(), "test-registration-rev"}
+        };
+    }
+};
+
+class NotFoundCursorReader final : public dockstation::core::SourceCursorReader {
+public:
+    int calls{0};
+    dockstation::core::SourceCursorReadResult read_source_cursor(
+        std::string_view) noexcept override {
+        ++calls;
+        return {dockstation::core::SourceCursorReadStatus::NotFound, {}};
+    }
+};
+
+class ConfirmingSessionRepository final
+    : public dockstation::core::SourceSessionRepository {
+public:
+    int calls{0};
+    dockstation::core::SourceSessionConfirmationResult confirm_source_session(
+        const dockstation::core::SourceCursorReadResult&,
+        const dockstation::core::VerifiedSourceSession& verified) noexcept override {
+        ++calls;
+        return {
+            dockstation::core::SourceSessionConfirmationStatus::Confirmed,
+            {verified.source, verified.source_instance, std::nullopt}
+        };
+    }
+};
+
+class RecordingEventRepository final : public dockstation::core::EventRepository {
+public:
+    int calls{0};
+    std::string last_event_id{};
+
+    dockstation::core::EventRepositoryLookupResult find_by_id(
+        std::string_view event_id) noexcept override {
+        ++calls;
+        last_event_id.assign(event_id.data(), event_id.size());
+        return {dockstation::core::EventRepositoryLookupStatus::NotFound, {}};
+    }
+};
+
+class RecordingEventProcessor final : public dockstation::core::EventProcessorPort {
+public:
+    int calls{0};
+    dockstation::core::EventProcessorStatus process(
+        const dockstation::core::Event&,
+        dockstation::core::EventCategory,
+        const dockstation::core::SourceCursor&) noexcept override {
+        ++calls;
+        return dockstation::core::EventProcessorStatus::Processed;
+    }
+};
+
+// Deliberately test-only projection. SUBSYSTEM_STATUS_UPDATED is known to the
+// event catalogue but has no F13 profile route in the current implementation;
+// the test therefore proves trusted ingress/session binding without claiming
+// that a sensor measurement changes station state.
+class FixtureControllerEventProjector final
+    : public dockstation::communications::ControllerEventProjector {
+public:
+    int calls{0};
+    std::uint64_t last_sequence{0U};
+
+    dockstation::communications::ControllerEventProjectionStatus project(
+        const ControllerCodecDecodedMessage& message,
+        dockstation::communications::ControllerEventProjection& output) noexcept override {
+        ++calls;
+        if (message.envelope.type != ControllerMessageType::TelemetrySnapshot ||
+            !message.envelope.sequence_number.has_value()) {
+            return dockstation::communications::ControllerEventProjectionStatus::NotApplicable;
+        }
+        last_sequence = *message.envelope.sequence_number;
+        output.event_type = "SUBSYSTEM_STATUS_UPDATED";
+        output.payload = "{}";
+        output.quality_status = "VALID";
+        output.schema_version = "1";
+        return dockstation::communications::ControllerEventProjectionStatus::Projected;
+    }
+};
+
 }  // namespace
 
 int main() {
@@ -375,6 +479,24 @@ int main() {
     }
 
     ControllerLinkService e2e_service{};
+
+    RecordingEventRepository event_repository{};
+    RecordingEventProcessor global_processor{};
+    RecordingEventProcessor operation_processor{};
+    RecordingEventProcessor timeout_processor{};
+    CaptureVerifier source_verifier{};
+    NotFoundCursorReader cursor_reader{};
+    ConfirmingSessionRepository session_repository{};
+    dockstation::core::StationEventPipeline event_pipeline{
+        event_repository, global_processor, operation_processor, timeout_processor,
+        source_verifier, cursor_reader, session_repository};
+    FixtureControllerEventProjector event_projector{};
+    dockstation::communications::AuthenticatedEventTransportAdapter event_adapter{
+        e2e_service, event_pipeline, event_projector, "sensor/esp32",
+        dockstation::core::EventValidationPolicy{true, true, false}};
+    expect(event_adapter.is_configured(),
+           "attaches the trusted event adapter before the ControllerLink service starts");
+
     ControllerLinkServiceTestAccess::set_credential_loader(
         e2e_service, &load_test_credentials);
     const ControllerLinkServiceConfig config{
@@ -393,6 +515,9 @@ int main() {
     expect(complete_tls_handshake(e2e_service, peer, pty.master) &&
                e2e_service.status().tls_authenticated,
            "authenticates the complete service-to-peer TLS 1.3 PSK-DHE handshake");
+    expect(e2e_service.authenticated_pair_identity().empty() &&
+               event_adapter.statistics().authenticated_messages_received == 0U,
+           "does not expose pair identity or dispatch messages before HELLO_ACK");
 
     std::array<std::uint8_t, kControllerCodecMaximumFrameSize> peer_frame{};
     ControllerCodecDecodeStorage peer_storage{};
@@ -415,6 +540,14 @@ int main() {
                peer_message.envelope.type == ControllerMessageType::RequestSnapshot &&
                e2e_service.status().protocol_established,
            "establishes the logical session and emits one REQUEST_SNAPSHOT");
+    const std::string established_pair_identity =
+        std::string{e2e_service.authenticated_pair_identity()};
+    const std::string expected_local_identity{
+        reinterpret_cast<const char*>(credentials.identity.data()),
+        credentials.identity.size()};
+    expect(established_pair_identity == expected_local_identity &&
+               event_adapter.statistics().authenticated_messages_received == 0U,
+           "exposes the local pair identity only after HELLO_ACK, without dispatching handshake messages");
 
     std::array<std::uint8_t, kControllerSessionProofSize> session_proof{};
     expect(e2e_service.export_authenticated_session_proof(session_proof),
@@ -454,6 +587,49 @@ int main() {
                *std::get_if<double>(&measurement.value) == 21.5,
            "retains an owned typed telemetry snapshot after the TLS frame buffer is reused");
 
+    expect(event_adapter.statistics().authenticated_messages_received == 1U &&
+               event_adapter.statistics().projected_events == 1U &&
+               event_adapter.statistics().pipeline_invocations == 1U &&
+               event_adapter.statistics().last_status ==
+                   dockstation::communications::AuthenticatedEventTransportStatus::PipelineInvoked &&
+               event_adapter.statistics().last_session_status ==
+                   dockstation::core::SourceSessionCoordinatorStatus::Confirmed &&
+               event_adapter.statistics().last_event_status ==
+                   dockstation::core::EventHandlingStatus::Unsupported,
+           "projects one accepted frame and reaches the session-gated pipeline without inventing an F13 route");
+    expect(event_projector.calls == 1 && event_projector.last_sequence == 2U &&
+               source_verifier.calls == 1 && cursor_reader.calls == 1 &&
+               session_repository.calls == 1 && event_repository.calls == 1,
+           "event projection and session confirmation occur once for the accepted frame");
+
+    const std::string expected_pair_identity{
+        reinterpret_cast<const char*>(credentials.identity.data()),
+        credentials.identity.size()};
+    expect(source_verifier.source == "sensor/esp32" &&
+               source_verifier.source_instance == "esp32-boot-01" &&
+               source_verifier.peer_identity == expected_pair_identity,
+           "Event and evidence use the configured source, accepted peer instance and local TLS PSK identity");
+    std::array<std::uint8_t, kControllerSessionProofSize> adapter_bound_proof{};
+    const bool exporter_still_available =
+        e2e_service.export_authenticated_session_proof(adapter_bound_proof);
+    const std::string exported_proof{
+        reinterpret_cast<const char*>(adapter_bound_proof.data()),
+        adapter_bound_proof.size()};
+    expect(exporter_still_available &&
+               source_verifier.session_proof.size() == kControllerSessionProofSize &&
+               source_verifier.session_proof == exported_proof,
+           "SourceSessionEvidence carries the exact exporter proof from the live TLS session");
+    OPENSSL_cleanse(adapter_bound_proof.data(), adapter_bound_proof.size());
+    std::string expected_event_id = "controller-event:v1:";
+    constexpr char hex_digits[] = "0123456789abcdef";
+    for (const std::uint8_t byte : credentials.identity) {
+        expected_event_id.push_back(hex_digits[(byte >> 4U) & 0x0FU]);
+        expected_event_id.push_back(hex_digits[byte & 0x0FU]);
+    }
+    expected_event_id += ":12:sensor/esp32:13:esp32-boot-01:2";
+    expect(event_repository.last_event_id == expected_event_id,
+           "Event ID is bound to pair identity, local source, authenticated instance and accepted sequence");
+
     const auto established_link_status = e2e_service.status();
     const auto diagnostics = dockstation::communications::serialize_system_diagnostics(
         &established_link_status, nullptr, &snapshot);
@@ -477,6 +653,11 @@ int main() {
                e2e_service.telemetry_snapshot().available() &&
                e2e_service.telemetry_snapshot().sequence_number() == 2U,
            "rejects the replayed sequence, closes the link and retains the last accepted snapshot");
+    expect(event_adapter.statistics().authenticated_messages_received == 1U &&
+               event_adapter.statistics().pipeline_invocations == 1U,
+           "a replayed sequence never reaches the authenticated event adapter or SSM pipeline");
+    expect(e2e_service.authenticated_pair_identity().empty(),
+           "pair identity is no longer exposed after the TLS/ControllerLink session is lost");
 
     const auto disconnected_link_status = e2e_service.status();
     const auto disconnected_diagnostics =

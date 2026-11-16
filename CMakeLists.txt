@@ -112,6 +112,35 @@ target_link_libraries(dockstation_linux_runtime
     PUBLIC dockstation_controller_transport
 )
 
+# Keep station event processing independent from the Linux hardware runtime.
+add_library(dockstation_station_events STATIC
+    src/core/event_processing.cpp
+    src/core/event_validation.cpp
+    src/core/event_handling.cpp
+    src/core/event_processor_router.cpp
+    src/core/source_session.cpp
+    src/core/source_session_coordinator.cpp
+    src/core/source_session_verifier.cpp
+    src/core/station_event_pipeline.cpp
+)
+target_include_directories(dockstation_station_events
+    PUBLIC "${PROJECT_SOURCE_DIR}/src"
+)
+dockstation_apply_compile_policy(dockstation_station_events)
+
+# The authenticated ingress adapter bridges accepted ControllerLink messages
+# to the session-gated SSM pipeline without coupling core to Linux/OpenSSL.
+add_library(dockstation_event_transport STATIC
+    src/communications/authenticated_event_transport_adapter.cpp
+)
+target_include_directories(dockstation_event_transport
+    PUBLIC "${PROJECT_SOURCE_DIR}/src"
+)
+target_link_libraries(dockstation_event_transport
+    PUBLIC dockstation_linux_runtime dockstation_station_events
+)
+dockstation_apply_compile_policy(dockstation_event_transport)
+
 # Local-only PSK provisioning utility. It is not part of the Gateway runtime.
 add_executable(dockstation-credential-provision
     tools/controller_psk_credential_provision.cpp
@@ -295,7 +324,7 @@ if(BUILD_TESTING)
         verification/repka_gateway/test_controller_link_service.cpp
     )
     target_link_libraries(test_controller_link_service
-        PRIVATE dockstation_linux_runtime
+        PRIVATE dockstation_event_transport
     )
     dockstation_apply_compile_policy(test_controller_link_service)
     add_test(NAME controller_link_service COMMAND test_controller_link_service)
@@ -389,6 +418,8 @@ if(BUILD_TESTING)
                     dockstation_linux_runtime
                     dockstation_controller_tls
                     dockstation_controller_transport
+                    dockstation_station_events
+                    dockstation_event_transport
                     dockstation-credential-provision
                     dockstation_linux_bootstrap
                     test_application_bootstrap

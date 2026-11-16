@@ -38,12 +38,12 @@
 
 | Функция / интерфейс | Назначение |
 |---|---|
-| `SourceSessionVerifier::verify_source_session(const SourceSessionEvidence&) noexcept` **(логический порт реализован)** | Абстрактная граница проверки доверия к источнику/сессии; конкретная storage-neutral политика реализована в `RegistrySourceSessionVerifier`, production reader и live-channel adapter ещё отсутствуют. |
+| `SourceSessionVerifier::verify_source_session(const SourceSessionEvidence&) noexcept` **(логический порт реализован)** | Абстрактная граница проверки доверия к источнику/сессии; `RegistrySourceSessionVerifier` реализует storage-neutral policy, а `AuthenticatedEventTransportAdapter` создаёт opaque evidence из live ControllerLink callback. Production registry reader/storage и session repository ещё отсутствуют. |
 | `SourceRegistrationReader::find_by_peer_identity(std::string_view) noexcept` **(read-only порт реализован)** | Ищет регистрацию по непрозрачному pair-specific identity и возвращает Station ID, logical source, registration revision и ACTIVE/DISABLED/REVOKED; выбор/реализация хранилища не входит в порт. |
-| `RegistrySourceSessionVerifier::verify_source_session(const SourceSessionEvidence&) noexcept` **(policy implementation реализована)** | Сверяет точный локальный Station ID, source, состояние регистрации и ревизию; проверяет 32-байтовую длину exporter proof. Только доверенный transport adapter может гарантировать, что proof получен из текущего открытого TLS session. |
+| `RegistrySourceSessionVerifier::verify_source_session(const SourceSessionEvidence&) noexcept` **(policy implementation реализована)** | Сверяет точный локальный Station ID, source, ACTIVE state и registration revision; проверяет 32-байтовую длину proof. Реализованный ControllerLink ingress adapter получает proof через service exporter в синхронном callback текущей открытой TLS session; verifier не пересчитывает exporter и не доказывает его свежесть самостоятельно. |
 | `is_valid_source_registration_lookup_result()` **(реализована)** | Отклоняет неизвестные статусы и противоречивые ответы registry reader; NOT_FOUND/UNAVAILABLE/ERROR допускаются только с пустой записью. |
 | `SourceSessionRepository::confirm_source_session(const SourceCursorReadResult&, const VerifiedSourceSession&) noexcept` **(логический порт реализован; production adapter отсутствует)** | Транзакционно сравнивает полный ожидаемый cursor и ревизию ACTIVE-регистрации. Создаёт начальный cursor или атомарно заменяет source_instance с очисткой last_sequence; AlreadyCurrent сохраняет sequence. |
-| `SourceSessionEvidence` **(непрозрачный тип реализован)** | Закрытый конструктор и поля, только read-only getters; обычный application/API код не может собрать evidence из payload. Единственный production friend зарезервирован за AuthenticatedEventTransportAdapter, реализация которого ещё отсутствует. |
+| `SourceSessionEvidence` **(непрозрачный тип реализован)** | Закрытый конструктор и поля, только read-only getters; обычный application/API код не может собрать evidence из payload. Реализованный `AuthenticatedEventTransportAdapter` — единственный production friend; C++ access control не является sandbox против произвольного native-кода внутри процесса. |
 | `is_valid_source_session_evidence()` / `is_valid_verified_source_session()` **(реализованы)** | Проверяют наличие обязательных полей источника, сессии, доказательства peer identity и ревизии регистрации. |
 | `is_valid_source_session_verification_result()` **(реализована)** | Проверяет точное совпадение Verified source/instance с исходным доказательством; отрицательные статусы обязаны иметь пустой payload; неизвестный статус отклоняется. |
 | `is_valid_source_session_confirmation_result()` **(реализована)** | Проверяет семантику Confirmed/AlreadyCurrent относительно ожидаемого полного cursor; ошибки и конфликты обязаны возвращать пустой cursor. |
@@ -55,7 +55,7 @@
 | `SourceSessionCoordinator::SourceSessionCoordinator(SourceSessionVerifier&, SourceCursorReader&, SourceSessionRepository&) noexcept` **(реализован)** | Сохраняет невладеющие ссылки на три порта; адаптеры должны жить дольше координатора. |
 | `SourceSessionCoordinator::confirm(const Event&, const SourceSessionEvidence&) noexcept` **(реализована)** | До обращения к портам проверяет точное совпадение Event.source/source_instance с закрытыми getters evidence; затем вызывает verifier, читает текущий cursor и передаёт только VerifiedSourceSession в repository. Возвращает cursor только для Confirmed/AlreadyCurrent; прочие статусы закрывают обработку. |
 
-Host harness SSR-01…SSR-20 вызывает production coordinator с fake verifier/reader/repository; test-only SourceSessionEvidenceTestAccess создаёт тестовые фикстуры, а compile-time static_assert подтверждает отсутствие публичного конструктора и aggregate initialization. Fake ports проверяют только программные границы и моделируют CAS/revision. Новый CTest `source_session_verifier` отдельно проверяет policy на fake registry; он не является реальным registry storage, transport adapter или доказательством физической аутентификации и защищённого канала.
+Host harness SSR-01…SSR-20 вызывает production coordinator с fake verifier/reader/repository; test-only SourceSessionEvidenceTestAccess создаёт тестовые фикстуры, а compile-time static_assert подтверждает отсутствие публичного конструктора и aggregate initialization. Fake ports проверяют только программные границы и моделируют CAS/revision. CTest `source_session_verifier` проверяет policy на fake registry; TLS/PTY сценарий в `test_controller_link_service` отдельно проверяет generic ingress callback и binding evidence. Эти host fixtures не являются production registry/storage, production event projector, Gateway composition root или доказательством физической аутентификации ESP32.
 
 ### src/core/event_handling.cpp
 
@@ -69,7 +69,7 @@ Host harness SSR-01…SSR-20 вызывает production coordinator с fake ver
 |---|---|
 | StationEventPipeline::StationEventPipeline(EventRepository&, EventProcessorPort&, EventProcessorPort&, EventProcessorPort&, SourceSessionVerifier&, SourceCursorReader&, SourceSessionRepository&) noexcept | Создаёт таблицу из пяти согласованных пар и SourceSessionCoordinator; все зависимости передаются по невладеющим ссылкам и должны жить дольше pipeline. |
 | StationEventPipeline::is_configured() const noexcept | Сообщает о готовности внутреннего EventProcessorRouter до запуска приёма событий. |
-| StationEventPipeline::handle(const Event&, const EventValidationPolicy&, const SourceSessionEvidence&) noexcept (реализована; 46 контрактных проверок в tests/) | Выполняет чистые F01/F02 preflight-проверки, затем подтверждает сессию через SourceSessionCoordinator; только Confirmed/AlreadyCurrent запускают F03/F04 и профиль. Не принимает произвольный SourceCursor и не продвигает sequence; pipeline запрещено копировать/перемещать. Реальные transport/storage adapters и production composition root отсутствуют. |
+| StationEventPipeline::handle(const Event&, const EventValidationPolicy&, const SourceSessionEvidence&) noexcept (реализована; 46 контрактных проверок в tests/) | Выполняет чистые F01/F02 preflight-проверки, затем подтверждает сессию через SourceSessionCoordinator; только Confirmed/AlreadyCurrent запускают F03/F04 и профиль. Не принимает произвольный SourceCursor и не продвигает sequence; pipeline запрещено копировать/перемещать. Generic ControllerLink ingress adapter реализован; production registry/session storage adapters, production projector и Gateway composition root отсутствуют. |
 | StationEventPipelineResult | Содержит optional session_status (пустой, если F01/F02 остановили событие до обращения к Coordinator) и optional event_result. |
 
 ### src/core/event_processor_router.cpp
@@ -1127,7 +1127,7 @@ hardwarePlatformInfo публикует выбранный платформен�
 
 `_validate_controller_telemetry()` проверяет статус/состояние канала, sequence и identity, UTC received_at, максимум 16 элементов, все пять типов значения, диапазоны int64/uint64, finite NUMBER и quality enum. Старые снимки без раздела остаются допустимыми. `QmlOperatorBridge.controllerTelemetry` формирует generic list без предположений о типе датчика; `controllerTelemetrySummary` отображает sequence, время получения и состояние канала. QML panel `sensors.controller-telemetry` показывает реальные sensor_id/value/unit/quality/measured_at на странице «Датчики».
 
-**Ограничения:** один REQUEST_SNAPSHOT на логическую сессию; периодический запрос, SSM Event/StationEventPipeline, production SourceSessionEvidence adapter/verifier, DiagnosticsManager, постоянное хранение/история и backup/restore отсутствуют. Fixture-телеметрия в host-тесте синтетическая и не выдаётся за данные физического ESP32.
+**Ограничения:** один REQUEST_SNAPSHOT на логическую сессию; периодический запрос, production ControllerEventProjector, production registry/session repository adapters, Gateway composition-root wiring, DiagnosticsManager, постоянное хранение/история и backup/restore отсутствуют. Generic `AuthenticatedEventTransportAdapter` теперь может передать спроектированный Event в StationEventPipeline; test-only projector намеренно получает Unsupported для SUBSYSTEM_STATUS_UPDATED, потому что F13 route не утверждён/не реализован. Fixture-телеметрия в host-тесте синтетическая и не выдаётся за данные физического ESP32.
 
 **Проверка:** GitHub Actions run 43818913284 SUCCESS для точного HEAD `a89b05eae1d3189bdb5306e4830f027421a4827c`: CTest 25/25 на x64 и ARM64, 31/31 C++ host programs и 158 Python/QML/e2e tests. Сквозной `controller_link_service` прошёл на обеих архитектурах, включая TLS peer/PTY и публикацию fixture-телеметрии. ARM64 Gateway-only build без обнаружения SQLite, Release bundle staging/installer, Sigstore provenance creation и verification также прошли. Signed artifact: [14203573374](https://github.com/GooseRabbit/dockstation/actions/runs/43818913284/artifacts/14203573374); attestation: [67996530](https://github.com/GooseRabbit/dockstation/attestations/67996530); archive SHA-256 `ac47e180e04bd721f4f39463a1f4944b021acc38e68a01168e073e3e5e70b7cf`. Physical Repka OS, UART, ESP32 and Mbed TLS interop remain open.
 
@@ -1135,3 +1135,26 @@ hardwarePlatformInfo публикует выбранный платформен�
 ### Host-проверка TLS exporter
 
 `verification/repka_gateway/test_controller_psk_tls_client.cpp` проверяет совпадение 32-байтового exporter результата на TLS client/server, разделение результатов для разных context, отказ до handshake и очистку output после close. `verification/repka_gateway/test_controller_link_service.cpp` проверяет gating на уровне сервиса: proof недоступен до аутентификации и доступен только после TLS + HELLO_ACK. GitHub Actions run 43821980151 SUCCESS: CTest 25/25 x64 и ARM64, 31/31 C++ host programs, 158 Python/QML/e2e; ARM64 Gateway-only build, release bundle staging и Sigstore provenance также прошли. Это host OpenSSL↔OpenSSL, не Mbed TLS interop и не аппаратная приёмка.
+
+## Дополнение: доверенный ControllerLink ingress adapter
+
+### `src/platform/linux/controller_link_service.hpp/.cpp`
+
+| Тип / функция | Назначение |
+|---|---|
+| `ControllerLinkMessageHandler` | Синхронный callback одного входящего сообщения; сервис вызывает его только для TELEMETRY_SNAPSHOT/ERROR после TLS handshake, HELLO_ACK, peer/version/instance/sequence validation и до consume frame. Decoded views действительны только внутри callback. |
+| `ControllerLinkService::attach_message_handler()` / `detach_message_handler()` | Регистрирует один handler до start; lifetime handler должен завершиться до уничтожения service. |
+| `authenticated_pair_identity()` | Возвращает локальную 16-байтовую PSK identity, скопированную из credentials, использованных TLS client; доступна только при TLS + ControllerLink Established и очищается на fail/stop. Это не PSK secret и не Station ID. |
+| `authenticated_peer_controller_id()` | Возвращает локально ожидаемый peer ID только после Established; входной envelope уже прошёл точную проверку ControllerLinkSession. |
+
+### `src/communications/authenticated_event_transport_adapter.hpp/.cpp`
+
+| Тип / функция | Назначение |
+|---|---|
+| `ControllerEventProjector::project()` | Внедряемое domain mapping message → event-specific fields. Не задаёт source, instance, sequence, event_id или received_at; backing string_view должны жить до возврата Pipeline. |
+| `AuthenticatedEventTransportAdapter` | Прикрепляется до ControllerLinkService::start. Проверяет live channel, локальную pair identity и accepted envelope; создаёт Event + opaque SourceSessionEvidence из одного кадра и текущего exporter proof; синхронно вызывает StationEventPipeline. |
+| `AuthenticatedEventTransportStatistics` | Счётчики accepted/projected/invoked/rejected/unmapped messages и последние session/event статусы; не содержит PSK/exporter. |
+
+`source` задаётся локальной конфигурацией; `source_instance`/sequence берутся из уже проверенного envelope; `received_at` назначает Gateway как decimal Unix epoch milliseconds. `event_id` включает hex(pair identity), length-prefixed source и instance и sequence, чтобы одинаковые tuples разных PSK-пар не конфликтовали в общей базе. `session_proof` получается в момент callback через ControllerLinkService exporter; proof bytes не журналируются и очищаются RAII после вызова.
+
+**Проверка:** `test_controller_link_service` запускает TLS 1.3 PSK-DHE peer через POSIX PTY, прикрепляет adapter до service start и передаёт один test TELEMETRY_SNAPSHOT. Проверяются отсутствие callback до HELLO_ACK, недоступность identity до Established, точная передача pair identity/exporter/source/instance/sequence, детерминированный event_id и отсутствие второго вызова после replayed sequence. Test-only projector отображает fixture в SUBSYSTEM_STATUS_UPDATED; текущий F13 ожидаемо возвращает Unsupported. Это не production domain mapping, registry/storage adapter, Gateway wiring, Mbed TLS interop или hardware acceptance.

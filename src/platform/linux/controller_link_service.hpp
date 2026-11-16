@@ -14,6 +14,20 @@
 
 namespace dockstation::platform::linux_platform {
 
+class ControllerLinkService;
+
+// Synchronous sink for application messages accepted by both TLS and the
+// ControllerLink session state machine. The decoded views are valid only for
+// the duration of this callback.
+class ControllerLinkMessageHandler {
+public:
+    virtual ~ControllerLinkMessageHandler() = default;
+    virtual void on_authenticated_controller_message(
+        ControllerLinkService& service,
+        const hardware::interfaces::ControllerCodecDecodedMessage& message,
+        std::uint64_t received_at_unix_ms) noexcept = 0;
+};
+
 enum class ControllerLinkServiceState : std::uint8_t {
     NotConfigured,
     TlsHandshake,
@@ -65,6 +79,20 @@ public:
     void stop() noexcept;
 
     [[nodiscard]] ControllerLinkServiceStatus status() const noexcept;
+
+    // Attach before start(); this service must outlive the handler, which
+    // detaches itself before destruction. A single handler is supported.
+    [[nodiscard]] bool attach_message_handler(
+        ControllerLinkMessageHandler& handler) noexcept;
+    void detach_message_handler(
+        ControllerLinkMessageHandler& handler) noexcept;
+
+    // These values are available only while the authenticated TLS and
+    // ControllerLink sessions are both Established. The pair identity is
+    // copied from the local credential actually used by the TLS client.
+    [[nodiscard]] std::string_view authenticated_pair_identity() const noexcept;
+    [[nodiscard]] std::string_view authenticated_peer_controller_id() const noexcept;
+
     [[nodiscard]] const hardware::interfaces::ControllerTelemetrySnapshot&
     telemetry_snapshot() const noexcept { return telemetry_snapshot_; }
 
@@ -123,6 +151,10 @@ private:
     bool configured_{false};
     bool tls_authenticated_{false};
     bool snapshot_request_pending_{false};
+    ControllerLinkMessageHandler* message_handler_{nullptr};
+    std::array<std::uint8_t, kControllerPskIdentitySize>
+        authenticated_pair_identity_{};
+    bool authenticated_pair_identity_available_{false};
 };
 
 }  // namespace dockstation::platform::linux_platform

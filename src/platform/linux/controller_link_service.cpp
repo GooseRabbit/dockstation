@@ -325,6 +325,9 @@ void ControllerLinkService::stop() noexcept {
     telemetry_snapshot_.clear();
     OPENSSL_cleanse(outbound_frame_.data(), outbound_frame_.size());
     OPENSSL_cleanse(local_instance_id_.data(), local_instance_id_.size());
+    OPENSSL_cleanse(authenticated_pair_identity_.data(),
+                    authenticated_pair_identity_.size());
+    authenticated_pair_identity_available_ = false;
     outbound_frame_size_ = 0U;
     outbound_frame_offset_ = 0U;
     next_retry_ms_ = 0U;
@@ -363,6 +366,46 @@ ControllerLinkServiceStatus ControllerLinkService::status() const noexcept {
     return {state_, tls_authenticated_, protocol_established,
             telemetry_snapshots_received_, error_messages_received_,
             rejected_frames_, error_code_};
+}
+
+bool ControllerLinkService::attach_message_handler(
+    ControllerLinkMessageHandler& handler) noexcept {
+    if (configured_ ||
+        (message_handler_ != nullptr && message_handler_ != &handler)) {
+        return false;
+    }
+    message_handler_ = &handler;
+    return true;
+}
+
+void ControllerLinkService::detach_message_handler(
+    ControllerLinkMessageHandler& handler) noexcept {
+    if (message_handler_ == &handler) {
+        message_handler_ = nullptr;
+    }
+}
+
+std::string_view ControllerLinkService::authenticated_pair_identity() const noexcept {
+    if (state_ != ControllerLinkServiceState::Established ||
+        !session_.has_value() ||
+        session_->state() != ControllerLinkSessionState::Established ||
+        !transport_.is_handshake_complete() ||
+        !authenticated_pair_identity_available_) {
+        return {};
+    }
+    return {reinterpret_cast<const char*>(authenticated_pair_identity_.data()),
+            authenticated_pair_identity_.size()};
+}
+
+std::string_view
+ControllerLinkService::authenticated_peer_controller_id() const noexcept {
+    if (state_ != ControllerLinkServiceState::Established ||
+        !session_.has_value() ||
+        session_->state() != ControllerLinkSessionState::Established ||
+        !transport_.is_handshake_complete()) {
+        return {};
+    }
+    return identifier_view(peer_controller_id_, peer_controller_id_size_);
 }
 
 bool ControllerLinkService::copy_configuration(
@@ -411,6 +454,9 @@ void ControllerLinkService::attempt_transport_start(
     const ControllerPskCredentialFileStatus credential_status =
         load_controller_psk_credentials(&credentials);
 #endif
+    OPENSSL_cleanse(authenticated_pair_identity_.data(),
+                    authenticated_pair_identity_.size());
+    authenticated_pair_identity_available_ = false;
     if (credential_status != ControllerPskCredentialFileStatus::Success) {
         credentials.clear();
         error_code_ = credential_error_code(credential_status);
@@ -428,16 +474,24 @@ void ControllerLinkService::attempt_transport_start(
 
     const ControllerTransportResult result =
         transport_.start(uart_device_path_.data(), credentials);
-    credentials.clear();
     if (result.status != ControllerTransportStatus::Started) {
+        credentials.clear();
         state_ = ControllerLinkServiceState::LinkLost;
         error_code_ = "CONTROLLER_UART_OPEN_FAILED";
         next_retry_ms_ = now_ms + kReconnectDelayMilliseconds;
         tls_authenticated_ = false;
         snapshot_request_pending_ = false;
         decoder_.reset();
+        OPENSSL_cleanse(authenticated_pair_identity_.data(),
+                        authenticated_pair_identity_.size());
+        authenticated_pair_identity_available_ = false;
         return;
     }
+
+    std::copy(credentials.identity.begin(), credentials.identity.end(),
+              authenticated_pair_identity_.begin());
+    authenticated_pair_identity_available_ = true;
+    credentials.clear();
 
     state_ = ControllerLinkServiceState::TlsHandshake;
     error_code_ = "";
@@ -455,6 +509,9 @@ void ControllerLinkService::fail_transport(
         session_->stop();
     }
     decoder_.reset();
+    OPENSSL_cleanse(authenticated_pair_identity_.data(),
+                    authenticated_pair_identity_.size());
+    authenticated_pair_identity_available_ = false;
     OPENSSL_cleanse(outbound_frame_.data(), outbound_frame_.size());
     outbound_frame_size_ = 0U;
     outbound_frame_offset_ = 0U;
@@ -576,8 +633,9 @@ bool ControllerLinkService::process_ready_frame(std::uint64_t now_ms) noexcept {
         return false;
     }
 
+    const std::uint64_t received_at_unix_ms = unix_epoch_milliseconds();
     if (decoded.envelope.type == ControllerMessageType::TelemetrySnapshot) {
-        if (!telemetry_snapshot_.replace(decoded, unix_epoch_milliseconds())) {
+        if (!telemetry_snapshot_.replace(decoded, received_at_unix_ms)) {
             ++rejected_frames_;
             fail_transport("CONTROLLER_TELEMETRY_SNAPSHOT_REJECTED", now_ms);
             return false;
@@ -585,6 +643,13 @@ bool ControllerLinkService::process_ready_frame(std::uint64_t now_ms) noexcept {
         ++telemetry_snapshots_received_;
     } else if (decoded.envelope.type == ControllerMessageType::Error) {
         ++error_messages_received_;
+    }
+    if ((decoded.envelope.type == ControllerMessageType::TelemetrySnapshot ||
+         decoded.envelope.type == ControllerMessageType::Error) &&
+        state_ == ControllerLinkServiceState::Established &&
+        tls_authenticated_ && message_handler_ != nullptr) {
+        message_handler_->on_authenticated_controller_message(
+            *this, decoded, received_at_unix_ms);
     }
     if (accepted.event == ControllerLinkSessionEvent::SessionEstablished) {
         snapshot_request_pending_ = true;
