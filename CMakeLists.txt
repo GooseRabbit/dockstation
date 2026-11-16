@@ -407,6 +407,19 @@ if(BUILD_TESTING)
     dockstation_apply_compile_policy(test_source_session_verifier)
     add_test(NAME source_session_verifier COMMAND test_source_session_verifier)
 
+    add_executable(test_subsystem_status_event_processor
+        src/core/event_processing.cpp
+        src/core/event_validation.cpp
+        src/core/subsystem_status_event_processor.cpp
+        verification/repka_gateway/test_subsystem_status_event_processor.cpp
+    )
+    target_include_directories(test_subsystem_status_event_processor
+        PRIVATE "${PROJECT_SOURCE_DIR}/src"
+    )
+    dockstation_apply_compile_policy(test_subsystem_status_event_processor)
+    add_test(NAME subsystem_status_event_processor
+        COMMAND test_subsystem_status_event_processor)
+
     add_executable(test_station_event_pipeline
         src/core/event_processing.cpp
         src/core/event_validation.cpp
@@ -457,6 +470,7 @@ if(BUILD_TESTING)
                     test_source_cursor_reader
                     test_source_session_contract
                     test_source_session_verifier
+                    test_subsystem_status_event_processor
                     test_station_event_pipeline)
                 target_compile_options(${target_name} PRIVATE
                     -fsanitize=address,undefined
@@ -548,6 +562,9 @@ if(BUILD_TESTING)
                 -fsanitize=address,undefined
             )
             target_link_options(test_source_session_verifier PRIVATE
+                -fsanitize=address,undefined
+            )
+            target_link_options(test_subsystem_status_event_processor PRIVATE
                 -fsanitize=address,undefined
             )
             target_link_options(test_station_event_pipeline PRIVATE

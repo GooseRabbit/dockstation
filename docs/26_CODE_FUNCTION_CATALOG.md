@@ -93,6 +93,17 @@ Host harness SSR-01…SSR-20 вызывает production coordinator с fake ver
 | `OperationUpdateDecoderPort::decode_next_status(const Event& event)` | Логический порт доверенного адаптера: преобразует payload конкретного формата в типизированный `OperationLifecycleStatus`; не меняет событие и не фиксирует состояние. |
 | `OperationUpdateEventProcessor::process(const Event& event, EventCategory category, const SourceCursor& expected_cursor) noexcept` **(реализована; профильная связка F13 → F09)** | Обрабатывает только `OPERATION_STATUS_UPDATED / Operation`, требует `VALID`, вызывает адаптер, передаёт исходное событие и курсор в F09 и отображает её результат в общий статус F13. Не меняет глобальное состояние станции и не выполняет физических действий. |
 
+### src/core/subsystem_status_event_processor.hpp/.cpp
+
+| Элемент | Назначение |
+|---|---|
+| `SubsystemStatusEventDecoderPort::decode(const Event& event)` | Storage- и serialization-neutral порт: преобразует непрозрачный payload SUBSYSTEM_STATUS_UPDATED в типизированный subsystem_id/status/error_code/severity/description/reason_text; все views живут до возврата processor. |
+| `SubsystemRegistrationReader::find_subsystem(station_id, subsystem_id)` | Read-only точный поиск регистрации подсистемы в локальной станции; результат должен содержать source, registration_revision и ACTIVE/DISABLED/REVOKED. Дубликаты и противоречивые ответы отклоняются. |
+| `SubsystemStatusRepository::commit_subsystem_status()` | Логический атомарный commit port: проверяет текущую ACTIVE-регистрацию/revision, весь expected SourceCursor и event_id; сохраняет статус/отчёт/Event и продвигает cursor одной транзакцией. Физическая БД не выбрана. |
+| `SubsystemStatusEventProcessor::process()` | Обрабатывает только SUBSYSTEM_STATUS_UPDATED/Subsystem, VALID schema 1; проверяет порядок, payload, точную активную регистрацию и вызывает commit port. Наблюдательные статусы PASS/DEGRADED/FAIL/UNKNOWN не имеют отдельной запрещающей матрицы; любой принятый report возвращается в F13 как NoStateChange относительно глобального автомата, не управляет оборудованием и не меняет глобальное состояние. Пока не зарегистрирован в StationEventPipeline. |
+
+CTest: `verification/repka_gateway/test_subsystem_status_event_processor.cpp` / `subsystem_status_event_processor`. Fake adapters проверяют fail-closed контракт и передачу expected registration/cursor; это не проверка production persistence или физической атомарности.
+
 ### src/core/operation_timeout_event_processor.cpp
 
 | Элемент | Назначение |

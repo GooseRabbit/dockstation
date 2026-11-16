@@ -1,7 +1,7 @@
 # Интерфейсы и контракты данных
 
 **Статус:** предварительная спецификация.  
-**Редакция:** 1.39
+**Редакция:** 1.40
 **Дата актуализации:** 2026-11-16.
 
 ## 1. Назначение
@@ -563,11 +563,30 @@ Host end-to-end проверка в `verification/repka_gateway/test_controller_
 - `ERROR` с полной валидной парой → `SUBSYSTEM_STATUS_UPDATED` со schema_version=1; JSON payload содержит subsystem_id, status, error_code, severity, description и reason_text только когда он известен;
 - некорректный payload, неизвестный enum и неполная пара → Error без Event.
 
-`quality_status=VALID` означает, что сообщение прошло структурную и доверенную транспортную проверку; это не означает, что subsystem_status равен PASS. `occurred_at` не заполняется, пока формат и смысл времени источника не будут согласованы. Полученный Event проходит session-gated Pipeline, но у текущего F13 Router пока нет маршрута SUBSYSTEM_STATUS_UPDATED; Pipeline возвращает Unsupported и не фиксирует доменное изменение. Реальный профильный processor, постоянный registry/session repository и Gateway composition root остаются последующими задачами.
+`quality_status=VALID` означает, что сообщение прошло структурную и доверенную транспортную проверку; это не означает, что subsystem_status равен PASS. `occurred_at` не заполняется, пока формат и смысл времени источника не будут согласованы. Входящий Event проходит session-gated Pipeline. Подготовлен отдельный storage-neutral `SubsystemStatusEventProcessor`, но он пока не включён в F13 Router: production registration reader, транзакционный repository и Gateway composition root отсутствуют. Поэтому текущий Pipeline по-прежнему возвращает Unsupported и не фиксирует доменное изменение.
 
 Изменение ERROR body введено в логическом ControllerLink protocol 1.1. ControllerLinkSession требует точного совпадения major/minor; downgrade к 1.0 не выполняется. Wire-frame ControllerCodec остаётся формата v1. ESP32 firmware/Mbed TLS peer должен быть согласованно обновлён до 1.1 до физического обмена; аппаратная совместимость ещё не проверена.
 
-`ControllerSubsystemStatusEventProjector` покрыт отдельным CTest `controller_subsystem_status_event_projector`; `controller_protocol` и `controller_codec` дополнены проверками all-or-nothing и round-trip новых полей; `controller_link_service` использует production projector в OpenSSL/PTY сквозном fixture. Результат CI для редакции 1.39 будет внесён после фактического выполнения workflow.
+`ControllerSubsystemStatusEventProjector` покрыт отдельным CTest `controller_subsystem_status_event_projector`; `controller_protocol` и `controller_codec` дополнены проверками all-or-nothing и round-trip новых полей; `controller_link_service` использует production projector в OpenSSL/PTY сквозном fixture. Новый storage-neutral processor покрыт отдельным CTest `subsystem_status_event_processor` на fake-портах; эти проверки не доказывают production-транзакционность. CI для редакции 1.40 ожидает выполнения workflow.
+
+### 16.10. Профильная обработка SUBSYSTEM_STATUS_UPDATED
+
+`SubsystemStatusEventProcessor` принимает только точную пару `SUBSYSTEM_STATUS_UPDATED / Subsystem`, `quality_status=VALID`, `schema_version=1`, непустые `source_instance` и `source_sequence`. Payload остаётся непрозрачным для SSM: `SubsystemStatusEventDecoderPort` преобразует его в типизированные поля subsystem_id, status, error_code, severity, description и необязательный reason_text. Core не выбирает JSON-библиотеку или иной формат сериализации.
+
+Этот processor не является границей аутентификации транспорта. Он вызывается только после того, как `StationEventPipeline`/`SourceSessionCoordinator` подтвердили `SourceSessionEvidence` для активной сессии. Подсистемный реестр дополняет эту проверку: он связывает точный subsystem_id с локальной станцией и разрешённым Event.source. Ни payload, ни Event.source сами по себе не являются доказательством доверия.
+
+Перед фиксацией processor:
+1. повторно проверяет структуру Event и точное содержимое event_id через read-only EventRepository;
+2. проверяет, что source/source_instance совпадают с expected SourceCursor, а source_sequence строго новее сохранённого номера;
+3. декодирует payload и проверяет допустимые значения; reason_text в payload должен совпадать с нормализованной парой reason_code/reason_text Event;
+4. запрашивает точную регистрацию subsystem_id для локального Station ID; запись должна быть ACTIVE и связывать этот subsystem_id именно с Event.source;
+5. передаёт все проверенные данные в одну транзакцию SubsystemStatusRepository.
+
+Для статуса подсистемы используются только PASS, DEGRADED, FAIL и UNKNOWN. UNKNOWN является полноценным наблюдаемым результатом, а не пропуском поля. NOT_CONFIGURED, NOT_APPLICABLE и DEFERRED — контекстные исходы диагностики и не принимаются как controller-reported status. Между четырьмя наблюдаемыми статусами пока не вводится отдельная запрещающая матрица: любой явно сообщённый статус может сменить предыдущий, если событие прошло доверенную регистрацию, качество и проверку строгого порядка. В частности, PASS после FAIL и UNKNOWN после PASS не выводятся и не запрещаются по severity. Само обновление не меняет глобальное состояние станции, не выдаёт ALLOW и не запускает физические действия.
+
+`SubsystemStatusRepository::commit_subsystem_status()` обязан атомарно повторно подтвердить ACTIVE-регистрацию и её revision, сравнить все поля expected SourceCursor, проверить уникальность event_id и сохранить отчёт/актуальный статус/исходный Event вместе с продвижением source cursor. Повтор того же event_id с тем же содержимым возвращает DuplicateEvent; другое содержимое — EventConflict; конкурентное изменение регистрации или cursor — отдельный отказ. Любая ошибка оставляет все данные без частичной фиксации. Любое подтверждённое обновление возвращает NoStateChange относительно глобального StationState: профиль изменяет только отдельную запись подсистемы и никогда не переводит глобальный автомат. Даже если subsystem status не изменился, отчёт/event_id сохраняется и cursor продвигается атомарно.
+
+Это storage-neutral контракт. Fake-порты в CTest проверяют порядок вызовов, проверки входа и передачу ожидаемых данных, но не являются production adapter и не доказывают физическую атомарность. `StationEventPipeline` пока намеренно не регистрирует этот маршрут: без production registry/repository он должен возвращать Unsupported. Реальные registry reader, storage adapter и Gateway composition root остаются отдельной интеграцией после выбора backend.
 
 ## 17. Контракт телеметрии и удалённых команд
 
