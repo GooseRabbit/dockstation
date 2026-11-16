@@ -559,6 +559,20 @@ if(BUILD_TESTING)
 
     add_test(NAME controller_psk_credential_provision_help
         COMMAND dockstation-credential-provision --help)
+    add_test(NAME controller_psk_credential_provision_rejects_invalid_id
+        COMMAND dockstation-credential-provision --check
+            --local-controller-id "repka id"
+            --peer-controller-id "esp32-01")
+    set_tests_properties(
+        controller_psk_credential_provision_rejects_invalid_id
+        PROPERTIES WILL_FAIL TRUE)
+    add_test(NAME controller_psk_credential_provision_rejects_identical_ids
+        COMMAND dockstation-credential-provision --check
+            --local-controller-id "controller-01"
+            --peer-controller-id "controller-01")
+    set_tests_properties(
+        controller_psk_credential_provision_rejects_identical_ids
+        PROPERTIES WILL_FAIL TRUE)
 
     add_executable(test_local_api
         verification/repka_gateway/test_local_api.cpp
