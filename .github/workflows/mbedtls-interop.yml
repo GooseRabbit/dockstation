@@ -39,4 +39,4 @@ jobs:
         run: cmake --build build-mbedtls-interop --target test_controller_mbedtls_server_interop --parallel 2
 
       - name: Run OpenSSL / Mbed TLS interop acceptance
-        run: ctest --test-dir build-mbedtls-interop -R controller_mbedtls_server_interop --output-on-failure
+        run: ctest --test-dir build-mbedtls-interop -R controller_mbedtls_server_interop --output-on-failure --verbose
