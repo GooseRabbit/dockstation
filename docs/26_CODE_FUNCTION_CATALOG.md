@@ -1072,7 +1072,7 @@ Optional RuntimeConfig keys: controller_uart_device, controller_local_id, contro
 | SqliteSourceSessionStore::read_source_cursor() | Реализует SourceCursorReader; читает source_instance/last_sequence одной записью. Sequence хранится как десятичный TEXT, сохраняя полный uint64 диапазон. |
 | SqliteSourceSessionStore::confirm_source_session() | Реализует SourceSessionRepository; в одной BEGIN IMMEDIATE транзакции повторно проверяет ACTIVE/revision регистрации и compare-and-set полного ожидаемого cursor. Новая сессия очищает last_sequence; AlreadyCurrent не меняет sequence. |
 
-Адаптер не выполняет TLS, не создаёт SourceSessionEvidence и не доверяет значениям peer payload. Он получает peer identity только через SourceRegistrationReader вызывающего verifier-а, а session confirmation — только от SourceSessionCoordinator. Все методы должны вызываться сериализованным composition root; returned string_view действуют до следующего вызова того же reader port. Адаптер пока не подключён к Gateway composition root и не реализует SubsystemRegistrationReader/SubsystemStatusRepository.
+Адаптер не выполняет TLS, не создаёт SourceSessionEvidence и не доверяет значениям peer payload. Он получает peer identity только через SourceRegistrationReader вызывающего verifier-а, а session confirmation — только от SourceSessionCoordinator. Все методы должны вызываться сериализованным composition root; registry, expected-cursor и confirmation-result string_view имеют отдельные backing buffers, чтобы coordinator мог сравнить исходный снимок после возврата commit-port. Адаптер пока не подключён к Gateway composition root и не реализует SubsystemRegistrationReader/SubsystemStatusRepository.
 
 
 

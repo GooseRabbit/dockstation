@@ -77,13 +77,17 @@ public:
 private:
     SqliteDatabase& database_;
 
-    // The registry and cursor buffers are separate because the coordinator
-    // keeps VerifiedSourceSession views alive while it reads/commits a cursor.
+    // Registry, expected-cursor and confirmation-result buffers are separate.
+    // SourceSessionCoordinator validates the returned confirmation against the
+    // expected cursor after this method returns; mutating the reader's cursor
+    // buffer here would silently rewrite that expected snapshot.
     std::string registration_station_id_;
     std::string registration_source_;
     std::string registration_revision_;
     std::string cursor_source_;
     std::string cursor_instance_;
+    std::string confirmation_source_;
+    std::string confirmation_instance_;
 };
 
 }  // namespace dockstation::platform::persistence

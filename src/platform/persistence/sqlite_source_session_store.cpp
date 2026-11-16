@@ -636,10 +636,12 @@ SqliteSourceSessionStore::confirm_source_session(
         return confirmation_failure(SourceSessionConfirmationStatus::Error);
     }
 
-    cursor_source_.assign(verified_session.source);
-    cursor_instance_.assign(verified_session.source_instance);
+    // Keep the reader's expected-cursor buffers unchanged until the
+    // coordinator validates this result against that original snapshot.
+    confirmation_source_.assign(verified_session.source);
+    confirmation_instance_.assign(verified_session.source_instance);
     return {SourceSessionConfirmationStatus::Confirmed,
-            {cursor_source_, cursor_instance_, std::nullopt}};
+            {confirmation_source_, confirmation_instance_, std::nullopt}};
 }
 
 }  // namespace dockstation::platform::persistence
