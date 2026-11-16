@@ -149,7 +149,8 @@ int main() {
     std::array<std::uint8_t, kControllerCodecMaximumFrameSize> round_trip_frame{};
     ControllerCodecDecodeStorage round_trip_storage{};
     ControllerCodecDecodedMessage decoded{};
-    expect(round_trip(result.outbound_message, result.outbound_payload, decoded,\n                   round_trip_frame, round_trip_storage) &&
+    expect(round_trip(result.outbound_message, result.outbound_payload, decoded,
+                   round_trip_frame, round_trip_storage) &&
                decoded.envelope.type == ControllerMessageType::HelloAck &&
                decoded.envelope.controller_id == "esp32-01" &&
                decoded.envelope.sequence_number == 1U,
@@ -231,12 +232,20 @@ int main() {
                result.outbound_message.sequence_number == 2U,
            "builds a typed telemetry response using the shared outbound sequence");
 
-    expect(round_trip(result.outbound_message, result.outbound_payload, decoded,\n                   round_trip_frame, round_trip_storage) &&
+    expect(round_trip(result.outbound_message, result.outbound_payload, decoded,
+                   round_trip_frame, round_trip_storage) &&
                decoded.envelope.type == ControllerMessageType::TelemetrySnapshot &&
                decoded.envelope.sequence_number == 2U &&
                std::get<ControllerTelemetrySnapshotPayload>(
                    decoded.payload).measurement_count == 2U,
            "telemetry response round-trips with both typed measurements");
+
+    expect(session.make_telemetry_snapshot(
+               ControllerTelemetrySnapshotPayload{measurements.data(),
+                                                  measurements.size()},
+               "1700000000300").status ==
+               ControllerLinkPeerSessionStatus::InvalidState,
+           "does not emit a second response until another snapshot request arrives");
 
     session.stop();
     expect(session.state() == ControllerLinkPeerSessionState::Stopped &&
