@@ -1028,6 +1028,18 @@ duplicate/invalid revision, Station ID mismatch и DB owner/mode. GitHub Actions
 Python/Operator/Gateway integration-тестов; ARM64 bundle/staging и Sigstore provenance
 прошли. Это не Mbed TLS или physical Repka acceptance.
 
+### firmware/esp32/components/controller_mbedtls_psk_server/controller_link_peer_service.hpp/.cpp
+
+| Функция / тип | Назначение |
+|---|---|
+| \`ControllerLinkPeerService::start()\` | Создаёт один non-copyable \`ControllerLinkPeerSession\` и запускает TLS server. Логический протокол не стартует до TLS PSK-DHE authentication. |
+| \`ControllerLinkPeerService::poll()\` | Ограниченный event-loop шаг: продвигает TLS, получает plaintext, собирает потоковые кадры через \`ControllerFrameStreamDecoder\`, валидирует их через production \`ControllerCodec\` и \`ControllerLinkPeerSession\`, формирует/отправляет HELLO_ACK. |
+| \`ControllerLinkPeerService::send_telemetry_snapshot()\` | Разрешает caller-supplied TELEMETRY_SNAPSHOT только после принятого REQUEST_SNAPSHOT. Неверный snapshot возвращает отказ, не расходует ожидающий запрос и не завершает TLS session. |
+| \`ControllerLinkPeerService::export_authenticated_session_proof()\` | Выдаёт общий 32-byte TLS exporter только после завершённого TLS handshake и полной отправки HELLO_ACK; до этого очищает output и возвращает false. |
+| \`ControllerLinkPeerService::restart_transport()\` | Поднимает новый TLS transport на прежнем peer-session объекте, сохраняя local instance и sequence/replay history текущего boot. |
+
+Проверка: \`verification/repka_gateway/test_controller_link_peer_service.cpp\`, CTest \`controller_link_peer_service\`; GitHub Actions [interop #43908199426](https://github.com/GooseRabbit/dockstation/actions/runs/43908199426) — PASS. Вместе с \`controller_mbedtls_server_interop\` тест соединяет OpenSSL client с upstream Mbed TLS 3.6.7 server через неблокирующий server-side POSIX socket: TLS 1.3 handshake, HELLO/HELLO_ACK, запрет exporter до HELLO_ACK, совпадение exporter с Repka, REQUEST_SNAPSHOT и типизированный TELEMETRY_SNAPSHOT; проверяется отказ на пустом sensor_id с сохранением ожидающего запроса. Это не ESP-IDF target build, Espressif Mbed TLS fork или физическая UART/датчиковая проверка.
+
 ### firmware/esp32/components/controller_mbedtls_psk_server
 
 | Функция / тип | Назначение |

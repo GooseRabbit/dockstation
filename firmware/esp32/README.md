@@ -29,15 +29,25 @@ plaintext until handshake completion, disables early data and issues no
 session tickets. Its 32-byte TLS exporter uses the same label/context as the
 Repka OpenSSL client.
 
-The component is included in a host interop test against upstream Mbed TLS
-3.6.7 with the existing OpenSSL client over a POSIX socket pair. The test
-covers handshake, matching exporter output, bidirectional encrypted application
-data and rejection of a wrong PSK or identity. This is not yet an ESP-IDF
-firmware image and does not prove compatibility with Espressif's Mbed TLS fork
-or a physical UART.
+The component now also includes \`ControllerLinkPeerService\`. It starts the
+shared logical peer session only after TLS authentication, sends HELLO_ACK,
+blocks exporter access until HELLO_ACK has been transmitted, and turns an
+accepted REQUEST_SNAPSHOT into a pending application request. The application
+must supply a real typed TELEMETRY_SNAPSHOT; invalid sensor data is rejected
+without consuming the request or closing the session. The transport can be
+restarted on the same peer-session object while retaining sequence/replay
+history for the current controller boot.
+
+Host interop/integration tests connect the existing OpenSSL client to upstream
+Mbed TLS 3.6.7 over a POSIX socket pair. They cover TLS handshake, exporter
+parity, wrong PSK/identity rejection, bidirectional encrypted data,
+HELLO/HELLO_ACK, exporter gating and REQUEST_SNAPSHOT/TELEMETRY_SNAPSHOT,
+including invalid-snapshot retry. GitHub Actions
+[run #43908199426](https://github.com/GooseRabbit/dockstation/actions/runs/43908199426)
+passed both interop CTests. This is not yet an ESP-IDF firmware image and does
+not prove compatibility with Espressif's Mbed TLS fork or physical UART.
 
 The ESP-IDF application project, board profile and \`sdkconfig\` remain
 intentionally uncreated until the exact ESP32 module/SoC and flash size are
-confirmed. The TLS server component can be included by the future project
-without moving or copying its source. Secure NVS provisioning, Flash Encryption,
-Secure Boot, DHT22 acquisition and GPIO drivers remain separate tasks.
+confirmed. Secure NVS provisioning, Flash Encryption, Secure Boot, DHT22
+acquisition and GPIO drivers remain separate tasks.
