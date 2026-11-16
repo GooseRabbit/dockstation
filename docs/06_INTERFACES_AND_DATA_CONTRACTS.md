@@ -1,7 +1,7 @@
 # Интерфейсы и контракты данных
 
 **Статус:** предварительная спецификация.  
-**Редакция:** 1.38
+**Редакция:** 1.39
 **Дата актуализации:** 2026-11-16.
 
 ## 1. Назначение
@@ -451,7 +451,7 @@ StateChanged публикуется только после подтверждё
 
 Тело `TELEMETRY_SNAPSHOT`: uint8 количества измерений (0…16), затем для каждого измерения: sensor_id (uint16 длины + UTF-8), wire-tag значения и значение, unit (uint16 длины + UTF-8), quality (uint8), measured_at (uint16 длины + UTF-8). Wire-tag значения: 1=bool (строго 0 или 1), 2=int64, 3=uint64, 4=IEEE-754 binary64, 5=text (uint16 длины + UTF-8). Коды quality: 1=OK, 2=STALE, 3=INVALID, 4=UNAVAILABLE, 5=NOT_CONFIGURED, 6=UNKNOWN.
 
-Тело `ERROR`: error_code (uint16 длины + UTF-8), severity (uint8: 1=INFO, 2=WARNING, 3=ERROR, 4=CRITICAL), description (uint16 длины + UTF-8), reason_text (uint16 длины + UTF-8; нулевая длина означает неизвестную причину). Тела HELLO, HELLO_ACK, HEARTBEAT и REQUEST_SNAPSHOT после общего конверта пустые.
+Тело `ERROR` в логическом ControllerLink protocol 1.1: error_code (uint16 длины + UTF-8), severity (uint8: 1=INFO, 2=WARNING, 3=ERROR, 4=CRITICAL), description (uint16 длины + UTF-8), reason_text (uint16 длины + UTF-8; нулевая длина означает неизвестную причину), флаг наличия subsystem context (uint8: 0 или 1). При флаге 1 далее следуют subsystem_id (uint16 длины + UTF-8) и subsystem_status (uint8: 1=PASS, 2=DEGRADED, 3=FAIL, 4=UNKNOWN). subsystem_id и subsystem_status необязательны, но передаются только парой; частичная пара и неизвестное значение отклоняются. Severity не выводится из subsystem_status и наоборот. В логическом protocol 1.0 эта пара отсутствовала; ControllerLinkSession требует точное совпадение версии и не выполняет downgrade. Wire-frame ControllerCodec остаётся версии 1. Тела HELLO, HELLO_ACK, HEARTBEAT и REQUEST_SNAPSHOT после общего конверта пустые.
 
 Ограничения кодека: максимальный полный кадр 2048 байт; не более 16 измерений; длины текстовых полей передаются как uint16 и дополнительно ограничиваются общей длиной кадра. Текст должен быть корректным UTF-8 без встроенного NUL. Timestamp пока передаётся как непрозрачная UTF-8 строка: его синтаксис и временная шкала ещё не согласованы.
 
@@ -536,7 +536,7 @@ C++ Gateway добавляет необязательный раздел `contro
 
 Operator API validator проверяет enum типов и качества, тип значения, допустимые диапазоны int64/uint64, конечность NUMBER, обязательные поля и согласованность sequence/identity/received_at. Раздел является additive extension: старые diagnostics snapshots без `controller_telemetry` продолжают приниматься. На вкладке «Датчики» отображаются только фактически принятые измерения с исходным sensor_id, value, unit, quality и measured_at.
 
-**Ограничения текущего среза:** `REQUEST_SNAPSHOT` пока отправляется один раз после установления логической сессии; периодичность последующих запросов не выбрана и не реализована. Snapshot хранится только в памяти процесса Gateway и очищается при его остановке. Добавлен общий `AuthenticatedEventTransportAdapter`: он получает callback только после успешной проверки TLS и ControllerLink, формирует Event и SourceSessionEvidence из одного кадра/канала и синхронно вызывает `StationEventPipeline`, если передан `ControllerEventProjector`. Однако production-проектор телеметрии/ошибок в типы событий и payload ещё не реализован; тестовый проектор использует `SUBSYSTEM_STATUS_UPDATED`, для которого в текущем F13 нет профильного маршрута, и ожидаемо получает `Unsupported`. Production RegistryReader, SourceSessionRepository и Gateway composition-root wiring отсутствуют; DiagnosticsManager не подключён. Постоянная запись в SQLite не выполняется, поскольку DEC-068 остаётся предложением. Поэтому текущий API snapshot остаётся read-only публикацией последнего принятого кадра, а не историей измерений или постоянной моделью состояния станции.
+**Ограничения текущего среза:** `REQUEST_SNAPSHOT` пока отправляется один раз после установления логической сессии; периодичность последующих запросов не выбрана и не реализована. Телеметрия является отдельным отчётным потоком, а не SSM Event: текущая реализация хранит только последний принятый `ControllerTelemetrySnapshot` в памяти Gateway и публикует его через diagnostics API/Operator. Это ещё не исторический список отчётов: накопление, сроки хранения, поиск и графики появятся после выбора и реализации постоянного storage adapter; DEC-068 с SQLite остаётся предложением. Добавлен `ControllerSubsystemStatusEventProjector`: он не проецирует TELEMETRY_SNAPSHOT и generic ERROR; только ERROR protocol 1.1 с полной парой subsystem_id/subsystem_status создаёт SUBSYSTEM_STATUS_UPDATED. Severity не используется для вывода состояния. Generic `AuthenticatedEventTransportAdapter` связывает кадр, Event и SourceSessionEvidence в одном callback и вызывает Pipeline только при результате Projected. Production RegistryReader, SourceSessionRepository, DiagnosticsManager, storage adapters и Gateway composition-root wiring отсутствуют. SUBSYSTEM_STATUS_UPDATED известен классификатору, но в F13 пока нет профильного маршрута: сквозной host-тест подтверждает доверенный вход и получает ожидаемый Unsupported, а не запись/изменение состояния станции.
 
 Host-проверки: CTest `controller_telemetry_snapshot` проверяет копирование после переиспользования исходных буферов, границы количества измерений, отклонение неверного типа/sequence, атомарность замены и пустой snapshot; CTest `local_api` проверяет JSON для всех типов значений и статусов. `test_controller_link_service` дополнительно проходит host-композицию ControllerLinkService + TLS 1.3 PSK-DHE OpenSSL peer + POSIX PTY: HELLO/HELLO_ACK, REQUEST_SNAPSHOT, один синтетический fixture TELEMETRY_SNAPSHOT, сериализацию diagnostics, отказ на повторном sequence, сохранение последнего снимка и его очистку при stop. В тесте ephemeral PSK/identity передаются через compile-time test seam, доступный только при `BUILD_TESTING`; production/release использует прежний защищённый credential store. Operator pytest проверяет корректные/некорректные snapshots и обратную совместимость, QML smoke test — наличие панели телеметрии. Это не Mbed TLS interop, не реальный ESP32 и не физическая UART acceptance.
 
@@ -547,13 +547,31 @@ Host-проверки: CTest `controller_telemetry_snapshot` проверяет 
 
 При успешном открытии transport service копирует 16-байтовую PSK identity из локальных credentials, которые были переданы TLS-клиенту. Это identity текущей пары Repka—ESP32, не Station ID и не секрет PSK; она доступна только при одновременно установленной TLS и логической ControllerLink сессии и очищается при ошибке канала/stop. Peer Controller ID доступен в том же состоянии как локально ожидаемое значение, с которым ControllerLink уже сверил принятый HELLO_ACK и последующие кадры. TLS exporter proof извлекается адаптером из живой текущей сессии в момент callback; он не принимается из payload, не журналируется и очищается после синхронного вызова.
 
-`AuthenticatedEventTransportAdapter` привязывает один принятый кадр к одному Event и одному SourceSessionEvidence. Локально настроенный `source` не берётся из peer payload; `source_instance` и `source_sequence` берутся из envelope, прошедшего ControllerLinkSession. Приёмная сторона назначает `received_at` из Gateway Unix epoch milliseconds (десятичное строковое представление); `occurred_at` остаётся необязательным и задаётся projector-ом только если источник предоставляет достоверную временную метку. Event ID детерминированно связывает пару PSK identity (hex), source, source_instance и sequence с length-prefix для текстовых идентификаторов. Проектор возвращает только event-specific поля: event_type, payload, quality/schema и связанные operation/reason поля. Все его string_view должны оставаться действительными до завершения `StationEventPipeline::handle()`.
+`AuthenticatedEventTransportAdapter` связывает принятый кадр с локально настроенным source, проверенными `source_instance`/`source_sequence`, Gateway-side `received_at`, pair identity и TLS exporter proof. Event ID детерминированно связывает пару PSK identity (hex), source, instance и sequence с length-prefix. Проектор возвращает только event-specific поля. Если projector возвращает Projected, адаптер создаёт Event + SourceSessionEvidence и синхронно вызывает Pipeline; если NotApplicable, Pipeline не вызывается и сообщение остаётся вне SSM event stream. Все string_view проектора должны оставаться действительными до завершения `StationEventPipeline::handle()`. `occurred_at` остаётся пустым, пока timestamp источника не имеет согласованного и проверенного формата.
 
-До вызова Pipeline адаптер требует source_instance и source_sequence, проверяет текущее Established-состояние и точное совпадение controller_id с локально ожидаемым peer ID, затем строит приватный `SourceSessionEvidence` из тех же source/instance, локальной pair identity и 32-байтового exporter proof. Pipeline вызывается синхронно, пока кадровая и proof-память действительна. Адаптер не выбирает семантику события, не меняет payload и не добавляет маршрут F13.
+До вызова Pipeline адаптер требует source_instance и source_sequence, проверяет текущее Established-состояние и точное совпадение controller_id с локально ожидаемым peer ID, затем строит приватный `SourceSessionEvidence` из тех же source/instance, локальной pair identity и 32-байтового exporter proof. Для telemetry projector возвращает NotApplicable, и Pipeline не вызывается. Для явного subsystem ERROR Event и Evidence передаются синхронно, пока кадровая и proof-память действительны. Адаптер не меняет payload и не создаёт F13 route.
 
-Host end-to-end проверка в `verification/repka_gateway/test_controller_link_service.cpp` использует OpenSSL TLS 1.3 PSK-DHE peer и POSIX PTY. Она подтверждает, что handler не вызывается до HELLO_ACK, pair identity не раскрывается до установления логической сессии, принятый telemetry frame передаёт в тестовый projector ожидаемые source/instance/sequence, а SourceSessionEvidence содержит точную локальную pair identity и exporter текущего канала. Тестовый projector создаёт `SUBSYSTEM_STATUS_UPDATED`; общий pipeline подтверждает сессию, но возвращает `Unsupported`, поскольку профиль F13 для этого типа ещё не утверждён/не добавлен. Повторный sequence отклоняется до callback и Pipeline. Это host-проверка OpenSSL↔OpenSSL, а не Mbed TLS interop, production registry/storage, реальное ESP32 или физическая UART acceptance.
+Host end-to-end проверка в `verification/repka_gateway/test_controller_link_service.cpp` использует OpenSSL TLS 1.3 PSK-DHE peer и POSIX PTY. Она подтверждает, что handler не вызывается до HELLO_ACK, pair identity не раскрывается до установления логической сессии, принятая телеметрия копируется в отдельный snapshot и не вызывает Pipeline, а ERROR с явной subsystem identity/status проходит через production projector и создаёт Event/Evidence из одного кадра/канала. Fake registry/cursor/session adapters подтверждают вызов session-gated Pipeline; F13 возвращает `Unsupported`, так как профиль SUBSYSTEM_STATUS_UPDATED ещё не реализован, поэтому событие не фиксирует состояние. Generic ERROR без пары subsystem fields не проецируется. Повторный sequence отклоняется до callback и Pipeline. Это host-проверка OpenSSL↔OpenSSL, а не Mbed TLS interop, production registry/storage, реальное ESP32 или физическая UART acceptance.
+
+### 16.9. Отчётный поток телеметрии и проекция ошибок (ControllerLink protocol 1.1)
+
+Контракт `ControllerErrorPayload` расширен необязательной парой `subsystem_id` и `subsystem_status`. Допустимые состояния из controller report: PASS, DEGRADED, FAIL и UNKNOWN. Пара либо отсутствует целиком, либо содержит оба поля; пустой ID, частичная пара и неизвестный enum отклоняются валидатором. Значение severity хранится отдельно и никогда не используется для вывода состояния подсистемы.
+
+`ControllerSubsystemStatusEventProjector` действует fail-closed:
+- `TELEMETRY_SNAPSHOT` → NotApplicable; данные остаются в отдельном отчётном snapshot-потоке;
+- `ERROR` без пары subsystem fields → NotApplicable; generic error не объявляет изменение состояния;
+- `ERROR` с полной валидной парой → `SUBSYSTEM_STATUS_UPDATED` со schema_version=1; JSON payload содержит subsystem_id, status, error_code, severity, description и reason_text только когда он известен;
+- некорректный payload, неизвестный enum и неполная пара → Error без Event.
+
+`quality_status=VALID` означает, что сообщение прошло структурную и доверенную транспортную проверку; это не означает, что subsystem_status равен PASS. `occurred_at` не заполняется, пока формат и смысл времени источника не будут согласованы. Полученный Event проходит session-gated Pipeline, но у текущего F13 Router пока нет маршрута SUBSYSTEM_STATUS_UPDATED; Pipeline возвращает Unsupported и не фиксирует доменное изменение. Реальный профильный processor, постоянный registry/session repository и Gateway composition root остаются последующими задачами.
+
+Изменение ERROR body введено в логическом ControllerLink protocol 1.1. ControllerLinkSession требует точного совпадения major/minor; downgrade к 1.0 не выполняется. Wire-frame ControllerCodec остаётся формата v1. ESP32 firmware/Mbed TLS peer должен быть согласованно обновлён до 1.1 до физического обмена; аппаратная совместимость ещё не проверена.
+
+`ControllerSubsystemStatusEventProjector` покрыт отдельным CTest `controller_subsystem_status_event_projector`; `controller_protocol` и `controller_codec` дополнены проверками all-or-nothing и round-trip новых полей; `controller_link_service` использует production projector в OpenSSL/PTY сквозном fixture. Результат CI для редакции 1.39 будет внесён после фактического выполнения workflow.
 
 ## 17. Контракт телеметрии и удалённых команд
+
+Телеметрия и сообщения о состоянии подсистем не смешиваются в один журнал. `TELEMETRY_SNAPSHOT` поступает в отдельный отчётный поток измерений: sensor_id, типизированное value, unit, quality, measured_at, source/instance, source sequence и received_at. В текущем Gateway срезе удерживается только последний snapshot; исторический список отчётов, пагинация, фильтрация и графики требуют отдельного постоянного report store и политики хранения. `TELEMETRY_SNAPSHOT` не преобразуется автоматически в `SUBSYSTEM_STATUS_UPDATED` и не должен засорять SSM event stream.
 
 Телеметрия должна иметь отдельную версионируемую схему и временную метку.
 
@@ -567,6 +585,7 @@ Host end-to-end проверка в `verification/repka_gateway/test_controller_
 - источник/модуль;
 - error_code;
 - severity: INFO, WARNING, ERROR или CRITICAL;
+- необязательную пару subsystem_id + subsystem_status (PASS, DEGRADED, FAIL или UNKNOWN), если контроллер явно сообщает состояние конкретной подсистемы;
 - понятное описание;
 - operation_id и correlation_id, если ошибка относится к операции/запросу;
 - время формирования и получения;
@@ -576,7 +595,7 @@ Host end-to-end проверка в `verification/repka_gateway/test_controller_
 
 Если причина не установлена, поле reason_text не заполняется предположением; интерфейс явно показывает, что причина неизвестна.
 
-Само значение severity не задаёт автоматически глобальное состояние станции. Реакция выбирается по утверждённой политике конкретного отказа.
+Само значение severity не задаёт автоматически состояние подсистемы или глобальное состояние станции. subsystem_status должен быть отдельным явно сообщённым значением; Gateway не выводит FAIL из CRITICAL/ERROR и не выводит PASS из INFO. Generic ERROR без полной пары subsystem_id/subsystem_status остаётся отчётом и не превращается в SSM event. Реакция на SUBSYSTEM_STATUS_UPDATED выбирается по утверждённому профилю и политике конкретной подсистемы.
 
 ## 19. Идентификаторы операций и lifecycle
 

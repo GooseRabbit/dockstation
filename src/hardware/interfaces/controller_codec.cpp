@@ -351,6 +351,33 @@ private:
     }
 }
 
+[[nodiscard]] bool write_subsystem_status(
+    Writer& writer, ControllerSubsystemStatus status) noexcept {
+    std::uint8_t wire_value = 0U;
+    switch (status) {
+        case ControllerSubsystemStatus::Pass: wire_value = 1U; break;
+        case ControllerSubsystemStatus::Degraded: wire_value = 2U; break;
+        case ControllerSubsystemStatus::Fail: wire_value = 3U; break;
+        case ControllerSubsystemStatus::Unknown: wire_value = 4U; break;
+    }
+    return writer.write_u8(wire_value);
+}
+
+[[nodiscard]] bool read_subsystem_status(
+    Reader& reader, ControllerSubsystemStatus& status) noexcept {
+    std::uint8_t wire_value = 0U;
+    if (!reader.read_u8(wire_value)) {
+        return false;
+    }
+    switch (wire_value) {
+        case 1U: status = ControllerSubsystemStatus::Pass; return true;
+        case 2U: status = ControllerSubsystemStatus::Degraded; return true;
+        case 3U: status = ControllerSubsystemStatus::Fail; return true;
+        case 4U: status = ControllerSubsystemStatus::Unknown; return true;
+        default: return false;
+    }
+}
+
 [[nodiscard]] bool write_sensor_value(
     Writer& writer, const ControllerSensorValue& value) noexcept {
     if (value.valueless_by_exception()) {
@@ -505,7 +532,17 @@ private:
             if (!writer.write_text(error->error_code) ||
                 !write_error_severity(writer, error->severity) ||
                 !writer.write_text(error->description) ||
-                !writer.write_text(error->reason_text)) {
+                !writer.write_text(error->reason_text) ||
+                !writer.write_u8(error->subsystem_id.has_value() ? 1U : 0U)) {
+                status = writer.status();
+                if (status == ControllerCodecStatus::Success) {
+                    status = ControllerCodecStatus::InvalidPayload;
+                }
+                return false;
+            }
+            if (error->subsystem_id.has_value() &&
+                (!writer.write_text(*error->subsystem_id) ||
+                 !write_subsystem_status(writer, *error->subsystem_status))) {
                 status = writer.status();
                 if (status == ControllerCodecStatus::Success) {
                     status = ControllerCodecStatus::InvalidPayload;
@@ -569,15 +606,33 @@ private:
 
         case ControllerMessageType::Error: {
             ControllerErrorPayload error{};
+            std::uint8_t has_subsystem_status = 0U;
             if (!reader.read_text(error.error_code) ||
                 !read_error_severity(reader, error.severity) ||
                 !reader.read_text(error.description) ||
-                !reader.read_text(error.reason_text)) {
+                !reader.read_text(error.reason_text) ||
+                !reader.read_u8(has_subsystem_status) ||
+                has_subsystem_status > 1U) {
                 status = reader.status();
                 if (status == ControllerCodecStatus::Success) {
                     status = ControllerCodecStatus::MalformedField;
                 }
                 return false;
+            }
+            if (has_subsystem_status == 1U) {
+                std::string_view subsystem_id{};
+                ControllerSubsystemStatus subsystem_status{
+                    ControllerSubsystemStatus::Unknown};
+                if (!reader.read_text(subsystem_id) ||
+                    !read_subsystem_status(reader, subsystem_status)) {
+                    status = reader.status();
+                    if (status == ControllerCodecStatus::Success) {
+                        status = ControllerCodecStatus::MalformedField;
+                    }
+                    return false;
+                }
+                error.subsystem_id = subsystem_id;
+                error.subsystem_status = subsystem_status;
             }
             payload = error;
             return true;

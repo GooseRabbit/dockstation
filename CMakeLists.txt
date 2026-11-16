@@ -132,6 +132,7 @@ dockstation_apply_compile_policy(dockstation_station_events)
 # to the session-gated SSM pipeline without coupling core to Linux/OpenSSL.
 add_library(dockstation_event_transport STATIC
     src/communications/authenticated_event_transport_adapter.cpp
+    src/communications/controller_subsystem_status_event_projector.cpp
 )
 target_include_directories(dockstation_event_transport
     PUBLIC "${PROJECT_SOURCE_DIR}/src"
@@ -320,6 +321,16 @@ if(BUILD_TESTING)
     add_test(NAME controller_telemetry_snapshot
         COMMAND test_controller_telemetry_snapshot)
 
+    add_executable(test_controller_subsystem_status_event_projector
+        verification/repka_gateway/test_controller_subsystem_status_event_projector.cpp
+    )
+    target_link_libraries(test_controller_subsystem_status_event_projector
+        PRIVATE dockstation_event_transport
+    )
+    dockstation_apply_compile_policy(test_controller_subsystem_status_event_projector)
+    add_test(NAME controller_subsystem_status_event_projector
+        COMMAND test_controller_subsystem_status_event_projector)
+
     add_executable(test_controller_link_service
         verification/repka_gateway/test_controller_link_service.cpp
     )
@@ -438,6 +449,7 @@ if(BUILD_TESTING)
                     test_controller_psk_tls_client
                     test_controller_uart_port
                     test_controller_transport_manager
+                    test_controller_subsystem_status_event_projector
                     test_controller_link_service
                     test_controller_telemetry_snapshot
                     test_controller_psk_credential_store
@@ -503,6 +515,9 @@ if(BUILD_TESTING)
                 -fsanitize=address,undefined
             )
             target_link_options(test_controller_transport_manager PRIVATE
+                -fsanitize=address,undefined
+            )
+            target_link_options(test_controller_subsystem_status_event_projector PRIVATE
                 -fsanitize=address,undefined
             )
             target_link_options(test_controller_link_service PRIVATE

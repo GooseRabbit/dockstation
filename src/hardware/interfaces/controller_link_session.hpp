@@ -52,7 +52,7 @@ struct ControllerLinkSessionConfig {
     // This is a sequence namespace, not an authentication credential.
     std::string_view local_controller_instance_id{};
     std::string_view peer_controller_id{};
-    ControllerProtocolVersion protocol_version{1U, 0U};
+    ControllerProtocolVersion protocol_version{1U, 1U};
     std::uint64_t handshake_timeout_ms{3000U};
     std::uint64_t heartbeat_interval_ms{1000U};
     std::uint64_t heartbeat_timeout_ms{5000U};
@@ -140,7 +140,7 @@ private:
     std::size_t peer_controller_id_size_{0U};
     std::size_t peer_controller_instance_id_size_{0U};
 
-    ControllerProtocolVersion protocol_version_{1U, 0U};
+    ControllerProtocolVersion protocol_version_{1U, 1U};
     std::uint64_t handshake_timeout_ms_{0U};
     std::uint64_t heartbeat_interval_ms_{0U};
     std::uint64_t heartbeat_timeout_ms_{0U};

@@ -883,15 +883,15 @@ PlatformLogger обслуживает технические сообщения 
 | Функция / тип | Назначение |
 |---|---|
 | `ControllerMessageType` | Типизированный перечень HELLO, HELLO_ACK, HEARTBEAT, REQUEST_SNAPSHOT, TELEMETRY_SNAPSHOT и ERROR. |
-| `ControllerProtocolVersion` | Пара major/minor; точное совпадение настроенной версии применяется `ControllerLinkSession`, без автоматического negotiation. |
+| `ControllerProtocolVersion` | Пара major/minor логического ControllerLink protocol; текущая версия — 1.1. Точное совпадение major/minor применяется `ControllerLinkSession`, negotiation и downgrade отсутствуют. |
 | `ControllerMessageEnvelope` | Невладеющее представление общих метаданных сообщения: тип, версия, controller_id, controller_instance_id, sequence_number и sent_at. |
 | `SensorQualityStatus` | Шесть статусов телеметрии из docs/06 §3 и §25.1: OK, STALE, INVALID, UNAVAILABLE, NOT_CONFIGURED и UNKNOWN. ERROR не является качеством измерения. |
 | `EmptyControllerMessagePayload` | Пустое тело для HELLO, HELLO_ACK, HEARTBEAT и REQUEST_SNAPSHOT; тип сообщения задаёт смысл операции. |
 | `ControllerTelemetryMeasurement` / `ControllerTelemetrySnapshotPayload` | Caller-owned список измерений со sensor_id, variant-значением, единицей, качеством и отдельным временем измерения. |
-| `ControllerErrorPayload` / `ControllerErrorSeverity` | Структурированная ошибка с кодом, серьёзностью, описанием и необязательной известной причиной. |
+| `ControllerErrorPayload` / `ControllerErrorSeverity` / `ControllerSubsystemStatus` | Структурированный ERROR с кодом, severity, описанием, причиной и необязательной all-or-nothing парой subsystem_id + subsystem_status (PASS/DEGRADED/FAIL/UNKNOWN). Severity и состояние независимы; одно не выводится из другого. |
 | `ControllerMessagePayload` | Типизированный variant логических тел; это не wire-сериализация. |
 | `validate_controller_message()` | Fail-closed проверка типа и наличия обязательных полей общего конверта. Не проверяет политику версии/sequence и формат временной метки; версия и строгий порядок sequence применяются в `ControllerLinkSession`. |
-| `validate_controller_message_payload()` | Проверяет соответствие типа сообщения телу, обязательные поля измерений и ошибок, известность quality/severity и конечность вещественных значений. |
+| `validate_controller_message_payload()` | Проверяет соответствие типа сообщения телу, обязательные поля измерений/ошибок, известность quality/severity/subsystem_status, all-or-nothing пару subsystem_id/subsystem_status и конечность вещественных значений. |
 
 Проверка: `verification/repka_gateway/test_controller_protocol.cpp`; CTest — `controller_protocol`. Логические тела и валидаторы реализованы.
 
@@ -906,7 +906,7 @@ PlatformLogger обслуживает технические сообщения 
 | `encode_controller_message()` | Кодирует logical envelope + payload в полный бинарный кадр v1 в caller-owned буфер без динамического выделения памяти. |
 | `decode_controller_message()` | Проверяет и декодирует ровно один полный кадр v1; отклоняет неверный magic/version/type/length/CRC, некорректный UTF-8, недопустимые value tags и превышение лимитов. |
 
-Wire v1: magic `DS`, wire version 1, тип сообщения 1…6, uint16 little-endian body length, общий envelope, typed payload и CRC-32/ISO-HDLC по header + body. Максимальный кадр 2048 байт, максимум 16 измерений. Подробная таблица полей — docs/06 §16.3.
+Wire-frame v1: magic `DS`, wire version 1, тип сообщения 1…6, uint16 little-endian body length, общий envelope, typed payload и CRC-32/ISO-HDLC по header + body. Логическая ControllerLink version в общем envelope сейчас 1.1. Для ERROR после reason_text добавлен presence byte; при 1 далее идут subsystem_id (UTF-8) и один из четырёх кодов subsystem_status. Максимальный кадр 2048 байт, максимум 16 измерений. Подробная таблица полей — docs/06 §16.3; версия 1.0 не принимается из-за exact-match policy.
 
 Проверка: `verification/repka_gateway/test_controller_codec.cpp`; CTest — `controller_codec`. Host-тесты проверяют round-trip HELLO/telemetry/ERROR, все типы значений, границы целых чисел, нулевой snapshot, UTF-8, размеры, повреждённую CRC и malformed frames. Кодек декодирует один полный кадр; накопление потока выполняет `ControllerFrameStreamDecoder`. CRC не является аутентификацией/шифрованием. UART-драйвер, защищённый transport/session verifier и ESP-IDF firmware target остаются отдельными задачами.
 
@@ -1017,7 +1017,7 @@ Host-проверка: `verification/repka_gateway/test_controller_psk_tls_clien
 | ControllerLinkService::start() | Принимает optional UART path и локальные/peer controller IDs. При полностью пустой конфигурации остаётся NOT_CONFIGURED; частичная/некорректная конфигурация отклоняется до открытия устройства. Credentials загружаются только из root-controlled credential store. |
 | ControllerLinkService::poll() | Ограниченный шаг event loop: продвигает TLS/UART, начинает HELLO только после TLS handshake, принимает HELLO_ACK, посылает один REQUEST_SNAPSHOT, обслуживает heartbeat, принимает/проверяет входные кадры и восстанавливает соединение полным TLS handshake при ошибке транспорта. |
 | ControllerLinkService::status() / stop() | Возвращает безопасный read-only статус без PSK/identity; завершает transport, сессию и очищает временные буферы. |
-| process_plaintext() / process_ready_frame() | Подаёт в ControllerFrameStreamDecoder только TLS application data; затем ControllerCodec и ControllerLinkSession проверяют frame, payload, peer, protocol version и sequence. Принятый TELEMETRY_SNAPSHOT копируется в ControllerTelemetrySnapshot и доступен diagnostics serializer; ERROR учитывается счётчиком. Данные не передаются в SSM/хранилище. |
+| process_plaintext() / process_ready_frame() | Подаёт в ControllerFrameStreamDecoder только TLS application data; затем ControllerCodec и ControllerLinkSession проверяют frame, payload, peer, protocol version и sequence. TELEMETRY_SNAPSHOT копируется в ControllerTelemetrySnapshot отдельного отчётного потока; ERROR передаётся attached handler после session acceptance. Событие SSM появляется только если injected projector возвращает Projected; generic ERROR и telemetry остаются вне Pipeline. |
 
 Optional RuntimeConfig keys: controller_uart_device, controller_local_id, controller_peer_id. Все три должны быть заданы вместе; PSK и identity в .conf не хранятся. Read-only Gateway продолжает запускаться при NOT_CONFIGURED. API: GET /api/v1/controller/link; system diagnostics отмечает controller connected только после успешных TLS и логического handshake. `verification/repka_gateway/test_controller_link_service.cpp`, CTest `controller_link_service`, теперь включает end-to-end сценарий: ephemeral PSK fixture, OpenSSL TLS 1.3 PSK-DHE peer через POSIX PTY, HELLO/HELLO_ACK, REQUEST_SNAPSHOT, один синтетический TELEMETRY_SNAPSHOT, diagnostics JSON, replay rejection, WARN для сохранённого снимка после потери связи и clear при stop. Отдельный test seam в `ControllerLinkService` собирается только с `BUILD_TESTING`; production/release по-прежнему напрямую вызывает защищённый credential store. GitHub Actions run 43818913284 SUCCESS: 25/25 CTest на x64 и ARM64, 31/31 C++ host-программ, 158 pytest; ARM64 bundle собран, staging installer и Sigstore provenance проверены (67996530). Это не Mbed TLS interop, не физическая Repka/ESP32 и не UART acceptance.
 
@@ -1111,7 +1111,7 @@ hardwarePlatformInfo публикует выбранный платформен�
 
 | Функция | Назначение |
 |---|---|
-| `ControllerLinkService::process_ready_frame()` | После успешного ControllerCodec decode и ControllerLinkSession acceptance передаёт TELEMETRY_SNAPSHOT в `ControllerTelemetrySnapshot::replace()`; счётчик snapshot растёт только после успешной публикации. Ошибка копирования закрывает кадр/транспорт fail-closed. |
+| `ControllerLinkService::process_ready_frame()` | После успешного ControllerCodec decode и ControllerLinkSession acceptance передаёт TELEMETRY_SNAPSHOT в `ControllerTelemetrySnapshot::replace()`; для TELEMETRY_SNAPSHOT/ERROR синхронно вызывает attached handler до consume frame. Строковые view живы только в callback; projector NotApplicable не вызывает SSM Pipeline. Ошибка копирования закрывает кадр/транспорт fail-closed. |
 | `ControllerLinkService::telemetry_snapshot()` | Возвращает read-only доступ к последнему принятому snapshot для C++ Gateway serializer. |
 | `ControllerLinkService::export_authenticated_session_proof()` | Возвращает exporter proof только при установленном TLS и принятом ControllerLink HELLO_ACK; иначе очищает output и возвращает отказ. Не создаёт SSM evidence и не проверяет реестр источников. |
 
@@ -1127,7 +1127,7 @@ hardwarePlatformInfo публикует выбранный платформен�
 
 `_validate_controller_telemetry()` проверяет статус/состояние канала, sequence и identity, UTC received_at, максимум 16 элементов, все пять типов значения, диапазоны int64/uint64, finite NUMBER и quality enum. Старые снимки без раздела остаются допустимыми. `QmlOperatorBridge.controllerTelemetry` формирует generic list без предположений о типе датчика; `controllerTelemetrySummary` отображает sequence, время получения и состояние канала. QML panel `sensors.controller-telemetry` показывает реальные sensor_id/value/unit/quality/measured_at на странице «Датчики».
 
-**Ограничения:** один REQUEST_SNAPSHOT на логическую сессию; периодический запрос, production ControllerEventProjector, production registry/session repository adapters, Gateway composition-root wiring, DiagnosticsManager, постоянное хранение/история и backup/restore отсутствуют. Generic `AuthenticatedEventTransportAdapter` теперь может передать спроектированный Event в StationEventPipeline; test-only projector намеренно получает Unsupported для SUBSYSTEM_STATUS_UPDATED, потому что F13 route не утверждён/не реализован. Fixture-телеметрия в host-тесте синтетическая и не выдаётся за данные физического ESP32.
+**Ограничения:** один REQUEST_SNAPSHOT на логическую сессию; периодический запрос, production registry/session repository adapters, Gateway composition-root wiring, DiagnosticsManager и постоянная история отчётов отсутствуют. `ControllerSubsystemStatusEventProjector` реализован: telemetry и generic ERROR обходят SSM; только explicit subsystem status проецируется в SUBSYSTEM_STATUS_UPDATED. F13 route пока не существует, поэтому Pipeline возвращает Unsupported без state commit. Report stream Gateway пока удерживает только latest in-memory snapshot. Fixture-телеметрия/ERROR в host-тесте синтетические и не выдаются за данные физического ESP32.
 
 **Проверка:** GitHub Actions run 43818913284 SUCCESS для точного HEAD `a89b05eae1d3189bdb5306e4830f027421a4827c`: CTest 25/25 на x64 и ARM64, 31/31 C++ host programs и 158 Python/QML/e2e tests. Сквозной `controller_link_service` прошёл на обеих архитектурах, включая TLS peer/PTY и публикацию fixture-телеметрии. ARM64 Gateway-only build без обнаружения SQLite, Release bundle staging/installer, Sigstore provenance creation и verification также прошли. Signed artifact: [14203573374](https://github.com/GooseRabbit/dockstation/actions/runs/43818913284/artifacts/14203573374); attestation: [67996530](https://github.com/GooseRabbit/dockstation/attestations/67996530); archive SHA-256 `ac47e180e04bd721f4f39463a1f4944b021acc38e68a01168e073e3e5e70b7cf`. Physical Repka OS, UART, ESP32 and Mbed TLS interop remain open.
 
@@ -1151,10 +1151,21 @@ hardwarePlatformInfo публикует выбранный платформен�
 
 | Тип / функция | Назначение |
 |---|---|
-| `ControllerEventProjector::project()` | Внедряемое domain mapping message → event-specific fields. Не задаёт source, instance, sequence, event_id или received_at; backing string_view должны жить до возврата Pipeline. |
-| `AuthenticatedEventTransportAdapter` | Прикрепляется до ControllerLinkService::start. Проверяет live channel, локальную pair identity и accepted envelope; создаёт Event + opaque SourceSessionEvidence из одного кадра и текущего exporter proof; синхронно вызывает StationEventPipeline. |
+| `ControllerEventProjector::project()` | Внедряемое domain mapping message → event-specific fields. Не задаёт source, instance, sequence, event_id или received_at; backing string_view должны жить до завершения Pipeline. NotApplicable означает, что Event не создаётся и Pipeline не вызывается. |
+| `AuthenticatedEventTransportAdapter` | Прикрепляется до ControllerLinkService::start. Проверяет live channel, локальную pair identity и accepted envelope; для Projected создаёт Event + opaque SourceSessionEvidence из одного кадра и текущего exporter proof и синхронно вызывает Pipeline; NotApplicable оставляет сообщение вне SSM. |
 | `AuthenticatedEventTransportStatistics` | Счётчики accepted/projected/invoked/rejected/unmapped messages и последние session/event статусы; не содержит PSK/exporter. |
 
 `source` задаётся локальной конфигурацией; `source_instance`/sequence берутся из уже проверенного envelope; `received_at` назначает Gateway как decimal Unix epoch milliseconds. `event_id` включает hex(pair identity), length-prefixed source и instance и sequence, чтобы одинаковые tuples разных PSK-пар не конфликтовали в общей базе. `session_proof` получается в момент callback через ControllerLinkService exporter; proof bytes не журналируются и очищаются RAII после вызова.
 
 **Проверка:** `test_controller_link_service` запускает TLS 1.3 PSK-DHE peer через POSIX PTY, прикрепляет adapter до service start и передаёт один test TELEMETRY_SNAPSHOT. Проверяются отсутствие callback до HELLO_ACK, недоступность identity до Established, точная передача pair identity/exporter/source/instance/sequence, детерминированный event_id и отсутствие второго вызова после replayed sequence. Test-only projector отображает fixture в SUBSYSTEM_STATUS_UPDATED; текущий F13 ожидаемо возвращает Unsupported. Это не production domain mapping, registry/storage adapter, Gateway wiring, Mbed TLS interop или hardware acceptance.
+
+
+### src/communications/controller_subsystem_status_event_projector.hpp/.cpp
+
+| Функция / тип | Назначение |
+|---|---|
+| `ControllerSubsystemStatusEventProjector::project()` | Production mapping для ControllerLink ERROR protocol 1.1. Возвращает NotApplicable для TELEMETRY_SNAPSHOT и generic ERROR без полной пары subsystem_id/subsystem_status. Для явной валидной пары формирует SUBSYSTEM_STATUS_UPDATED с bounded JSON payload; severity сохраняется отдельно и не используется для вывода статуса. |
+| `ControllerSubsystemStatusEventProjector::append_json_string()` | Добавляет JSON string в фиксированный буфер с escaping кавычек, обратной косой черты и управляющих символов; не использует динамическую память. |
+| `ControllerSubsystemStatusEventProjector::reset()` | Очищает payload storage перед новым projection, чтобы output view не ссылался на прежнее сообщение. |
+
+Проверка: `verification/repka_gateway/test_controller_subsystem_status_event_projector.cpp`; CTest `controller_subsystem_status_event_projector`. Сквозной тест `controller_link_service` использует тот же production projector в TLS/PTY fixture: telemetry остаётся вне SSM, explicit subsystem ERROR доходит до Pipeline. Ожидаемый Unsupported означает, что профиль F13 и запись состояния ещё отсутствуют; этот тест не подтверждает доменный commit или физический ESP32.

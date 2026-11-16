@@ -34,7 +34,7 @@ ControllerLinkSessionConfig valid_config() {
     config.local_controller_id = "repka-01";
     config.local_controller_instance_id = "repka-boot-01";
     config.peer_controller_id = "esp32-01";
-    config.protocol_version = {1U, 0U};
+    config.protocol_version = {1U, 1U};
     config.handshake_timeout_ms = 3000U;
     config.heartbeat_interval_ms = 1000U;
     config.heartbeat_timeout_ms = 5000U;
@@ -47,7 +47,7 @@ ControllerCodecDecodedMessage make_message(
     std::string_view controller_id = "esp32-01",
     std::string_view instance_id = "esp32-boot-01",
     std::uint64_t sequence = 1U,
-    ControllerProtocolVersion version = {1U, 0U},
+    ControllerProtocolVersion version = {1U, 1U},
     ControllerMessagePayload payload =
         ControllerMessagePayload{EmptyControllerMessagePayload{}}) {
     ControllerCodecDecodedMessage message{};
@@ -84,7 +84,7 @@ int main() {
                result.outbound_message.controller_instance_id == "repka-boot-01" &&
                result.outbound_message.sequence_number == 1U &&
                result.outbound_message.protocol_version->major == 1U &&
-               result.outbound_message.protocol_version->minor == 0U,
+               result.outbound_message.protocol_version->minor == 1U,
            "HELLO contains configured local identity, version and first sequence");
     expect(validate_controller_message(result.outbound_message).status ==
                ControllerMessageValidationStatus::Valid &&
@@ -127,13 +127,13 @@ int main() {
 
     result = session.handle_message(
         make_message(ControllerMessageType::HelloAck, "esp32-01",
-                     "esp32-boot-01", 1U, {2U, 0U}), 200U);
+                     "esp32-boot-01", 1U, {1U, 0U}), 200U);
     expect(result.status == ControllerLinkSessionStatus::ProtocolVersionMismatch,
-           "rejects a different logical protocol version");
+           "rejects a legacy protocol 1.0 peer without downgrade");
 
     result = session.handle_message(
         make_message(ControllerMessageType::HelloAck, "esp32-01",
-                     "esp32-boot-01", 1U, {1U, 0U},
+                     "esp32-boot-01", 1U, {1U, 1U},
                      ControllerMessagePayload{ControllerErrorPayload{
                          "BAD", ControllerErrorSeverity::Error, "unexpected", {}}}),
         200U);
@@ -226,7 +226,7 @@ int main() {
         "lid.closed", true, "bool", SensorQualityStatus::Ok, "time"};
     result = session.handle_message(
         make_message(ControllerMessageType::TelemetrySnapshot, "esp32-01",
-                     "esp32-boot-01", 3U, {1U, 0U},
+                     "esp32-boot-01", 3U, {1U, 1U},
                      ControllerMessagePayload{ControllerTelemetrySnapshotPayload{
                          &measurement, 1U}}), 1600U);
     expect(result.status == ControllerLinkSessionStatus::Success &&
@@ -237,7 +237,7 @@ int main() {
         "SENSOR_WARN", ControllerErrorSeverity::Warning, "sensor warning", {}};
     result = session.handle_message(
         make_message(ControllerMessageType::Error, "esp32-01",
-                     "esp32-boot-01", 4U, {1U, 0U},
+                     "esp32-boot-01", 4U, {1U, 1U},
                      ControllerMessagePayload{peer_error}), 1700U);
     expect(result.status == ControllerLinkSessionStatus::Success &&
                result.event == ControllerLinkSessionEvent::PeerMessageReceived,

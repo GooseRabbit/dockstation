@@ -28,7 +28,7 @@ void expect(bool condition, const char* name) {
 ControllerMessageEnvelope valid_envelope(ControllerMessageType type) {
     ControllerMessageEnvelope envelope{};
     envelope.type = type;
-    envelope.protocol_version = ControllerProtocolVersion{1U, 0U};
+    envelope.protocol_version = ControllerProtocolVersion{1U, 1U};
     envelope.controller_id = "esp32-controller-01";
     envelope.controller_instance_id = "boot-session-2026-11-14";
     envelope.sequence_number = 42U;
@@ -95,7 +95,7 @@ int main() {
     expect(decoded.envelope.type == ControllerMessageType::Hello &&
                decoded.envelope.protocol_version.has_value() &&
                decoded.envelope.protocol_version->major == 1U &&
-               decoded.envelope.protocol_version->minor == 0U &&
+               decoded.envelope.protocol_version->minor == 1U &&
                decoded.envelope.controller_id == hello_envelope.controller_id &&
                decoded.envelope.controller_instance_id ==
                    hello_envelope.controller_instance_id &&
@@ -186,7 +186,9 @@ int main() {
     // ERROR covers the optional reason field.
     const ControllerErrorPayload error_payload{
         "SENSOR_READ_FAILED", ControllerErrorSeverity::Warning,
-        "The temperature sensor did not respond", "No response before timeout"};
+        "The temperature sensor did not respond", "No response before timeout",
+        std::string_view{"weather.temperature"},
+        ControllerSubsystemStatus::Degraded};
     result = encode(
         valid_envelope(ControllerMessageType::Error),
         ControllerMessagePayload{error_payload}, frame);
@@ -202,8 +204,29 @@ int main() {
                decoded_error->error_code == error_payload.error_code &&
                decoded_error->severity == error_payload.severity &&
                decoded_error->description == error_payload.description &&
-               decoded_error->reason_text == error_payload.reason_text,
-           "round-trips ERROR fields including an optional known reason");
+               decoded_error->reason_text == error_payload.reason_text &&
+               decoded_error->subsystem_id == error_payload.subsystem_id &&
+               decoded_error->subsystem_status == error_payload.subsystem_status,
+           "round-trips ERROR fields and optional explicit subsystem state");
+
+    const ControllerErrorPayload generic_error{
+        "GENERIC_LINK_WARNING", ControllerErrorSeverity::Warning,
+        "Controller warning without a subsystem claim", {}};
+    result = encode(
+        valid_envelope(ControllerMessageType::Error),
+        ControllerMessagePayload{generic_error}, frame);
+    storage = {};
+    decoded = {};
+    decode_result = decode_controller_message(
+        frame.data(), result.frame_size, storage, decoded);
+    const auto* decoded_generic_error =
+        std::get_if<ControllerErrorPayload>(&decoded.payload);
+    expect(result.status == ControllerCodecStatus::Success &&
+               decode_result.status == ControllerCodecStatus::Success &&
+               decoded_generic_error != nullptr &&
+               !decoded_generic_error->subsystem_id.has_value() &&
+               !decoded_generic_error->subsystem_status.has_value(),
+           "round-trips a generic ERROR without optional subsystem context");
 
     // Fixed bounds and invalid caller inputs fail closed.
     std::array<std::uint8_t, 8U> small_buffer{};

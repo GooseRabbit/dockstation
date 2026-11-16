@@ -160,12 +160,38 @@ enum class ControllerErrorSeverity : std::uint8_t {
     Critical
 };
 
+// Explicit state reported by the controller for one named subsystem.
+// NOT_CONFIGURED / NOT_APPLICABLE / DEFERRED are station-side outcomes and
+// must not be asserted by the controller.
+enum class ControllerSubsystemStatus : std::uint8_t {
+    Unknown,
+    Pass,
+    Degraded,
+    Fail
+};
+
+[[nodiscard]] constexpr bool is_known_controller_subsystem_status(
+    ControllerSubsystemStatus status) noexcept {
+    switch (status) {
+        case ControllerSubsystemStatus::Unknown:
+        case ControllerSubsystemStatus::Pass:
+        case ControllerSubsystemStatus::Degraded:
+        case ControllerSubsystemStatus::Fail:
+            return true;
+    }
+    return false;
+}
+
 struct ControllerErrorPayload {
     std::string_view error_code{};
     ControllerErrorSeverity severity{ControllerErrorSeverity::Unknown};
     std::string_view description{};
     // Empty means that the cause is not known; do not invent a reason.
     std::string_view reason_text{};
+    // The pair is optional but all-or-nothing. Without it, ERROR is a report,
+    // not a claim that a specific subsystem changed state.
+    std::optional<std::string_view> subsystem_id{};
+    std::optional<ControllerSubsystemStatus> subsystem_status{};
 };
 
 using ControllerMessagePayload = std::variant<
@@ -185,7 +211,10 @@ enum class ControllerPayloadValidationStatus : std::uint8_t {
     NonFiniteMeasurementValue,
     MissingErrorCode,
     UnknownErrorSeverity,
-    MissingErrorDescription
+    MissingErrorDescription,
+    PartialSubsystemStatus,
+    MissingSubsystemId,
+    UnknownSubsystemStatus
 };
 
 struct ControllerPayloadValidationResult {
@@ -272,6 +301,22 @@ validate_controller_message_payload(
             }
             if (error->description.empty()) {
                 return {ControllerPayloadValidationStatus::MissingErrorDescription, "description"};
+            }
+            if (error->subsystem_id.has_value() !=
+                error->subsystem_status.has_value()) {
+                return {ControllerPayloadValidationStatus::PartialSubsystemStatus,
+                        "subsystem_id/subsystem_status"};
+            }
+            if (error->subsystem_id.has_value() &&
+                error->subsystem_id->empty()) {
+                return {ControllerPayloadValidationStatus::MissingSubsystemId,
+                        "subsystem_id"};
+            }
+            if (error->subsystem_status.has_value() &&
+                !is_known_controller_subsystem_status(
+                    *error->subsystem_status)) {
+                return {ControllerPayloadValidationStatus::UnknownSubsystemStatus,
+                        "subsystem_status"};
             }
             return {ControllerPayloadValidationStatus::Valid, {}};
         }

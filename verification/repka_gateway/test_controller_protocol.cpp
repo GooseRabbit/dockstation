@@ -23,7 +23,7 @@ void expect(bool condition, const char* name) {
 ControllerMessageEnvelope valid_message() {
     ControllerMessageEnvelope message{};
     message.type = ControllerMessageType::Hello;
-    message.protocol_version = ControllerProtocolVersion{1U, 0U};
+    message.protocol_version = ControllerProtocolVersion{1U, 1U};
     message.controller_id = "controller-01";
     message.controller_instance_id = "boot-session-01";
     message.sequence_number = 0U;
@@ -227,6 +227,41 @@ int main() {
                ControllerMessageType::TelemetrySnapshot, error_payload).status ==
                ControllerPayloadValidationStatus::PayloadTypeMismatch,
            "rejects an ERROR payload for TELEMETRY_SNAPSHOT");
+
+    auto subsystem_error = error_payload;
+    subsystem_error.subsystem_id = std::string_view{"weather.temperature"};
+    subsystem_error.subsystem_status = ControllerSubsystemStatus::Degraded;
+    expect(validate_controller_message_payload(
+               ControllerMessageType::Error, subsystem_error).status ==
+               ControllerPayloadValidationStatus::Valid,
+           "accepts an ERROR with explicit subsystem identity and normalized state");
+
+    subsystem_error.subsystem_status.reset();
+    expect(validate_controller_message_payload(
+               ControllerMessageType::Error, subsystem_error).status ==
+               ControllerPayloadValidationStatus::PartialSubsystemStatus,
+           "rejects subsystem identity without matching status");
+
+    subsystem_error = error_payload;
+    subsystem_error.subsystem_status = ControllerSubsystemStatus::Fail;
+    expect(validate_controller_message_payload(
+               ControllerMessageType::Error, subsystem_error).status ==
+               ControllerPayloadValidationStatus::PartialSubsystemStatus,
+           "rejects subsystem status without matching identity");
+
+    subsystem_error.subsystem_id = std::string_view{"weather.temperature"};
+    subsystem_error.subsystem_status = static_cast<ControllerSubsystemStatus>(255U);
+    expect(validate_controller_message_payload(
+               ControllerMessageType::Error, subsystem_error).status ==
+               ControllerPayloadValidationStatus::UnknownSubsystemStatus,
+           "rejects an unknown subsystem status enum");
+
+    subsystem_error.subsystem_id = std::string_view{};
+    subsystem_error.subsystem_status = ControllerSubsystemStatus::Fail;
+    expect(validate_controller_message_payload(
+               ControllerMessageType::Error, subsystem_error).status ==
+               ControllerPayloadValidationStatus::MissingSubsystemId,
+           "rejects an empty subsystem ID even when a status is supplied");
 
     auto invalid_error = error_payload;
     invalid_error.error_code = {};

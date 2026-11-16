@@ -18,6 +18,7 @@
 
 #include "communications/api_serialization.hpp"
 #include "communications/authenticated_event_transport_adapter.hpp"
+#include "communications/controller_subsystem_status_event_projector.hpp"
 #include "core/station_event_pipeline.hpp"
 #include "hardware/interfaces/controller_codec.hpp"
 #include "platform/linux/controller_link_service.hpp"
@@ -307,7 +308,7 @@ ControllerMessageEnvelope peer_envelope(
     ControllerMessageType type, std::uint64_t sequence) noexcept {
     ControllerMessageEnvelope envelope{};
     envelope.type = type;
-    envelope.protocol_version = ControllerProtocolVersion{1U, 0U};
+    envelope.protocol_version = ControllerProtocolVersion{1U, 1U};
     envelope.controller_id = "esp32-01";
     envelope.controller_instance_id = "esp32-boot-01";
     envelope.sequence_number = sequence;
@@ -390,32 +391,7 @@ public:
     }
 };
 
-// Deliberately test-only projection. SUBSYSTEM_STATUS_UPDATED is known to the
-// event catalogue but has no F13 profile route in the current implementation;
-// the test therefore proves trusted ingress/session binding without claiming
-// that a sensor measurement changes station state.
-class FixtureControllerEventProjector final
-    : public dockstation::communications::ControllerEventProjector {
-public:
-    int calls{0};
-    std::uint64_t last_sequence{0U};
-
-    dockstation::communications::ControllerEventProjectionStatus project(
-        const ControllerCodecDecodedMessage& message,
-        dockstation::communications::ControllerEventProjection& output) noexcept override {
-        ++calls;
-        if (message.envelope.type != ControllerMessageType::TelemetrySnapshot ||
-            !message.envelope.sequence_number.has_value()) {
-            return dockstation::communications::ControllerEventProjectionStatus::NotApplicable;
-        }
-        last_sequence = *message.envelope.sequence_number;
-        output.event_type = "SUBSYSTEM_STATUS_UPDATED";
-        output.payload = "{}";
-        output.quality_status = "VALID";
-        output.schema_version = "1";
-        return dockstation::communications::ControllerEventProjectionStatus::Projected;
-    }
-};
+// Production projector maps only reports with explicit subsystem context.
 
 }  // namespace
 
@@ -490,7 +466,7 @@ int main() {
     dockstation::core::StationEventPipeline event_pipeline{
         event_repository, global_processor, operation_processor, timeout_processor,
         source_verifier, cursor_reader, session_repository};
-    FixtureControllerEventProjector event_projector{};
+    dockstation::communications::ControllerSubsystemStatusEventProjector event_projector{};
     dockstation::communications::AuthenticatedEventTransportAdapter event_adapter{
         e2e_service, event_pipeline, event_projector, "sensor/esp32",
         dockstation::core::EventValidationPolicy{true, true, false}};
@@ -588,19 +564,44 @@ int main() {
            "retains an owned typed telemetry snapshot after the TLS frame buffer is reused");
 
     expect(event_adapter.statistics().authenticated_messages_received == 1U &&
+               event_adapter.statistics().projected_events == 0U &&
+               event_adapter.statistics().pipeline_invocations == 0U &&
+               event_adapter.statistics().unmapped_messages == 1U &&
+               event_adapter.statistics().last_status ==
+                   dockstation::communications::AuthenticatedEventTransportStatus::ProjectionNotApplicable,
+           "accepted telemetry updates the separate telemetry snapshot but bypasses the SSM event pipeline");
+
+    const ControllerErrorPayload subsystem_error{
+        "DHT22_READ_FAILED", ControllerErrorSeverity::Warning,
+        "DHT22 read failed", "I2C timeout",
+        std::string_view{"weather.temperature"},
+        ControllerSubsystemStatus::Degraded};
+    const auto subsystem_error_envelope =
+        peer_envelope(ControllerMessageType::Error, 3U);
+    expect(send_peer_message(peer, pty.master, subsystem_error_envelope,
+                             ControllerMessagePayload{subsystem_error}),
+           "sends an ERROR with an explicit subsystem ID and normalized status");
+    for (std::size_t attempt = 0U;
+         attempt < 64U && event_adapter.statistics().pipeline_invocations == 0U;
+         ++attempt) {
+        e2e_service.poll();
+    }
+
+    expect(event_adapter.statistics().authenticated_messages_received == 2U &&
                event_adapter.statistics().projected_events == 1U &&
                event_adapter.statistics().pipeline_invocations == 1U &&
+               event_adapter.statistics().unmapped_messages == 1U &&
                event_adapter.statistics().last_status ==
                    dockstation::communications::AuthenticatedEventTransportStatus::PipelineInvoked &&
                event_adapter.statistics().last_session_status ==
                    dockstation::core::SourceSessionCoordinatorStatus::Confirmed &&
                event_adapter.statistics().last_event_status ==
                    dockstation::core::EventHandlingStatus::Unsupported,
-           "projects one accepted frame and reaches the session-gated pipeline without inventing an F13 route");
-    expect(event_projector.calls == 1 && event_projector.last_sequence == 2U &&
-               source_verifier.calls == 1 && cursor_reader.calls == 1 &&
-               session_repository.calls == 1 && event_repository.calls == 1,
-           "event projection and session confirmation occur once for the accepted frame");
+           "only an explicit subsystem report reaches the session-gated pipeline; F13 remains fail-closed without a profile route");
+    expect(source_verifier.calls == 1 && cursor_reader.calls == 1 &&
+               session_repository.calls == 1 && event_repository.calls == 1 &&
+               event_repository.last_event_id.find(":3") != std::string::npos,
+           "one projected status event is bound to the accepted source sequence");
 
     const std::string expected_pair_identity{
         reinterpret_cast<const char*>(credentials.identity.data()),
@@ -626,7 +627,7 @@ int main() {
         expected_event_id.push_back(hex_digits[(byte >> 4U) & 0x0FU]);
         expected_event_id.push_back(hex_digits[byte & 0x0FU]);
     }
-    expected_event_id += ":12:sensor/esp32:13:esp32-boot-01:2";
+    expected_event_id += ":12:sensor/esp32:13:esp32-boot-01:3";
     expect(event_repository.last_event_id == expected_event_id,
            "Event ID is bound to pair identity, local source, authenticated instance and accepted sequence");
 
@@ -653,7 +654,7 @@ int main() {
                e2e_service.telemetry_snapshot().available() &&
                e2e_service.telemetry_snapshot().sequence_number() == 2U,
            "rejects the replayed sequence, closes the link and retains the last accepted snapshot");
-    expect(event_adapter.statistics().authenticated_messages_received == 1U &&
+    expect(event_adapter.statistics().authenticated_messages_received == 2U &&
                event_adapter.statistics().pipeline_invocations == 1U,
            "a replayed sequence never reaches the authenticated event adapter or SSM pipeline");
     expect(e2e_service.authenticated_pair_identity().empty(),

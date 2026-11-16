@@ -28,7 +28,7 @@ ControllerCodecDecodedMessage make_message(
     std::uint64_t sequence) {
     ControllerCodecDecodedMessage message{};
     message.envelope.type = ControllerMessageType::TelemetrySnapshot;
-    message.envelope.protocol_version = ControllerProtocolVersion{1U, 0U};
+    message.envelope.protocol_version = ControllerProtocolVersion{1U, 1U};
     message.envelope.controller_id = "esp32-01";
     message.envelope.controller_instance_id = "boot-0001";
     message.envelope.sequence_number = sequence;
