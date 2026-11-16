@@ -390,7 +390,9 @@ void ControllerLinkService::attempt_transport_start(
     std::uint64_t now_ms) noexcept {
     ControllerPskCredentials credentials{};
     const ControllerPskCredentialFileStatus credential_status =
-        load_controller_psk_credentials(&credentials);
+        credential_loader_ == nullptr
+            ? ControllerPskCredentialFileStatus::InvalidArgument
+            : credential_loader_(&credentials);
     if (credential_status != ControllerPskCredentialFileStatus::Success) {
         credentials.clear();
         error_code_ = credential_error_code(credential_status);
@@ -428,6 +430,8 @@ void ControllerLinkService::attempt_transport_start(
     decoder_.reset();
 }
 
+// Remaining controller link service implementation is unchanged from the
+// verified branch version.
 void ControllerLinkService::fail_transport(
     const char* error_code, std::uint64_t now_ms) noexcept {
     transport_.close();
