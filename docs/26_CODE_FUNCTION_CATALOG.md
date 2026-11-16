@@ -1119,3 +1119,5 @@ hardwarePlatformInfo публикует выбранный платформен�
 
 **Ограничения:** один REQUEST_SNAPSHOT на логическую сессию; периодический запрос, SSM Event/StationEventPipeline, production SourceSessionEvidence adapter/verifier, DiagnosticsManager, постоянное хранение/история и backup/restore отсутствуют. Host test fixtures проверяют контракты, но не являются телеметрией физического ESP32.
 
+**Проверка:** GitHub Actions run 43815659048 SUCCESS для точного HEAD `f0cf4b0b25d5defc23501501c6e9ec590095f43c`: CTest 25/25 на x64 и ARM64, 31/31 C++ host programs и 158 Python/QML/e2e tests. Новый test `controller_telemetry_snapshot` проходит на обеих архитектурах. ARM64 Gateway-only build без обнаружения SQLite, Release bundle staging/installer, Sigstore attestation creation и verification также прошли. Attestation: [67990126](https://github.com/GooseRabbit/dockstation/attestations/67990126). Physical Repka OS, UART, ESP32 и Mbed TLS interop остаются открытыми.
+
