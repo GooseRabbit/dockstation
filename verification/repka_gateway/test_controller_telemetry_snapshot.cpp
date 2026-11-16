@@ -1,5 +1,6 @@
 #include "hardware/interfaces/controller_telemetry_snapshot.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstdlib>
 #include <iostream>
