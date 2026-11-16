@@ -39,6 +39,13 @@ constexpr char kHexDigits[] = "0123456789abcdef";
     return value < 0 ? 0U : static_cast<std::uint64_t>(value);
 }
 
+[[nodiscard]] std::uint64_t unix_epoch_milliseconds() noexcept {
+    const auto elapsed = std::chrono::system_clock::now().time_since_epoch();
+    const auto value =
+        std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count();
+    return value < 0 ? 0U : static_cast<std::uint64_t>(value);
+}
+
 // The controller contract currently treats sent_at as opaque validated text.
 // Until a shared timestamp encoding is approved, the Repka sender uses Unix
 // epoch milliseconds in decimal form; this value is not used for deadlines.
@@ -315,6 +322,7 @@ void ControllerLinkService::stop() noexcept {
         session_.reset();
     }
     decoder_.reset();
+    telemetry_snapshot_.clear();
     OPENSSL_cleanse(outbound_frame_.data(), outbound_frame_.size());
     OPENSSL_cleanse(local_instance_id_.data(), local_instance_id_.size());
     outbound_frame_size_ = 0U;
@@ -549,6 +557,11 @@ bool ControllerLinkService::process_ready_frame(std::uint64_t now_ms) noexcept {
     }
 
     if (decoded.envelope.type == ControllerMessageType::TelemetrySnapshot) {
+        if (!telemetry_snapshot_.replace(decoded, unix_epoch_milliseconds())) {
+            ++rejected_frames_;
+            fail_transport("CONTROLLER_TELEMETRY_SNAPSHOT_REJECTED", now_ms);
+            return false;
+        }
         ++telemetry_snapshots_received_;
     } else if (decoded.envelope.type == ControllerMessageType::Error) {
         ++error_messages_received_;

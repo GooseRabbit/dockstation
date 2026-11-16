@@ -5,8 +5,11 @@
 #include <cstdint>
 #include <ctime>
 #include <iomanip>
+#include <limits>
 #include <optional>
 #include <sstream>
+#include <cstdio>
+#include <algorithm>
 #include <string>
 
 #include "platform/linux/network_diagnostics.hpp"
@@ -124,6 +127,138 @@ std::string serialize_platform_capabilities(
            << ",\"pwm\":" << serialize_interface_capability(capabilities.pwm)
            << ",\"camera\":" << serialize_interface_capability(capabilities.camera)
            << "},\"note\":\"Passive discovery only. Device paths are diagnostic candidates, not selected endpoints; no physical I/O, pinmux, driver or permission changes were performed.\"}";
+    return output.str();
+}
+
+const char* telemetry_quality_name(
+    hardware::interfaces::SensorQualityStatus quality) {
+    using hardware::interfaces::SensorQualityStatus;
+    switch (quality) {
+        case SensorQualityStatus::Ok: return "OK";
+        case SensorQualityStatus::Stale: return "STALE";
+        case SensorQualityStatus::Invalid: return "INVALID";
+        case SensorQualityStatus::Unavailable: return "UNAVAILABLE";
+        case SensorQualityStatus::NotConfigured: return "NOT_CONFIGURED";
+        case SensorQualityStatus::Unknown: return "UNKNOWN";
+    }
+    return "UNKNOWN";
+}
+
+std::string serialize_telemetry_value(
+    const hardware::interfaces::ControllerSensorValue& value) {
+    if (const auto* boolean = std::get_if<bool>(&value)) {
+        return *boolean ? "true" : "false";
+    }
+    if (const auto* signed_integer = std::get_if<std::int64_t>(&value)) {
+        return std::to_string(*signed_integer);
+    }
+    if (const auto* unsigned_integer = std::get_if<std::uint64_t>(&value)) {
+        return std::to_string(*unsigned_integer);
+    }
+    if (const auto* number = std::get_if<double>(&value)) {
+        std::ostringstream output;
+        output << std::setprecision(17) << *number;
+        return output.str();
+    }
+    if (const auto* text = std::get_if<std::string_view>(&value)) {
+        return "\"" + json_escape(std::string{*text}) + "\"";
+    }
+    return "null";
+}
+
+const char* telemetry_value_type(
+    const hardware::interfaces::ControllerSensorValue& value) {
+    if (std::holds_alternative<bool>(value)) return "BOOLEAN";
+    if (std::holds_alternative<std::int64_t>(value)) return "INTEGER";
+    if (std::holds_alternative<std::uint64_t>(value)) return "UNSIGNED_INTEGER";
+    if (std::holds_alternative<double>(value)) return "NUMBER";
+    if (std::holds_alternative<std::string_view>(value)) return "TEXT";
+    return "UNKNOWN";
+}
+
+std::optional<std::string> telemetry_received_at_utc(std::uint64_t epoch_ms) {
+    const std::uint64_t seconds = epoch_ms / 1000U;
+    if (seconds > static_cast<std::uint64_t>(
+            std::numeric_limits<std::time_t>::max())) {
+        return std::nullopt;
+    }
+    const std::time_t time_value = static_cast<std::time_t>(seconds);
+    std::tm value{};
+    if (::gmtime_r(&time_value, &value) == nullptr) {
+        return std::nullopt;
+    }
+    char buffer[40]{};
+    const std::size_t written = std::strftime(
+        buffer, sizeof(buffer), "%Y-%m-%dT%H:%M:%S", &value);
+    if (written == 0U) {
+        return std::nullopt;
+    }
+    char suffix[8]{};
+    const int suffix_size = std::snprintf(
+        suffix, sizeof(suffix), ".%03uZ",
+        static_cast<unsigned int>(epoch_ms % 1000U));
+    if (suffix_size <= 0 ||
+        written + static_cast<std::size_t>(suffix_size) >= sizeof(buffer)) {
+        return std::nullopt;
+    }
+    std::copy(suffix, suffix + suffix_size, buffer + written);
+    return std::string{buffer};
+}
+
+std::string serialize_controller_telemetry(
+    const platform::linux_platform::ControllerLinkServiceStatus* link_status,
+    const hardware::interfaces::ControllerTelemetrySnapshot* snapshot) {
+    const bool connected = link_status != nullptr &&
+        link_status->tls_authenticated && link_status->protocol_established;
+    const bool available = snapshot != nullptr && snapshot->available();
+    const std::size_t count = available ? snapshot->measurement_count() : 0U;
+    const char* status = !available ? "NOT_CONFIGURED"
+        : count == 0U ? "WARN"
+        : connected ? "PASS" : "WARN";
+    const char* message = !available
+        ? "No accepted telemetry snapshot has been received"
+        : count == 0U
+            ? "The accepted telemetry snapshot contains no measurements"
+            : connected
+                ? "Latest telemetry snapshot accepted from the authenticated controller"
+                : "Last accepted telemetry snapshot retained; controller link is not currently established";
+
+    std::ostringstream output;
+    output << "{\"status\":\"" << status
+           << "\",\"message\":\"" << message
+           << "\",\"link_connected\":" << (connected ? "true" : "false")
+           << ",\"source_controller_id\":"
+           << optional_string(available, available ? std::string{snapshot->controller_id()} : std::string{})
+           << ",\"controller_instance_id\":"
+           << optional_string(available, available ? std::string{snapshot->controller_instance_id()} : std::string{})
+           << ",\"sequence_number\":"
+           << optional_integer(available, available ? snapshot->sequence_number() : 0U)
+           << ",\"received_at_utc\":";
+    const auto received_at = available
+        ? telemetry_received_at_utc(snapshot->received_at_unix_ms())
+        : std::nullopt;
+    output << (received_at.has_value()
+        ? "\"" + *received_at + "\"" : "null")
+           << ",\"measurements\":[";
+    if (available) {
+        for (std::size_t index = 0U; index < count; ++index) {
+            hardware::interfaces::ControllerTelemetryMeasurementView item{};
+            if (!snapshot->measurement(index, item)) {
+                continue;
+            }
+            if (index != 0U) {
+                output << ',';
+            }
+            output << "{\"sensor_id\":\"" << json_escape(std::string{item.sensor_id})
+                   << "\",\"value_type\":\"" << telemetry_value_type(item.value)
+                   << "\",\"value\":" << serialize_telemetry_value(item.value)
+                   << ",\"unit\":\"" << json_escape(std::string{item.unit})
+                   << "\",\"quality_status\":\"" << telemetry_quality_name(item.quality)
+                   << "\",\"measured_at\":\"" << json_escape(std::string{item.measured_at})
+                   << "\"}";
+        }
+    }
+    output << "]}";
     return output.str();
 }
 
@@ -360,7 +495,8 @@ std::string serialize_health_response() {
 
 std::string serialize_system_diagnostics(
     const platform::linux_platform::ControllerLinkServiceStatus* controller_link_status,
-    const platform::linux_runtime::LinuxPlatformCapabilities* platform_capabilities) {
+    const platform::linux_runtime::LinuxPlatformCapabilities* platform_capabilities,
+    const hardware::interfaces::ControllerTelemetrySnapshot* telemetry_snapshot) {
     const bool hardware_controller_connected =
         controller_link_status != nullptr &&
         controller_link_status->tls_authenticated &&
@@ -401,6 +537,8 @@ std::string serialize_system_diagnostics(
            << serialize_platform(os, kernel, architecture, system,
                                   detected_capabilities)
            << ",\"network\":" << serialize_network(network)
+           << ",\"controller_telemetry\":"
+           << serialize_controller_telemetry(controller_link_status, telemetry_snapshot)
            << ",\"scope\":{\"read_only\":true,"
            << "\"hardware_controller_connected\":"
            << (hardware_controller_connected ? "true" : "false") << ","

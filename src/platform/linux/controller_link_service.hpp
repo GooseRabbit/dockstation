@@ -8,6 +8,7 @@
 
 #include "hardware/interfaces/controller_frame_stream_decoder.hpp"
 #include "hardware/interfaces/controller_link_session.hpp"
+#include "hardware/interfaces/controller_telemetry_snapshot.hpp"
 #include "platform/linux/controller_transport_manager.hpp"
 
 namespace dockstation::platform::linux_platform {
@@ -63,6 +64,8 @@ public:
     void stop() noexcept;
 
     [[nodiscard]] ControllerLinkServiceStatus status() const noexcept;
+    [[nodiscard]] const hardware::interfaces::ControllerTelemetrySnapshot&
+    telemetry_snapshot() const noexcept { return telemetry_snapshot_; }
 
 private:
     [[nodiscard]] bool copy_configuration(
@@ -84,6 +87,7 @@ private:
     ControllerTransportManager transport_{};
     hardware::interfaces::ControllerFrameStreamDecoder decoder_{};
     std::optional<hardware::interfaces::ControllerLinkSession> session_{};
+    hardware::interfaces::ControllerTelemetrySnapshot telemetry_snapshot_{};
     std::array<char, 256U> uart_device_path_{};
     std::array<char, hardware::interfaces::kControllerLinkSessionMaximumIdentifierBytes>
         local_controller_id_{};

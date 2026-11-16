@@ -212,7 +212,10 @@ ApiResponse dispatch_api_request_impl(
         const auto controller_status = controller_link == nullptr
             ? platform::linux_platform::ControllerLinkServiceStatus{}
             : controller_link->status();
-        const std::string body = serialize_system_diagnostics(&controller_status);
+        const auto* telemetry_snapshot = controller_link == nullptr
+            ? nullptr : &controller_link->telemetry_snapshot();
+        const std::string body = serialize_system_diagnostics(
+            &controller_status, nullptr, telemetry_snapshot);
         if (body.empty()) {
             return {500U, "Internal Server Error",
                     serialize_error_response(
