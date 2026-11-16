@@ -392,6 +392,7 @@ if(BUILD_TESTING)
                     test_controller_uart_port
                     test_controller_transport_manager
                     test_controller_link_service
+                    test_controller_telemetry_snapshot
                     test_controller_psk_credential_store
                     test_local_api
                     test_source_cursor_reader
@@ -457,6 +458,9 @@ if(BUILD_TESTING)
                 -fsanitize=address,undefined
             )
             target_link_options(test_controller_link_service PRIVATE
+                -fsanitize=address,undefined
+            )
+            target_link_options(test_controller_telemetry_snapshot PRIVATE
                 -fsanitize=address,undefined
             )
             if(DOCKSTATION_BUILD_SQLITE_PERSISTENCE)

@@ -212,11 +212,14 @@ std::string serialize_controller_telemetry(
         link_status->tls_authenticated && link_status->protocol_established;
     const bool available = snapshot != nullptr && snapshot->available();
     const std::size_t count = available ? snapshot->measurement_count() : 0U;
-    const char* status = !available ? "NOT_CONFIGURED"
+    const char* status = !available
+        ? connected ? "UNAVAILABLE" : "NOT_CONFIGURED"
         : count == 0U ? "WARN"
         : connected ? "PASS" : "WARN";
     const char* message = !available
-        ? "No accepted telemetry snapshot has been received"
+        ? connected
+            ? "Controller link is established but no telemetry snapshot has been received"
+            : "No accepted telemetry snapshot has been received"
         : count == 0U
             ? "The accepted telemetry snapshot contains no measurements"
             : connected
