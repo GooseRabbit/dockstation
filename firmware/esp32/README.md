@@ -37,17 +37,25 @@ only; the workflow does not flash or run the image on a physical board.
 
 ## Board identification and limitations
 
-The owner supplied FCC ID **`2A54N-ESP32`**. The FCC filing identifies the
-product as an **ESP32 Development Board** from Shenzhen HiLetgo E-Commerce
-Co., Ltd. It does not, by itself, establish the exact module/SoC revision,
-Flash or PSRAM capacity, board revision, or exposed GPIO wiring.
+The owner supplied FCC ID **`2A54N-ESP32`**. The FCC filing identifies an
+**ESP32 Development Board** from Shenzhen HiLetgo E-Commerce Co., Ltd. The
+user manual attached to the same FCC application identifies an ESP-WROOM-32
+module and shows a 38-pin board layout. In that manual's pin definition,
+GPIO17 is TX2 on board pin 28 and GPIO16 is RX2 on board pin 27.
 
-Accordingly, `IDF_TARGET=esp32` is a provisional family-level build target,
-not a confirmed bill-of-materials or production board profile. No Flash size,
-partition layout, UART pin, GPIO assignment, or peripheral mapping is fixed
-here. GPIO16/GPIO17 remain only a conditional UART2 candidate for a confirmed
-classic ESP32-WROOM-32 module; they are not configured or used by this project.
+This is a documented **UART2 candidate**, not a physically verified
+profile. The FCC filing/manual do not prove that the particular board in the
+owner's possession has the same PCB revision, module suffix, Flash/PSRAM
+capacity or unmodified header routing. GPIO17/GPIO16 therefore remain
+`GPIO_NUM_NC` in `ControllerUartConfig`; neither pin is assigned at startup.
+The UART0 pins GPIO1/TX0 and GPIO3/RX0 remain reserved for the board's USB
+serial/console path and are not selected for the station link.
 
+`IDF_TARGET=esp32` remains a provisional family-level build target. The
+physical module revision, SPI Flash capacity, PSRAM presence, exact board
+revision and production partition layout are still unconfirmed. See
+`docs/33_ESP32_HARDWARE_PROFILE.md` for the evidence matrix and acceptance
+steps.
 ## Current firmware entry point
 
 `main/app_main.cpp` remains diagnostic-only. It generates the per-boot
@@ -126,10 +134,12 @@ Not implemented by this scaffold:
 
 The CI build currently inherits ESP-IDF v5.5.6's default 2 MB SPI-flash
 selection because the board's actual Flash capacity has not been confirmed.
-That default appears in the generated image/flash arguments; it is **not** a
-claim about this board. The CI workflow only builds and never flashes the
-hardware. Do not flash or distribute this image for use on the board until the
-module/Flash capacity and partition layout are verified and configured.
+This is only the SDK build default, not evidence that the physical board has
+2 MB. A generic Arduino IDE screenshot in third-party manual copies showing a
+4 MB selection is also not proof of the installed flash chip's capacity.
+The CI workflow only builds and never flashes the hardware. Do not flash or
+distribute this image for use on the board until the module/Flash capacity and
+partition layout are verified and configured.
 
 ## Architecture boundaries
 

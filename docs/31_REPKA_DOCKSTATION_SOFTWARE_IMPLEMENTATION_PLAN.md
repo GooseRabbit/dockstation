@@ -1,7 +1,7 @@
 # Полный план реализации программного комплекса DockStation на Repka Pi 5
 
 **Статус:** мастер-план реализации; последовательность разработки согласована, открытые платформенные, сетевые, серверные и аппаратные детали требуют отдельной проверки и решения.  
-**Редакция:** 2.18.
+**Редакция:** 2.19.
 **Дата:** 2026-11-16.  
 **Вычислительная платформа:** Repka Pi 5.  
 **Предполагаемая ОС:** официальная Repka OS; образ и версия проверяются перед развёртыванием.
@@ -1400,6 +1400,7 @@ GitHub Actions [run 43699555707](https://github.com/GooseRabbit/dockstation/acti
 | 2.16 | 2026-11-16 | Обязательная передача per-boot ESP32 UUIDv4 из `ControllerInstanceIdProvider` в `ControllerLinkFirmwareRuntime::start()`; fail-closed проверка provider и session config до открытия UART. Reconnect сохраняет тот же peer-session object, boot ID и sequence/replay history. Host test подтверждает выдачу UUIDv4 в HELLO_ACK и сохранение ID после reconnect; ESP-IDF CI compile/link проверяет новый runtime/provider call path. Физический UART, TLS и RNG не проверены. |
 | 2.17 | 2026-11-16 | Введён общий `ControllerLinkStartupReadiness` и обязательный startup config runtime. Hardware profile должен быть явно подтверждён; UART конфигурация, pair credentials, instance identity и stable local/peer controller IDs проверяются до UART. `app_main` выводит blockers и сохраняет default-off режим без NVS/UART/TLS. Новый host CTest и ESP-IDF compile/link проверяют policy/API; физическая плата, pinout и encrypted provisioning по-прежнему не проверены. |
 | 2.18 | 2026-11-16 | Введён общий ASCII-контракт стабильных controller ID и read-only ESP32 NVS loader для `controller_id`/`peer_ctrl_id`; проверяются пустые, некорректные, длинные и совпадающие значения. NVS key limit 15 символов дополнительно защищён compile-time static_assert. GitHub Actions #43939967426: Linux CTest 38/38 на x86_64 и ARM64, 31/31 core host tests, 158 Python/Operator/Gateway tests; ESP32 build #43939967553 compile/link SUCCESS; TLS interoperability #43939967705 2/2 SUCCESS. Это не physical flash/UART/NVS provisioning/board acceptance; реальные ID не назначены. |
+| 2.19 | 2026-11-16 | FCC ID `2A54N-ESP32` и связанный FCC User Manual уточнили документированный кандидат платы HiLetgo ESP-WROOM-32: UART2 GPIO17/TX2 (контакт 28) и GPIO16/RX2 (контакт 27). GPIO остаются `GPIO_NUM_NC` до физической проверки. SPI Flash/PSRAM и production partition table не установлены; default 2 MB в CI не является измерением Flash. Добавлен `docs/33_ESP32_HARDWARE_PROFILE.md`, исправлена опечатка FCC ID в DEC-062. Это документальный профиль-кандидат, не аппаратная приёмка. |
 
 Peer-side логика протокола уже реализована и дополнена host CTest для HELLO/HELLO_ACK, REQUEST_SNAPSHOT и TELEMETRY_SNAPSHOT. Следующие практические рубежи: подтвердить точную ESP32 плату/SoC, Flash capacity и production partition layout; согласовать и обеспечить источники стабильных local/peer `controller_id`; выполнить доверенное provisioning PSK/identity и NVS encryption; проверить UART pinout и электрическую совместимость обеих плат. До закрытия этих условий runtime остаётся отключённым. После этого отдельно выполняются физические ESP32/Repka UART и TLS испытания, а датчики и GPIO добавляются только после утверждения pin map и безопасной схемы выводов.
 
@@ -1410,3 +1411,13 @@ Peer-side логика протокола уже реализована и до�
 На Repka значения `controller_local_id` / `controller_peer_id` поступают из существующего системного RuntimeConfig. На ESP32 добавлен read-only NVS loader для ключей `controller_id` / `peer_ctrl_id` в уже защищённом namespace `dockstation`; загрузчик не пишет и не генерирует идентификаторы. Общая проверка используется startup readiness и Linux RuntimeConfig. Добавлен host CTest для формата и пары ID; ESP-IDF v5.5.6 target build и link-only acceptance hook проверены CI на точном commit `8219cd5023a881bd66139a4365b5fd3fbdb43ea3` (ELF/BIN собраны).
 
 Фактические значения не назначены. Provisioning writer/utility, безопасная процедура первой записи/восстановления, подтверждение Flash/NVS partition layout и аппаратная проверка остаются открытыми. `app_main` по-прежнему default-off: обычный старт не читает NVS, не открывает UART, не запускает TLS и не выполняет runtime auto-start.
+
+## Дополнение 2.19 — предварительный аппаратный профиль ESP32
+
+По предоставленному FCC ID `2A54N-ESP32` найдена запись HiLetgo ESP32 Development Board. Manual, приложенный к той же FCC application, обозначает модуль ESP-WROOM-32 и документирует UART2: GPIO17 = TX2 (контакт 28), GPIO16 = RX2 (контакт 27). Это позволяет зафиксировать pin map как документированный кандидат для DEC-062, но не считать физический экземпляр подтверждённым.
+
+В коде UART2 остаётся логическим портом-кандидатом; TX/RX GPIO по умолчанию остаются `GPIO_NUM_NC`. Сборка и обычный `app_main` не включают GPIO, NVS, UART или TLS. UART0 GPIO1/GPIO3 не используются для межконтроллерного канала.
+
+SPI Flash capacity и PSRAM не установлены. Текущие 2 MB в CI — только default ESP-IDF v5.5.6; упоминание 4 MB в generic Arduino IDE example не считается доказательством Flash на установленной плате. Production partition table не определена: default CI table не является production layout и не содержит provisioned `nvs_keys`. Не менять flash-size configuration, не создавать окончательный partition CSV и не прошивать плату до read-only определения Flash (`esptool flash_id`), физической проверки маркировки модуля/ревизии и header pin map.
+
+Подробная матрица источников, candidate pinout, безопасный план проверки и критерии подтверждения вынесены в `docs/33_ESP32_HARDWARE_PROFILE.md`. Этот срез не является аппаратной приёмкой и не объявляет GPIO/Flash/partition profile утверждённым.

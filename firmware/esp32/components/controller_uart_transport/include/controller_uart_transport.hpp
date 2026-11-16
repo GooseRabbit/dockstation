@@ -11,8 +11,10 @@
 
 namespace dockstation::firmware::esp32 {
 
-// UART2 is the initial logical port candidate from DEC-062. GPIOs are
-// deliberately left unset until the exact development-board module is checked.
+// UART2 is the logical port candidate from DEC-062. The FCC manual associated
+// with HiLetgo FCC ID 2A54N-ESP32 documents GPIO17/TX2 and GPIO16/RX2; this is
+// only a candidate pin map. GPIOs intentionally remain unset until the exact
+// physical board/module and header connectivity are verified.
 struct ControllerUartConfig final {
     uart_port_t port{UART_NUM_2};
     gpio_num_t tx_gpio{GPIO_NUM_NC};
