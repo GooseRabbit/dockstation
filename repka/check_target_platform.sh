@@ -156,14 +156,14 @@ fi
 if command -v "$PKG_CONFIG_COMMAND" >/dev/null 2>&1; then
     SQLITE_VERSION="$("$PKG_CONFIG_COMMAND" --modversion sqlite3 2>/dev/null || true)"
     if [[ -z "$SQLITE_VERSION" ]]; then
-        report INFO "SQLite development metadata не обнаружены; они необязательны для Gateway-only сборки."
+        report FAIL "SQLite development metadata не обнаружены; полная установка Gateway требует SQLite >=3.31."
     elif version_at_least "$SQLITE_VERSION" "3.31.0"; then
-        report INFO "SQLite development version $SQLITE_VERSION доступна для отдельного кандидата persistence."
+        report PASS "SQLite development version $SQLITE_VERSION подходит для локальной persistence."
     else
-        report WARN "SQLite $SQLITE_VERSION ниже 3.31; оставьте DOCKSTATION_BUILD_SQLITE_PERSISTENCE=OFF."
+        report FAIL "SQLite $SQLITE_VERSION ниже обязательной версии 3.31."
     fi
 else
-    report INFO "pkg-config отсутствует; необязательный SQLite development target не проверялся."
+    report FAIL "pkg-config отсутствует; невозможно подтвердить обязательную SQLite development dependency."
 fi
 
 if command -v "$SYSTEMCTL_COMMAND" >/dev/null 2>&1; then

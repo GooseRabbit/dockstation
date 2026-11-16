@@ -30,6 +30,7 @@ if [[ "$1" == --install ]]; then
     mkdir -p "$d/usr/local/bin" "$d/usr/local/lib/systemd/system" "$d/usr/local/share/dockstation"
     printf '#!/bin/sh\nexit 0\n' > "$d/usr/local/bin/dockstation_linux_bootstrap"
     printf '#!/bin/sh\nexit 0\n' > "$d/usr/local/bin/dockstation-credential-provision"
+    printf '#!/bin/sh\nexit 0\n' > "$d/usr/local/bin/dockstation-registry-provision"
     chmod +x "$d/usr/local/bin/"*
     printf '[Service]\nPrivateDevices=true\n' > "$d/usr/local/lib/systemd/system/dockstation-gateway.service"
     printf '[Service]\nPrivateDevices=false\nDevicePolicy=closed\nDeviceAllow=/dev/%%i rw\n' > "$d/usr/local/lib/systemd/system/dockstation-gateway-uart@.service"
@@ -64,6 +65,12 @@ cat > "$BIN/ldd" <<'SH'
 if [[ "${1:-}" == --version ]]; then
     printf '%s\n' 'ldd (GNU libc) 2.39'
 else
+    printf '%s\n' 'libcrypto.so.3 => /lib/aarch64-linux-gnu/libcrypto.so.3'
+    case "${1##*/}" in
+        dockstation_linux_bootstrap|dockstation-registry-provision)
+            printf '%s\n' 'libsqlite3.so.0 => /lib/aarch64-linux-gnu/libsqlite3.so.0'
+            ;;
+    esac
     printf '%s\n' 'libssl.so.3 => /lib/aarch64-linux-gnu/libssl.so.3'
 fi
 SH
@@ -86,7 +93,8 @@ bash "$INSTALLER"
 [[ -x "$STAGE_SOURCE/usr/local/bin/dockstation_linux_bootstrap" ]]
 [[ -f "$STAGE_SOURCE/etc/dockstation/gateway.conf" ]]
 grep -Fqx 'api_port=8080' "$STAGE_SOURCE/etc/dockstation/gateway.conf"
-grep -Fq -- '-DDOCKSTATION_BUILD_SQLITE_PERSISTENCE=OFF' "$LOG"
+grep -Fq -- '-DDOCKSTATION_BUILD_SQLITE_PERSISTENCE=ON' "$LOG"
+grep -Fq -- '--target dockstation_linux_bootstrap dockstation-credential-provision dockstation-registry-provision' "$LOG"
 printf 'operator_setting=preserve-me\n' > "$STAGE_SOURCE/etc/dockstation/gateway.conf"
 bash "$INSTALLER"
 grep -Fqx 'operator_setting=preserve-me' "$STAGE_SOURCE/etc/dockstation/gateway.conf"
@@ -94,7 +102,7 @@ grep -Fqx 'operator_setting=preserve-me' "$STAGE_SOURCE/etc/dockstation/gateway.
 # Synthetic ARM64 bundle exercises archive validation and the no-CMake path.
 BROOT="$TMP/bundle-root"
 mkdir -p "$BROOT/usr/local/bin" "$BROOT/usr/local/lib/systemd/system" "$BROOT/usr/local/share/dockstation"
-for name in dockstation_linux_bootstrap dockstation-credential-provision; do
+for name in dockstation_linux_bootstrap dockstation-credential-provision dockstation-registry-provision; do
     printf '#!/bin/sh\nexit 0\n' > "$BROOT/usr/local/bin/$name"
     chmod +x "$BROOT/usr/local/bin/$name"
 done
@@ -102,7 +110,7 @@ printf '[Service]\nPrivateDevices=true\n' > "$BROOT/usr/local/lib/systemd/system
 printf '[Service]\nPrivateDevices=false\nDevicePolicy=closed\nDeviceAllow=/dev/%%i rw\n' > "$BROOT/usr/local/lib/systemd/system/dockstation-gateway-uart@.service"
 printf 'api_port=8080\nlog_stderr=true\n' > "$BROOT/usr/local/share/dockstation/gateway.conf.example"
 printf '%s\n' \
-    'Bundle format: dockstation-repka-pi5-arm64-v1' \
+    'Bundle format: dockstation-repka-pi5-arm64-v2' \
     'Architecture: aarch64' \
     'Build OS: Synthetic test OS' \
     'Build kernel: test-kernel' \
@@ -112,14 +120,15 @@ printf '%s\n' \
     'Source commit: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' \
     'Source date epoch: 1794760000' \
     'Build type: Release' \
-    'SQLite persistence: disabled' \
+    'SQLite persistence: enabled' \
     'Install prefix: /usr/local' \
     'ABI ceilings: GLIBC<=2.34, GLIBCXX<=3.4.32, CXXABI<=1.3.9, OPENSSL<=3.0.0' \
     > "$BROOT/BUNDLE-MANIFEST.txt"
 {
-    printf '%s\n' '# DockStation runtime dependency report v1'
-    printf '%s\n' '### usr/local/bin/dockstation_linux_bootstrap' 'libssl.so.3'
-    printf '%s\n' '### usr/local/bin/dockstation-credential-provision' 'libssl.so.3'
+    printf '%s\n' '# DockStation runtime dependency report v2'
+    printf '%s\n' '### usr/local/bin/dockstation_linux_bootstrap' 'libcrypto.so.3' 'libsqlite3.so.0' 'libssl.so.3'
+    printf '%s\n' '### usr/local/bin/dockstation-credential-provision' 'libcrypto.so.3' 'libssl.so.3'
+    printf '%s\n' '### usr/local/bin/dockstation-registry-provision' 'libcrypto.so.3' 'libsqlite3.so.0' 'libssl.so.3'
 } > "$BROOT/RUNTIME-DEPENDENCIES.txt"
 (
     cd "$BROOT"
@@ -136,6 +145,7 @@ export DOCKSTATION_CMAKE_COMMAND="$BIN/cmake-that-must-not-run"
 bash "$INSTALLER" --bundle "$BUNDLE"
 [[ -x "$STAGE_BUNDLE/usr/local/bin/dockstation_linux_bootstrap" ]]
 [[ -x "$STAGE_BUNDLE/usr/local/bin/dockstation-credential-provision" ]]
+[[ -x "$STAGE_BUNDLE/usr/local/bin/dockstation-registry-provision" ]]
 [[ -f "$STAGE_BUNDLE/usr/local/lib/systemd/system/dockstation-gateway.service" ]]
 [[ -f "$STAGE_BUNDLE/usr/local/lib/systemd/system/dockstation-gateway-uart@.service" ]]
 [[ -f "$STAGE_BUNDLE/etc/dockstation/gateway.conf" ]]

@@ -30,7 +30,7 @@ while IFS= read -r member; do
     case "$member" in
         BUNDLE-MANIFEST.txt|RUNTIME-DEPENDENCIES.txt|SHA256SUMS|\
         usr|usr/local|usr/local/bin|usr/local/lib|usr/local/lib/systemd|usr/local/lib/systemd/system|usr/local/share|usr/local/share/dockstation|\
-        usr/local/bin/dockstation_linux_bootstrap|usr/local/bin/dockstation-credential-provision|\
+        usr/local/bin/dockstation_linux_bootstrap|usr/local/bin/dockstation-credential-provision|usr/local/bin/dockstation-registry-provision|\
         usr/local/lib/systemd/system/dockstation-gateway.service|usr/local/lib/systemd/system/dockstation-gateway-uart@.service|\
         usr/local/share/dockstation/gateway.conf.example)
             ;;
@@ -57,7 +57,7 @@ while IFS= read -r entry; do
             expected_type="d"
             ;;
         BUNDLE-MANIFEST.txt|RUNTIME-DEPENDENCIES.txt|SHA256SUMS|\
-        usr/local/bin/dockstation_linux_bootstrap|usr/local/bin/dockstation-credential-provision|\
+        usr/local/bin/dockstation_linux_bootstrap|usr/local/bin/dockstation-credential-provision|usr/local/bin/dockstation-registry-provision|\
         usr/local/lib/systemd/system/dockstation-gateway.service|usr/local/lib/systemd/system/dockstation-gateway-uart@.service|\
         usr/local/share/dockstation/gateway.conf.example)
             expected_type="-"
@@ -73,13 +73,13 @@ ROOT="$TEMP_ROOT"
 [[ -f "$ROOT/BUNDLE-MANIFEST.txt" ]] || fail "Manifest is missing."
 [[ -f "$ROOT/RUNTIME-DEPENDENCIES.txt" ]] || fail "Runtime dependency report is missing."
 [[ -f "$ROOT/SHA256SUMS" ]] || fail "SHA256SUMS is missing."
-grep -Fqx 'Bundle format: dockstation-repka-pi5-arm64-v1' "$ROOT/BUNDLE-MANIFEST.txt" ||
+grep -Fqx 'Bundle format: dockstation-repka-pi5-arm64-v2' "$ROOT/BUNDLE-MANIFEST.txt" ||
     fail "Unsupported bundle format."
 grep -Fqx 'Architecture: aarch64' "$ROOT/BUNDLE-MANIFEST.txt" ||
     fail "Bundle architecture is not aarch64."
 for required_line in \
     'Build type: Release' \
-    'SQLite persistence: disabled' \
+    'SQLite persistence: enabled' \
     'Install prefix: /usr/local' \
     'ABI ceilings: GLIBC<=2.34, GLIBCXX<=3.4.32, CXXABI<=1.3.9, OPENSSL<=3.0.0'; do
     grep -Fqx "$required_line" "$ROOT/BUNDLE-MANIFEST.txt" ||
@@ -110,6 +110,7 @@ EXPECTED_CHECKSUM_NAMES=(
     ./RUNTIME-DEPENDENCIES.txt
     ./usr/local/bin/dockstation_linux_bootstrap
     ./usr/local/bin/dockstation-credential-provision
+    ./usr/local/bin/dockstation-registry-provision
     ./usr/local/lib/systemd/system/dockstation-gateway.service
     ./usr/local/lib/systemd/system/dockstation-gateway-uart@.service
     ./usr/local/share/dockstation/gateway.conf.example
@@ -135,34 +136,49 @@ ACTUAL_NAMES_SORTED="$(printf '%s' "$ACTUAL_CHECKSUM_NAMES" | LC_ALL=C sort)"
 # address/path output. Every listed requirement must still resolve on the target.
 DEPENDENCY_REPORT="$ROOT/RUNTIME-DEPENDENCIES.txt"
 mapfile -t DEPENDENCY_LINES < "$DEPENDENCY_REPORT"
-(( ${#DEPENDENCY_LINES[@]} >= 5 )) ||
+(( ${#DEPENDENCY_LINES[@]} >= 7 )) ||
     fail "Runtime dependency report is incomplete."
-[[ "${DEPENDENCY_LINES[0]}" == "# DockStation runtime dependency report v1" ]] ||
+[[ "${DEPENDENCY_LINES[0]}" == "# DockStation runtime dependency report v2" ]] ||
     fail "Unsupported runtime dependency report format."
 GATEWAY_SECTION="### usr/local/bin/dockstation_linux_bootstrap"
-PROVISIONER_SECTION="### usr/local/bin/dockstation-credential-provision"
+CREDENTIAL_PROVISIONER_SECTION="### usr/local/bin/dockstation-credential-provision"
+REGISTRY_PROVISIONER_SECTION="### usr/local/bin/dockstation-registry-provision"
 CURRENT_SECTION=""
 SEEN_GATEWAY_SECTION=false
-SEEN_PROVISIONER_SECTION=false
+SEEN_CREDENTIAL_PROVISIONER_SECTION=false
+SEEN_REGISTRY_PROVISIONER_SECTION=false
 GATEWAY_BUILD_DEPENDENCIES=()
-PROVISIONER_BUILD_DEPENDENCIES=()
+CREDENTIAL_PROVISIONER_BUILD_DEPENDENCIES=()
+REGISTRY_PROVISIONER_BUILD_DEPENDENCIES=()
 PREVIOUS_DEPENDENCY=""
 for dependency_line in "${DEPENDENCY_LINES[@]:1}"; do
     case "$dependency_line" in
         "$GATEWAY_SECTION")
-            [[ "$SEEN_GATEWAY_SECTION" == false && "$SEEN_PROVISIONER_SECTION" == false ]] ||
+            [[ "$SEEN_GATEWAY_SECTION" == false ]] ||
                 fail "Runtime dependency report has a duplicate or out-of-order Gateway section."
             SEEN_GATEWAY_SECTION=true
             CURRENT_SECTION=gateway
             PREVIOUS_DEPENDENCY=""
             ;;
-        "$PROVISIONER_SECTION")
-            [[ "$SEEN_GATEWAY_SECTION" == true && "$SEEN_PROVISIONER_SECTION" == false ]] ||
+        "$CREDENTIAL_PROVISIONER_SECTION")
+            [[ "$SEEN_GATEWAY_SECTION" == true &&
+               "$SEEN_CREDENTIAL_PROVISIONER_SECTION" == false &&
+               "$SEEN_REGISTRY_PROVISIONER_SECTION" == false ]] ||
                 fail "Runtime dependency report has a duplicate or out-of-order credential section."
             (( ${#GATEWAY_BUILD_DEPENDENCIES[@]} > 0 )) ||
                 fail "Gateway runtime dependency list is empty."
-            SEEN_PROVISIONER_SECTION=true
-            CURRENT_SECTION=provisioner
+            SEEN_CREDENTIAL_PROVISIONER_SECTION=true
+            CURRENT_SECTION=credential
+            PREVIOUS_DEPENDENCY=""
+            ;;
+        "$REGISTRY_PROVISIONER_SECTION")
+            [[ "$SEEN_CREDENTIAL_PROVISIONER_SECTION" == true &&
+               "$SEEN_REGISTRY_PROVISIONER_SECTION" == false ]] ||
+                fail "Runtime dependency report has a duplicate or out-of-order registry section."
+            (( ${#CREDENTIAL_PROVISIONER_BUILD_DEPENDENCIES[@]} > 0 )) ||
+                fail "Credential provisioner runtime dependency list is empty."
+            SEEN_REGISTRY_PROVISIONER_SECTION=true
+            CURRENT_SECTION=registry
             PREVIOUS_DEPENDENCY=""
             ;;
         *)
@@ -173,22 +189,28 @@ for dependency_line in "${DEPENDENCY_LINES[@]:1}"; do
             [[ -z "$PREVIOUS_DEPENDENCY" || "$dependency_line" > "$PREVIOUS_DEPENDENCY" ]] ||
                 fail "Runtime dependency SONAMEs must be unique and sorted."
             PREVIOUS_DEPENDENCY="$dependency_line"
-            if [[ "$CURRENT_SECTION" == gateway ]]; then
-                GATEWAY_BUILD_DEPENDENCIES+=("$dependency_line")
-            else
-                PROVISIONER_BUILD_DEPENDENCIES+=("$dependency_line")
-            fi
+            case "$CURRENT_SECTION" in
+                gateway) GATEWAY_BUILD_DEPENDENCIES+=("$dependency_line") ;;
+                credential) CREDENTIAL_PROVISIONER_BUILD_DEPENDENCIES+=("$dependency_line") ;;
+                registry) REGISTRY_PROVISIONER_BUILD_DEPENDENCIES+=("$dependency_line") ;;
+                *) fail "Unknown runtime dependency section." ;;
+            esac
             ;;
     esac
 done
-[[ "$SEEN_GATEWAY_SECTION" == true && "$SEEN_PROVISIONER_SECTION" == true ]] ||
-    fail "Runtime dependency report must contain both executable sections."
-(( ${#GATEWAY_BUILD_DEPENDENCIES[@]} > 0 && ${#PROVISIONER_BUILD_DEPENDENCIES[@]} > 0 )) ||
+[[ "$SEEN_GATEWAY_SECTION" == true &&
+   "$SEEN_CREDENTIAL_PROVISIONER_SECTION" == true &&
+   "$SEEN_REGISTRY_PROVISIONER_SECTION" == true ]] ||
+    fail "Runtime dependency report must contain all three executable sections."
+(( ${#GATEWAY_BUILD_DEPENDENCIES[@]} > 0 &&
+   ${#CREDENTIAL_PROVISIONER_BUILD_DEPENDENCIES[@]} > 0 &&
+   ${#REGISTRY_PROVISIONER_BUILD_DEPENDENCIES[@]} > 0 )) ||
     fail "Runtime dependency report has an empty executable section."
 
 BINARIES=(
     "$ROOT/usr/local/bin/dockstation_linux_bootstrap"
     "$ROOT/usr/local/bin/dockstation-credential-provision"
+    "$ROOT/usr/local/bin/dockstation-registry-provision"
 )
 for binary in "${BINARIES[@]}"; do
     [[ -f "$binary" && ! -L "$binary" && -x "$binary" ]] ||
@@ -251,11 +273,18 @@ for binary in "${BINARIES[@]}"; do
     )" || fail "Could not parse ldd dependencies for $binary."
     [[ -n "$actual_dependency_names" ]] ||
         fail "ldd produced no shared-library SONAMEs for $binary."
-    if [[ "${binary##*/}" == dockstation_linux_bootstrap ]]; then
-        expected_dependency_names=("${GATEWAY_BUILD_DEPENDENCIES[@]}")
-    else
-        expected_dependency_names=("${PROVISIONER_BUILD_DEPENDENCIES[@]}")
-    fi
+    case "${binary##*/}" in
+        dockstation_linux_bootstrap)
+            expected_dependency_names=("${GATEWAY_BUILD_DEPENDENCIES[@]}")
+            ;;
+        dockstation-credential-provision)
+            expected_dependency_names=("${CREDENTIAL_PROVISIONER_BUILD_DEPENDENCIES[@]}")
+            ;;
+        dockstation-registry-provision)
+            expected_dependency_names=("${REGISTRY_PROVISIONER_BUILD_DEPENDENCIES[@]}")
+            ;;
+        *) fail "Unexpected executable in bundle verifier loop." ;;
+    esac
     if [[ "${DOCKSTATION_REQUIRE_EXACT_RUNTIME_SONAMES:-0}" == "1" ]]; then
         expected_names_sorted="$(printf '%s\n' "${expected_dependency_names[@]}" | sort -u)"
         actual_names_sorted="$(printf '%s\n' "$actual_dependency_names" | sort -u)"
@@ -278,5 +307,5 @@ for expected_file in \
 done
 
 info "SHA-256 checksums match; archive paths and link types are accepted."
-info "Both executables passed architecture inspection where available and native ldd checks."
+info "All three executables passed architecture inspection where available and native ldd checks."
 printf 'PASS: DockStation ARM64 deployment bundle verification completed.\n'

@@ -56,7 +56,10 @@ cat > "$FAKE_BIN/pkg-config" <<'PKG_CONFIG'
 case "${1:-}:${2:-}" in
     --cflags:openssl) printf '\n' ;;
     --modversion:openssl) printf '%s\n' "${FAKE_OPENSSL_VERSION:-3.0.13}" ;;
-    --modversion:sqlite3) printf '%s\n' "${FAKE_SQLITE_VERSION:-3.45.1}" ;;
+    --modversion:sqlite3)
+        [[ "${FAKE_SQLITE_VERSION:-3.45.1}" != missing ]] || exit 1
+        printf '%s\n' "${FAKE_SQLITE_VERSION:-3.45.1}"
+        ;;
     *) exit 1 ;;
 esac
 PKG_CONFIG
@@ -112,11 +115,18 @@ run_case \
     "FAKE_UNAME_MACHINE=x86_64"
 
 run_case \
-    "target preflight keeps old SQLite optional and warns rather than blocking Gateway-only" \
-    1 \
-    "оставьте DOCKSTATION_BUILD_SQLITE_PERSISTENCE=OFF" \
+    "target preflight rejects SQLite older than 3.31 for persistent Gateway installation" \
+    2 \
+    "SQLite 3.28.0 ниже обязательной версии 3.31" \
     "FAKE_UNAME_MACHINE=aarch64" \
     "FAKE_SQLITE_VERSION=3.28.0"
+
+run_case \
+    "target preflight requires SQLite development metadata for the full installation" \
+    2 \
+    "SQLite development metadata не обнаружены" \
+    "FAKE_UNAME_MACHINE=aarch64" \
+    "FAKE_SQLITE_VERSION=missing"
 
 run_case \
     "target preflight treats OpenSSL older than 3.0 as a blocker" \

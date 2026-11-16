@@ -49,7 +49,18 @@ jobs:
           sudo useradd --system --gid dockstation --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin dockstation
           sudo cmake --install build
           sudo install -d -o root -g dockstation -m 0750 /etc/dockstation
-          sudo install -o root -g dockstation -m 0640 /usr/local/share/dockstation/gateway.conf.example /etc/dockstation/gateway.conf
+          gateway_config="$RUNNER_TEMP/gateway.conf"
+          cat > "$gateway_config" <<'EOF'
+          api_port=8080
+          log_level=info
+          log_stderr=true
+          controller_uart_device=/dev/ttyS0
+          controller_local_id=repka-ci
+          controller_peer_id=esp32-ci
+          station_id=station-ci
+          controller_source=esp32.main
+          EOF
+          sudo install -o root -g dockstation -m 0640 "$gateway_config" /etc/dockstation/gateway.conf
           # This smoke test starts the process outside systemd, so prepare
           # the same state directory that StateDirectory creates for the unit.
           sudo install -d -o dockstation -g dockstation -m 0700 /var/lib/dockstation
@@ -96,6 +107,9 @@ jobs:
           wait "$gateway_pid"
           gateway_pid=""
           grep -Fq 'Локальный read-only API остановлен' "$gateway_log"
+
+      - name: Verify local source and subsystem registry provisioning
+        run: bash verification/repka_gateway/ci_registry_provision_acceptance.sh
 
       - name: Run all 31 core and ConfigurationManager host tests
         run: bash tools/run_host_tests.sh
@@ -190,13 +204,12 @@ jobs:
           -DCMAKE_BUILD_TYPE=Release
           -DBUILD_TESTING=OFF
           -DDOCKSTATION_ENABLE_SANITIZERS=OFF
-          -DDOCKSTATION_BUILD_SQLITE_PERSISTENCE=OFF
-          -DCMAKE_DISABLE_FIND_PACKAGE_SQLite3=TRUE
+          -DDOCKSTATION_BUILD_SQLITE_PERSISTENCE=ON
           -DCMAKE_INSTALL_PREFIX=/usr/local
 
       - name: Build deployable ARM64 executables
         run: |
-          cmake --build build-release --target dockstation_linux_bootstrap dockstation-credential-provision --parallel 2
+          cmake --build build-release --target dockstation_linux_bootstrap dockstation-credential-provision dockstation-registry-provision --parallel 2
           cmake --build build-release --target preinstall --parallel 2
 
       - name: Assemble and verify ARM64 deployment bundle
@@ -211,6 +224,7 @@ jobs:
 
           test -x "$package_root/usr/local/bin/dockstation_linux_bootstrap"
           test -x "$package_root/usr/local/bin/dockstation-credential-provision"
+          test -x "$package_root/usr/local/bin/dockstation-registry-provision"
           test -f "$package_root/usr/local/lib/systemd/system/dockstation-gateway.service"
           test -f "$package_root/usr/local/lib/systemd/system/dockstation-gateway-uart@.service"
           test -f "$package_root/usr/local/share/dockstation/gateway.conf.example"
@@ -222,10 +236,11 @@ jobs:
           # Record stable, sorted SONAMEs instead of ldd's ASLR-dependent
           # memory addresses and host-specific resolved library paths.
           dependencies="$package_root/RUNTIME-DEPENDENCIES.txt"
-          printf '%s\n' "# DockStation runtime dependency report v1" > "$dependencies"
+          printf '%s\n' "# DockStation runtime dependency report v2" > "$dependencies"
           for binary in \
             "$package_root/usr/local/bin/dockstation_linux_bootstrap" \
-            "$package_root/usr/local/bin/dockstation-credential-provision"; do
+            "$package_root/usr/local/bin/dockstation-credential-provision" \
+            "$package_root/usr/local/bin/dockstation-registry-provision"; do
             printf '%s\n' "### ${binary#"$package_root"/}" >> "$dependencies"
             dependency_output="$(ldd "$binary" 2>&1)"
             if grep -Fq 'not found' <<< "$dependency_output"; then
@@ -256,7 +271,7 @@ jobs:
           cmake_version="$(cmake --version | head -n 1)"
           openssl_version="$(pkg-config --modversion openssl)"
           {
-            printf '%s\n' "Bundle format: dockstation-repka-pi5-arm64-v1"
+            printf '%s\n' "Bundle format: dockstation-repka-pi5-arm64-v2"
             printf '%s\n' "Architecture: $(uname -m)"
             printf '%s\n' "Build OS: $os_pretty_name"
             printf '%s\n' "Build kernel: $(uname -r)"
@@ -266,11 +281,12 @@ jobs:
             printf '%s\n' "Source commit: $SOURCE_COMMIT"
             printf '%s\n' "Source date epoch: $source_date_epoch"
             printf '%s\n' "Build type: Release"
-            printf '%s\n' "SQLite persistence: disabled"
+            printf '%s\n' "SQLite persistence: enabled"
             printf '%s\n' "Install prefix: /usr/local"
             printf '%s\n' "ABI ceilings: GLIBC<=2.34, GLIBCXX<=3.4.32, CXXABI<=1.3.9, OPENSSL<=3.0.0"
             printf '%s\n' "Included: dockstation_linux_bootstrap, dockstation-credential-provision,"
-            printf '%s\n' "          dockstation-gateway.service, dockstation-gateway-uart@.service,"
+            printf '%s\n' "          dockstation-registry-provision, dockstation-gateway.service,"
+            printf '%s\n' "          dockstation-gateway-uart@.service,"
             printf '%s\n' "          gateway.conf.example"
           } > "$package_root/BUNDLE-MANIFEST.txt"
 
@@ -321,6 +337,7 @@ jobs:
 
           test -x "$stage/usr/local/bin/dockstation_linux_bootstrap"
           test -x "$stage/usr/local/bin/dockstation-credential-provision"
+          test -x "$stage/usr/local/bin/dockstation-registry-provision"
           test -f "$stage/usr/local/lib/systemd/system/dockstation-gateway.service"
           test -f "$stage/usr/local/lib/systemd/system/dockstation-gateway-uart@.service"
           test -f "$stage/etc/dockstation/gateway.conf"

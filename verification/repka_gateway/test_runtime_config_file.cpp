@@ -182,6 +182,16 @@ int main() {
         expect(result.status == RuntimeConfigFileStatus::Loaded &&
                    result.config.api_port == 8091U,
                "loads configuration from a regular file");
+
+        const std::string symlink_path = path + ".symlink";
+        expect(::symlink(path.c_str(), symlink_path.c_str()) == 0,
+               "creates a symbolic link to the valid configuration file");
+        if (::access(symlink_path.c_str(), F_OK) == 0) {
+            result = load_runtime_config_file(symlink_path);
+            expect(result.status == RuntimeConfigFileStatus::ReadError,
+                   "refuses to follow a symbolic link to a configuration file");
+            (void)::unlink(symlink_path.c_str());
+        }
         (void)::unlink(path.c_str());
     }
 

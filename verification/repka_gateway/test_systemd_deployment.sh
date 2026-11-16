@@ -15,11 +15,13 @@ trap 'rm -rf "$stage_root"' EXIT
 cmake --install "$build_dir" --prefix "$stage_root/usr/local" >/dev/null
 
 binary="$stage_root/usr/local/bin/dockstation_linux_bootstrap"
+registry_provisioner="$stage_root/usr/local/bin/dockstation-registry-provision"
 unit="$stage_root/usr/local/lib/systemd/system/dockstation-gateway.service"
 uart_unit="$stage_root/usr/local/lib/systemd/system/dockstation-gateway-uart@.service"
 config="$stage_root/usr/local/share/dockstation/gateway.conf.example"
 
 [[ -x "$binary" ]] || { echo "ERROR: installed Gateway binary is missing or not executable" >&2; exit 1; }
+[[ -x "$registry_provisioner" ]] || { echo "ERROR: SQLite-enabled install is missing the local registry provisioner" >&2; exit 1; }
 [[ -f "$unit" ]] || { echo "ERROR: installed systemd unit is missing" >&2; exit 1; }
 [[ -f "$uart_unit" ]] || { echo "ERROR: installed UART systemd template is missing" >&2; exit 1; }
 [[ -f "$config" ]] || { echo "ERROR: installed Gateway config example is missing" >&2; exit 1; }

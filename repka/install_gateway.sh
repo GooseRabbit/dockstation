@@ -27,6 +27,7 @@ CONFIG_FILE="$CONFIG_DIR/gateway.conf"
 BASE_UNIT="$PREFIX/lib/systemd/system/dockstation-gateway.service"
 UART_UNIT="$PREFIX/lib/systemd/system/dockstation-gateway-uart@.service"
 EXAMPLE_CONFIG="$PREFIX/share/dockstation/gateway.conf.example"
+STATE_DIRECTORY="$STAGE_ROOT/var/lib/dockstation"
 
 fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 info() { printf '[INFO] %s\n' "$*"; }
@@ -115,6 +116,7 @@ TARGET_DIRS=(
     "$STAGE_ROOT$PREFIX/share"
     "$STAGE_ROOT$PREFIX/share/dockstation"
     "$TARGET_CONFIG_DIR"
+    "$STATE_DIRECTORY"
 )
 for target_dir in "${TARGET_DIRS[@]}"; do
     [[ ! -L "$target_dir" ]] || fail "$target_dir является symlink; установка запрещена."
@@ -124,6 +126,7 @@ done
 TARGET_FILES=(
     "$STAGE_ROOT$PREFIX/bin/dockstation_linux_bootstrap"
     "$STAGE_ROOT$PREFIX/bin/dockstation-credential-provision"
+    "$STAGE_ROOT$PREFIX/bin/dockstation-registry-provision"
     "$STAGE_ROOT$BASE_UNIT"
     "$STAGE_ROOT$UART_UNIT"
     "$STAGE_ROOT$EXAMPLE_CONFIG"
@@ -214,6 +217,8 @@ if [[ -n "$BUNDLE" ]]; then
         fail "Bundle не содержит исполняемый Gateway."
     [[ -x "$BUNDLE_PREFIX/bin/dockstation-credential-provision" ]] ||
         fail "Bundle не содержит credential provisioner."
+    [[ -x "$BUNDLE_PREFIX/bin/dockstation-registry-provision" ]] ||
+        fail "Bundle не содержит local registry provisioner."
     [[ -f "$BUNDLE_PREFIX/lib/systemd/system/dockstation-gateway.service" ]] ||
         fail "Bundle не содержит базовый systemd unit."
     [[ -f "$BUNDLE_PREFIX/lib/systemd/system/dockstation-gateway-uart@.service" ]] ||
@@ -226,6 +231,8 @@ if [[ -n "$BUNDLE" ]]; then
         "$STAGE_ROOT$PREFIX/bin/dockstation_linux_bootstrap"
     "$INSTALL" -D -m 0755 "$BUNDLE_PREFIX/bin/dockstation-credential-provision" \
         "$STAGE_ROOT$PREFIX/bin/dockstation-credential-provision"
+    "$INSTALL" -D -m 0755 "$BUNDLE_PREFIX/bin/dockstation-registry-provision" \
+        "$STAGE_ROOT$PREFIX/bin/dockstation-registry-provision"
     "$INSTALL" -D -m 0644 "$BUNDLE_PREFIX/lib/systemd/system/dockstation-gateway.service" \
         "$STAGE_ROOT$BASE_UNIT"
     "$INSTALL" -D -m 0644 "$BUNDLE_PREFIX/lib/systemd/system/dockstation-gateway-uart@.service" \
@@ -233,17 +240,16 @@ if [[ -n "$BUNDLE" ]]; then
     "$INSTALL" -D -m 0644 "$BUNDLE_PREFIX/share/dockstation/gateway.conf.example" \
         "$STAGE_ROOT$EXAMPLE_CONFIG"
 else
-    info "Сборка Release Gateway без SQLite development dependency."
+    info "Сборка Release Gateway с локальной SQLite persistence и registry provisioner."
     "$CMAKE" -S "$REPO_ROOT" -B "$BUILD_DIR" \
         -DCMAKE_BUILD_TYPE=Release \
         -DBUILD_TESTING=OFF \
         -DDOCKSTATION_ENABLE_SANITIZERS=OFF \
-        -DDOCKSTATION_BUILD_SQLITE_PERSISTENCE=OFF \
-        -DCMAKE_DISABLE_FIND_PACKAGE_SQLite3=TRUE \
+        -DDOCKSTATION_BUILD_SQLITE_PERSISTENCE=ON \
         -DCMAKE_INSTALL_PREFIX="$PREFIX"
 
     "$CMAKE" --build "$BUILD_DIR" \
-        --target dockstation_linux_bootstrap dockstation-credential-provision \
+        --target dockstation_linux_bootstrap dockstation-credential-provision dockstation-registry-provision \
         --parallel "$BUILD_JOBS"
     "$CMAKE" --build "$BUILD_DIR" --target preinstall --parallel "$BUILD_JOBS"
     DESTDIR="$STAGE_ROOT" "$CMAKE" --install "$BUILD_DIR"
@@ -251,11 +257,12 @@ fi
 
 BIN="$STAGE_ROOT$PREFIX/bin/dockstation_linux_bootstrap"
 PROVISIONER="$STAGE_ROOT$PREFIX/bin/dockstation-credential-provision"
+REGISTRY_PROVISIONER="$STAGE_ROOT$PREFIX/bin/dockstation-registry-provision"
 BASE_FILE="$STAGE_ROOT$BASE_UNIT"
 UART_FILE="$STAGE_ROOT$UART_UNIT"
 EXAMPLE_FILE="$STAGE_ROOT$EXAMPLE_CONFIG"
-[[ -x "$BIN" && -x "$PROVISIONER" ]] ||
-    fail "Не все исполняемые Gateway файлы установлены."
+[[ -x "$BIN" && -x "$PROVISIONER" && -x "$REGISTRY_PROVISIONER" ]] ||
+    fail "Не все исполняемые Gateway/provisioning файлы установлены."
 [[ -f "$BASE_FILE" && -f "$UART_FILE" && -f "$EXAMPLE_FILE" ]] ||
     fail "Не все ожидаемые systemd/config files установлены."
 
@@ -273,6 +280,10 @@ fi
 "$GETENT" passwd dockstation >/dev/null 2>&1 ||
     "$USERADD" --system --gid dockstation --no-create-home \
         --home-dir /nonexistent --shell /usr/sbin/nologin dockstation
+
+# Create the systemd StateDirectory with its exact private owner/mode before
+# provisioning can initialize the database or the service can use it.
+"$INSTALL" -d -o dockstation -g dockstation -m 0700 "$STATE_DIRECTORY"
 
 "$INSTALL" -d -o root -g dockstation -m 0750 "$CONFIG_DIR"
 if [[ ! -e "$CONFIG_FILE" ]]; then

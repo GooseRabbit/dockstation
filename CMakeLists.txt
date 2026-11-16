@@ -174,6 +174,20 @@ target_link_libraries(dockstation-credential-provision
 )
 dockstation_apply_compile_policy(dockstation-credential-provision)
 
+# Trusted local registry provisioning is coupled to the exact SQLite backend
+# used by the Gateway. No provisioning target exists in Gateway-only builds.
+if(DOCKSTATION_BUILD_SQLITE_PERSISTENCE)
+    add_executable(dockstation-registry-provision
+        tools/dockstation_registry_provision.cpp
+    )
+    target_link_libraries(dockstation-registry-provision
+        PRIVATE dockstation_gateway_persistence_context
+                dockstation_controller_tls
+                dockstation_linux_runtime
+    )
+    dockstation_apply_compile_policy(dockstation-registry-provision)
+endif()
+
 add_executable(dockstation_linux_bootstrap
     repka_gateway/main.cpp
 )
@@ -380,6 +394,16 @@ if(BUILD_TESTING)
     add_test(NAME controller_link_service COMMAND test_controller_link_service)
 
     if(DOCKSTATION_BUILD_SQLITE_PERSISTENCE)
+        add_test(NAME registry_provision_help COMMAND dockstation-registry-provision --help)
+        add_test(NAME registry_provision_rejects_invalid_revision
+            COMMAND dockstation-registry-provision source --revision "bad revision")
+        set_tests_properties(registry_provision_rejects_invalid_revision
+            PROPERTIES WILL_FAIL TRUE)
+        add_test(NAME registry_provision_rejects_unsafe_subsystem_id
+            COMMAND dockstation-registry-provision subsystem --subsystem-id "../etc" --revision r1)
+        set_tests_properties(registry_provision_rejects_unsafe_subsystem_id
+            PROPERTIES WILL_FAIL TRUE)
+
         add_executable(test_sqlite_persistence_probe
             verification/repka_gateway/test_sqlite_persistence_probe.cpp
         )
@@ -610,6 +634,13 @@ if(BUILD_TESTING)
                 -fsanitize=address,undefined
             )
             if(DOCKSTATION_BUILD_SQLITE_PERSISTENCE)
+                target_compile_options(dockstation-registry-provision PRIVATE
+                    -fsanitize=address,undefined
+                    -fno-omit-frame-pointer
+                )
+                target_link_options(dockstation-registry-provision PRIVATE
+                    -fsanitize=address,undefined
+                )
                 target_compile_options(dockstation_persistence_sqlite PRIVATE
                     -fsanitize=address,undefined
                     -fno-omit-frame-pointer
@@ -689,6 +720,11 @@ configure_file(
 install(TARGETS dockstation_linux_bootstrap dockstation-credential-provision
     RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
 )
+if(DOCKSTATION_BUILD_SQLITE_PERSISTENCE)
+    install(TARGETS dockstation-registry-provision
+        RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    )
+endif()
 install(FILES "${PROJECT_BINARY_DIR}/dockstation-gateway.service"
     DESTINATION "lib/systemd/system"
 )

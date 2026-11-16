@@ -22,6 +22,7 @@ if [[ "$1" == --install ]]; then
  mkdir -p "$d/usr/local/bin" "$d/usr/local/lib/systemd/system" "$d/usr/local/share/dockstation"
  printf '#!/bin/sh\nexit 0\n' > "$d/usr/local/bin/dockstation_linux_bootstrap"
  printf '#!/bin/sh\nexit 0\n' > "$d/usr/local/bin/dockstation-credential-provision"
+ printf '#!/bin/sh\nexit 0\n' > "$d/usr/local/bin/dockstation-registry-provision"
  chmod +x "$d/usr/local/bin/"*
  printf '[Service]\n' > "$d/usr/local/lib/systemd/system/dockstation-gateway.service"
  printf '[Service]\n' > "$d/usr/local/lib/systemd/system/dockstation-gateway-uart@.service"
@@ -42,7 +43,13 @@ esac
 SH
 cat > "$BIN/ldd" <<'SH'
 #!/usr/bin/env bash
-printf 'libcrypto.so.3 => /lib/aarch64-linux-gnu/libcrypto.so.3\nlibssl.so.3 => /lib/aarch64-linux-gnu/libssl.so.3\n'
+printf 'libcrypto.so.3 => /lib/aarch64-linux-gnu/libcrypto.so.3\n'
+case "${1##*/}" in
+ dockstation_linux_bootstrap|dockstation-registry-provision)
+  printf 'libsqlite3.so.0 => /lib/aarch64-linux-gnu/libsqlite3.so.0\n'
+  ;;
+esac
+printf 'libssl.so.3 => /lib/aarch64-linux-gnu/libssl.so.3\n'
 SH
 chmod +x "$BIN/"*
 export PATH="$BIN:/usr/bin:/bin"
@@ -65,6 +72,7 @@ if [[ "$1" == --install ]]; then
  mkdir -p "$d/usr/local/bin" "$d/usr/local/lib/systemd/system" "$d/usr/local/share/dockstation"
  printf '#!/bin/sh\nexit 0\n' > "$d/usr/local/bin/dockstation_linux_bootstrap"
  printf '#!/bin/sh\nexit 0\n' > "$d/usr/local/bin/dockstation-credential-provision"
+ printf '#!/bin/sh\nexit 0\n' > "$d/usr/local/bin/dockstation-registry-provision"
  chmod +x "$d/usr/local/bin/"*
  printf '[Service]\n' > "$d/usr/local/lib/systemd/system/dockstation-gateway.service"
  printf '[Service]\n' > "$d/usr/local/lib/systemd/system/dockstation-gateway-uart@.service"
@@ -83,14 +91,14 @@ grep -Fqx 'operator_setting=source-preserve' "$STAGE/etc/dockstation/gateway.con
 # Build a valid synthetic archive for the verifier and bundle installer.
 BROOT="$TMP/bundle-root"
 mkdir -p "$BROOT/usr/local/bin" "$BROOT/usr/local/lib/systemd/system" "$BROOT/usr/local/share/dockstation"
-for name in dockstation_linux_bootstrap dockstation-credential-provision; do
+for name in dockstation_linux_bootstrap dockstation-credential-provision dockstation-registry-provision; do
  printf '#!/bin/sh\nexit 0\n' > "$BROOT/usr/local/bin/$name"; chmod +x "$BROOT/usr/local/bin/$name"
 done
 printf '[Service]\n' > "$BROOT/usr/local/lib/systemd/system/dockstation-gateway.service"
 printf '[Service]\n' > "$BROOT/usr/local/lib/systemd/system/dockstation-gateway-uart@.service"
 printf 'api_port=8080\n' > "$BROOT/usr/local/share/dockstation/gateway.conf.example"
 printf '%s\n' \
- 'Bundle format: dockstation-repka-pi5-arm64-v1' \
+ 'Bundle format: dockstation-repka-pi5-arm64-v2' \
  'Architecture: aarch64' \
  'Build OS: Synthetic test OS' \
  'Build kernel: test-kernel' \
@@ -100,16 +108,18 @@ printf '%s\n' \
  'Source commit: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' \
  'Source date epoch: 1794760000' \
  'Build type: Release' \
- 'SQLite persistence: disabled' \
+ 'SQLite persistence: enabled' \
  'Install prefix: /usr/local' \
  'ABI ceilings: GLIBC<=2.34, GLIBCXX<=3.4.32, CXXABI<=1.3.9, OPENSSL<=3.0.0' \
  > "$BROOT/BUNDLE-MANIFEST.txt"
 {
- printf '%s\n' '# DockStation runtime dependency report v1'
+ printf '%s\n' '# DockStation runtime dependency report v2'
  printf '%s\n' '### usr/local/bin/dockstation_linux_bootstrap'
- printf '%s\n' 'libcrypto.so.3' 'libssl.so.3'
+ printf '%s\n' 'libcrypto.so.3' 'libsqlite3.so.0' 'libssl.so.3'
  printf '%s\n' '### usr/local/bin/dockstation-credential-provision'
  printf '%s\n' 'libcrypto.so.3' 'libssl.so.3'
+ printf '%s\n' '### usr/local/bin/dockstation-registry-provision'
+ printf '%s\n' 'libcrypto.so.3' 'libsqlite3.so.0' 'libssl.so.3'
 } > "$BROOT/RUNTIME-DEPENDENCIES.txt"
 (cd "$BROOT" && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
 BUNDLE="$TMP/dockstation-repka-pi5-arm64.tar.gz"
@@ -138,6 +148,7 @@ STAGE2="$TMP/bundle-stage"
 DOCKSTATION_INSTALL_ROOT="$STAGE2" DOCKSTATION_CMAKE_COMMAND=/bin/false \
  bash "$ROOT/repka/install_gateway.sh" --bundle "$BUNDLE" >/dev/null
 grep -Fqx 'api_port=8080' "$STAGE2/etc/dockstation/gateway.conf"
+[[ -x "$STAGE2/usr/local/bin/dockstation-registry-provision" ]]
 printf 'operator_setting=bundle-preserve\n' >> "$STAGE2/etc/dockstation/gateway.conf"
 DOCKSTATION_INSTALL_ROOT="$STAGE2" DOCKSTATION_CMAKE_COMMAND=/bin/false \
  bash "$ROOT/repka/install_gateway.sh" --bundle "$BUNDLE" >/dev/null

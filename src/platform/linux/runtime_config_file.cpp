@@ -241,7 +241,8 @@ RuntimeConfigFileResult load_runtime_config_file(const std::string& path) {
         return invalid(0U, "path", "configuration file path contains a null byte");
     }
 
-    const int descriptor = ::open(path.c_str(), O_RDONLY | O_CLOEXEC | O_NONBLOCK);
+    const int descriptor = ::open(
+        path.c_str(), O_RDONLY | O_CLOEXEC | O_NONBLOCK | O_NOFOLLOW);
     if (descriptor < 0) {
         if (errno == ENOENT) {
             RuntimeConfigFileResult result{};
