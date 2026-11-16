@@ -1,6 +1,7 @@
 #include "hardware/interfaces/controller_link_startup_readiness.hpp"
 
 #include "hardware/interfaces/controller_codec.hpp"
+#include "hardware/interfaces/controller_stable_identity.hpp"
 #include "hardware/interfaces/controller_link_peer_session.hpp"
 
 namespace dockstation::hardware::interfaces {
@@ -10,12 +11,6 @@ void add_blocker(
     ControllerLinkStartupReadiness& result,
     ControllerLinkStartupBlocker blocker) noexcept {
     result.blockers |= static_cast<std::uint32_t>(blocker);
-}
-
-[[nodiscard]] bool valid_controller_id(std::string_view value) noexcept {
-    return !value.empty() &&
-           value.size() <= kControllerLinkPeerSessionMaximumIdentifierBytes &&
-           is_valid_controller_wire_text(value);
 }
 
 }  // namespace
@@ -52,7 +47,8 @@ ControllerLinkStartupReadiness evaluate_controller_link_startup_readiness(
         add_blocker(result, ControllerLinkStartupBlocker::ProtocolVersionInvalid);
     }
 
-    const bool local_id_valid = valid_controller_id(input.local_controller_id);
+    const bool local_id_valid =
+        is_valid_controller_stable_id(input.local_controller_id);
     if (input.local_controller_id.empty()) {
         add_blocker(result,
                     ControllerLinkStartupBlocker::LocalControllerIdMissing);
@@ -61,7 +57,8 @@ ControllerLinkStartupReadiness evaluate_controller_link_startup_readiness(
                     ControllerLinkStartupBlocker::LocalControllerIdInvalid);
     }
 
-    const bool peer_id_valid = valid_controller_id(input.peer_controller_id);
+    const bool peer_id_valid =
+        is_valid_controller_stable_id(input.peer_controller_id);
     if (input.peer_controller_id.empty()) {
         add_blocker(result,
                     ControllerLinkStartupBlocker::PeerControllerIdMissing);

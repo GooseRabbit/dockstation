@@ -45,6 +45,13 @@ int main() {
     expect(result.status == RuntimeConfigValidationStatus::Valid,
            "accepts a complete optional controller link configuration");
 
+    config.controller_local_id = "repka/controller";
+    result = validate_runtime_config(config);
+    expect(result.status == RuntimeConfigValidationStatus::Invalid &&
+               result.field == "controller_link",
+           "rejects path-like stable controller IDs");
+
+    config.controller_local_id = "repka-01";
     config.controller_peer_id.clear();
     result = validate_runtime_config(config);
     expect(result.status == RuntimeConfigValidationStatus::Invalid &&

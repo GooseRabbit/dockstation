@@ -143,8 +143,8 @@ int main() {
 
     input.local_controller_id = "контроллер-esp32";
     result = evaluate_controller_link_startup_readiness(input);
-    expect(result.is_ready(),
-           "valid UTF-8 controller identifiers remain supported");
+    expect(blocked_by(result, ControllerLinkStartupBlocker::LocalControllerIdInvalid),
+           "non-ASCII stable controller IDs are rejected consistently on both platforms");
 
     input = ready_input();
     input.hardware_profile_confirmed = false;

@@ -5,6 +5,7 @@
 #include <string_view>
 
 #include "platform/logging/logger.hpp"
+#include "hardware/interfaces/controller_stable_identity.hpp"
 
 namespace dockstation::platform::linux_runtime {
 namespace {
@@ -60,7 +61,7 @@ bool valid_controller_uart_path(const std::string& value) {
     return true;
 }
 
-bool valid_controller_id(const std::string& value) {
+bool valid_ascii_identifier(const std::string& value) {
     if (value.empty() || value.size() > 128U || contains_null_byte(value)) {
         return false;
     }
@@ -73,6 +74,10 @@ bool valid_controller_id(const std::string& value) {
         }
     }
     return true;
+}
+
+bool valid_controller_id(const std::string& value) {
+    return hardware::interfaces::is_valid_controller_stable_id(value);
 }
 
 bool valid_controller_source(const std::string& value) {
@@ -157,7 +162,7 @@ RuntimeConfigValidationResult validate_runtime_config(const RuntimeConfig& confi
             return invalid("controller_event_ingress",
                            "station_id and controller_source require a configured ControllerLink");
         }
-        if (!valid_controller_id(config.station_id)) {
+        if (!valid_ascii_identifier(config.station_id)) {
             return invalid("station_id",
                            "station ID must be a non-empty ASCII identifier of at most 128 bytes");
         }

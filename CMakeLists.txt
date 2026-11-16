@@ -421,6 +421,16 @@ if(BUILD_TESTING)
     add_test(NAME controller_link_startup_readiness
         COMMAND test_controller_link_startup_readiness)
 
+    add_executable(test_controller_stable_identity
+        verification/repka_gateway/test_controller_stable_identity.cpp
+    )
+    target_link_libraries(test_controller_stable_identity
+        PRIVATE dockstation_linux_runtime
+    )
+    dockstation_apply_compile_policy(test_controller_stable_identity)
+    add_test(NAME controller_stable_identity
+        COMMAND test_controller_stable_identity)
+
     add_executable(test_controller_psk_tls_client
         verification/repka_gateway/test_controller_psk_tls_client.cpp
     )
