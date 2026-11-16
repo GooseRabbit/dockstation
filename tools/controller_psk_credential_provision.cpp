@@ -279,7 +279,7 @@ void print_usage() noexcept {
         "By default an existing file is never overwritten. --replace explicitly\n"
         "installs a new local credential pair after validating the existing file.\n"
         "--check validates the existing Repka credential file and both stable\n"
-        "controller IDs. It is read-only: no files, ESP32 NVS or eFuses are changed.\n"
+        "controller IDs. It performs no writes and does not access ESP32 NVS or eFuses.\n"
         "Secrets are never printed. ESP32 provisioning is a separate procedure.");
 }
 
@@ -328,7 +328,7 @@ void print_usage() noexcept {
     }
 
     (void)std::puts(
-        "Preflight passed: the Repka credential file is valid and both controller IDs satisfy the shared format. No files were changed; ESP32 remains unprovisioned.");
+        "Preflight passed: the Repka credential file is valid and both controller IDs satisfy the shared format. No credential data was written or replaced; ESP32 remains unprovisioned.");
     return 0;
 }
 
