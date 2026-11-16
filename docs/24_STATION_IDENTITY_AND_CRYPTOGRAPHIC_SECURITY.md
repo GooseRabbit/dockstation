@@ -1,7 +1,7 @@
 # Идентичность станции и криптографическая защита
 
 **Статус:** техническая спецификация идентичности и доступа; правила изоляции OwnerSpace заданы владельцем проекта, базовый профиль внутреннего Repka—ESP32 канала DEC-066 утверждён владельцем проекта 2026-11-14; применение TLS exporter как основы channel-bound session proof согласовано владельцем 2026-11-16; остальные криптографические решения остаются предметом отдельного согласования.  
-**Редакция:** 1.1.  
+**Редакция:** 1.2.  
 **Дата:** 2026-11-15.
 
 ## 1. Назначение
@@ -481,3 +481,4 @@ Exporter доказывает привязку к текущему TLS-кана�
 | 0.9 | 2026-11-15 | Добавлена локальная утилита dockstation-credential-provision для генерации 32+16 байт и атомарной установки/явной локальной замены файла на Repka; секреты не выводятся. Зафиксировано, что ESP32 не provisioned, coordinated rotation/revocation, interop и аппаратная приёмка остаются открытыми. Добавлены организационные вопросы IAM и размещения/резервирования данных; вопросы остаются предложениями до согласования владельцем проекта. |
 | 1.0 | 2026-11-16 | Владелец согласовал TLS exporter как основу session proof. На Linux/OpenSSL добавлен 32-байтовый exporter с фиксированными DockStation label/context и выдачей через ControllerLinkService только после TLS handshake + HELLO_ACK; host tests подтвердили совпадение peer output, context separation и очистку. Это не production SourceSessionEvidence/verifier/registry и не Mbed TLS/ESP32 interop. |
 | 1.1 | 2026-11-16 | Зафиксированы ESP-IDF v5.5.6 / Espressif Mbed TLS 3.6.7 target compile и OpenSSL/upstream-Mbed-TLS interop; уточнено, что они не означают физический handshake. Добавлен read-only ControllerPskNvsCredentialStore с fail-closed проверкой Flash Encryption + encrypted `nvs_keys`, существующих NVS XTS keys и точных PSK/identity blobs; provisioning, Secure Boot/production fuse setup и физическая проверка остаются открытыми. |
+| 1.2 | 2026-11-16 | CI ESP-IDF v5.5.6 [#43923515234](https://github.com/GooseRabbit/dockstation/actions/runs/43923515234) собрал и слинковал NVS credential reader, UART, runtime и TLS компоненты. Подтверждена только compile/link при не provisioned Flash/NVS, не чтение реального секрета и не физическая аппаратная защита. |
