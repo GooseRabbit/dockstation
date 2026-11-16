@@ -76,6 +76,36 @@ def valid_platform_capabilities():
     }
 
 
+def valid_controller_telemetry():
+    return {
+        "status": "PASS",
+        "message": "Accepted snapshot",
+        "link_connected": True,
+        "source_controller_id": "esp32-01",
+        "controller_instance_id": "boot-0001",
+        "sequence_number": 17,
+        "received_at_utc": "2026-11-16T05:33:20.123Z",
+        "measurements": [
+            {
+                "sensor_id": "dht22-01.temperature",
+                "value_type": "NUMBER",
+                "value": 23.75,
+                "unit": "degC",
+                "quality_status": "OK",
+                "measured_at": "1794800000000",
+            },
+            {
+                "sensor_id": "cover.closed",
+                "value_type": "BOOLEAN",
+                "value": True,
+                "unit": "bool",
+                "quality_status": "UNKNOWN",
+                "measured_at": "1794800000001",
+            },
+        ],
+    }
+
+
 def valid_diagnostics():
     return {
         "schema_version": "1.0",
@@ -150,6 +180,48 @@ def test_validate_health_response_requires_expected_gateway():
     })
     with pytest.raises(ApiClientError):
         StationApiClient.validate_health_response({"api_version": "2", "service": "other", "status": "PASS", "read_only": True})
+
+
+def test_validate_diagnostics_response_accepts_controller_telemetry():
+    payload = valid_diagnostics()
+    payload["controller_telemetry"] = valid_controller_telemetry()
+    StationApiClient.validate_diagnostics_response(payload)
+
+
+def test_validate_diagnostics_response_remains_compatible_without_controller_telemetry():
+    payload = valid_diagnostics()
+    assert "controller_telemetry" not in payload
+    StationApiClient.validate_diagnostics_response(payload)
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda telemetry: telemetry.update(status="READY"),
+        lambda telemetry: telemetry.update(link_connected="yes"),
+        lambda telemetry: telemetry.update(sequence_number=True),
+        lambda telemetry: telemetry["measurements"][0].update(value_type="FLOAT"),
+        lambda telemetry: telemetry["measurements"][0].update(value=float("nan")),
+        lambda telemetry: telemetry["measurements"][0].update(quality_status="PASS"),
+        lambda telemetry: telemetry.update(received_at_utc="not-a-date"),
+    ],
+)
+def test_validate_diagnostics_response_rejects_invalid_controller_telemetry(mutate):
+    payload = valid_diagnostics()
+    payload["controller_telemetry"] = valid_controller_telemetry()
+    mutate(payload["controller_telemetry"])
+    with pytest.raises(ApiClientError):
+        StationApiClient.validate_diagnostics_response(payload)
+
+
+def test_validate_diagnostics_response_rejects_measurements_without_snapshot_identity():
+    payload = valid_diagnostics()
+    telemetry = valid_controller_telemetry()
+    telemetry.update(sequence_number=None, source_controller_id=None,
+                     controller_instance_id=None, received_at_utc=None)
+    payload["controller_telemetry"] = telemetry
+    with pytest.raises(ApiClientError):
+        StationApiClient.validate_diagnostics_response(payload)
 
 
 def test_validate_diagnostics_response_accepts_gateway_contract():

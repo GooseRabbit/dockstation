@@ -47,6 +47,10 @@ def test_qml_prototype_loads_with_the_seven_approved_tabs():
             assert page.property("contentWidth") > 0
         roots[0].setProperty("currentTab", 0)
         app.processEvents()
+        telemetry_panel = roots[0].findChild(QObject, "sensors.controller-telemetry")
+        assert telemetry_panel is not None, "Accepted ESP32 telemetry needs its own panel."
+        assert bridge.controllerTelemetry == []
+        assert "Нет принятого снимка" in bridge.controllerTelemetrySummary
         cover_status = roots[0].findChild(QObject, "sensor.cover-status")
         assert cover_status is not None, "Lid position must have its own panel."
         navigation = roots[0].property("navigation")

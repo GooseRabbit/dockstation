@@ -109,6 +109,102 @@ def _validate_platform_capabilities(value: object) -> None:
     _require_string(section.get("note"), "platform.capabilities.note")
 
 
+_TELEMETRY_QUALITY_STATUSES = {
+    "OK", "STALE", "INVALID", "UNAVAILABLE", "NOT_CONFIGURED", "UNKNOWN"
+}
+_TELEMETRY_VALUE_TYPES = {
+    "BOOLEAN", "INTEGER", "UNSIGNED_INTEGER", "NUMBER", "TEXT"
+}
+
+
+def _validate_controller_telemetry(value: object) -> None:
+    section = _require_object(value, "controller_telemetry")
+    _validate_status_message(section, "controller_telemetry")
+    status = section.get("status")
+    if status not in {"PASS", "NOT_CONFIGURED", "UNAVAILABLE", "UNKNOWN", "WARN", "FAIL"}:
+        raise ApiClientError("Поле controller_telemetry.status содержит неизвестный статус.")
+    link_connected = section.get("link_connected")
+    if not isinstance(link_connected, bool):
+        raise ApiClientError("Поле controller_telemetry.link_connected должно быть boolean.")
+    for field in ("source_controller_id", "controller_instance_id", "received_at_utc"):
+        _require_string(section.get(field), f"controller_telemetry.{field}", nullable=True)
+
+    sequence = section.get("sequence_number")
+    max_uint64 = (1 << 64) - 1
+    if sequence is not None and (
+        isinstance(sequence, bool) or not isinstance(sequence, int) or not 1 <= sequence <= max_uint64
+    ):
+        raise ApiClientError("Поле controller_telemetry.sequence_number должно быть положительным uint64 или null.")
+
+    received_at = section.get("received_at_utc")
+    if received_at is not None:
+        try:
+            parsed = datetime.fromisoformat(received_at.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ApiClientError("Поле controller_telemetry.received_at_utc должно содержать ISO 8601.") from exc
+        if parsed.tzinfo is None or parsed.utcoffset() != timedelta(0):
+            raise ApiClientError("Поле controller_telemetry.received_at_utc должно быть в UTC.")
+
+    measurements = section.get("measurements")
+    if not isinstance(measurements, list) or len(measurements) > 16:
+        raise ApiClientError("Поле controller_telemetry.measurements должно содержать не более 16 измерений.")
+
+    if sequence is None:
+        if (
+            section.get("source_controller_id") is not None
+            or section.get("controller_instance_id") is not None
+            or received_at is not None
+            or measurements
+        ):
+            raise ApiClientError("Телеметрия без sequence не должна содержать данные измерений.")
+        if status == "PASS":
+            raise ApiClientError("Статус PASS невозможен без принятого снимка телеметрии.")
+    else:
+        if not section.get("source_controller_id") or not section.get("controller_instance_id") or received_at is None:
+            raise ApiClientError("Принятый снимок должен содержать ID контроллера, instance и received_at_utc.")
+
+    for index, item in enumerate(measurements):
+        label = f"controller_telemetry.measurements[{index}]"
+        measurement = _require_object(item, label)
+        for field in ("sensor_id", "unit", "measured_at"):
+            text = measurement.get(field)
+            _require_string(text, f"{label}.{field}")
+            if not text:
+                raise ApiClientError(f"Поле {label}.{field} не может быть пустым.")
+        value_type = measurement.get("value_type")
+        if not isinstance(value_type, str) or value_type not in _TELEMETRY_VALUE_TYPES:
+            raise ApiClientError(f"Поле {label}.value_type содержит неизвестный тип.")
+        measured_value = measurement.get("value")
+        if value_type == "BOOLEAN":
+            valid_value = isinstance(measured_value, bool)
+        elif value_type == "INTEGER":
+            valid_value = (
+                isinstance(measured_value, int) and not isinstance(measured_value, bool)
+                and -(1 << 63) <= measured_value < (1 << 63)
+            )
+        elif value_type == "UNSIGNED_INTEGER":
+            valid_value = (
+                isinstance(measured_value, int) and not isinstance(measured_value, bool)
+                and 0 <= measured_value <= max_uint64
+            )
+        elif value_type == "NUMBER":
+            valid_value = (
+                isinstance(measured_value, (int, float))
+                and not isinstance(measured_value, bool)
+                and math.isfinite(measured_value)
+            )
+        else:
+            valid_value = isinstance(measured_value, str)
+        if not valid_value:
+            raise ApiClientError(f"Поле {label}.value не соответствует value_type.")
+        quality = measurement.get("quality_status")
+        if not isinstance(quality, str) or quality not in _TELEMETRY_QUALITY_STATUSES:
+            raise ApiClientError(f"Поле {label}.quality_status содержит неизвестное качество.")
+
+    if status == "PASS" and (not link_connected or not measurements):
+        raise ApiClientError("Статус controller_telemetry=PASS требует активный канал и измерения.")
+
+
 def _validate_status_message(section: dict[str, Any], field: str) -> None:
     _require_status(section.get("status"), f"{field}.status")
     _require_string(section.get("message"), f"{field}.message")
@@ -382,6 +478,10 @@ class StationApiClient:
                 raise ApiClientError("Успешная диагностика температуры CPU должна содержать значение и тип датчика.")
             if cpu_load.get("status") == "PASS" and any(cpu_load.get(key) is None for key in ("one_minute", "five_minutes", "fifteen_minutes", "runnable_tasks", "total_tasks")):
                 raise ApiClientError("Успешная диагностика load average должна содержать все значения.")
+
+        # Additive telemetry fields are absent on older VM Gateway versions.
+        if "controller_telemetry" in payload:
+            _validate_controller_telemetry(payload.get("controller_telemetry"))
 
         network = _require_object(payload.get("network"), "network")
         interfaces = _require_object(network.get("interfaces"), "network.interfaces")

@@ -376,6 +376,58 @@ class QmlOperatorBridge(QObject):
             })
         return result
 
+    @Property(str, notify=viewChanged)
+    def controllerTelemetrySummary(self) -> str:
+        snapshot = self.model.snapshot
+        telemetry = snapshot.get("controller_telemetry", {}) if isinstance(snapshot, dict) else {}
+        if not isinstance(telemetry, dict) or telemetry.get("sequence_number") is None:
+            return "Нет принятого снимка телеметрии от ESP32."
+        link = "канал Repka–ESP32 установлен" if telemetry.get("link_connected") else "канал Repka–ESP32 не установлен"
+        received = telemetry.get("received_at_utc") or "время получения неизвестно"
+        count = len(telemetry.get("measurements", []))
+        return (
+            f"Снимок №{telemetry.get('sequence_number')} · измерений: {count} · "
+            f"получен: {received} · {link}"
+        )
+
+    @Property("QVariantList", notify=viewChanged)
+    def controllerTelemetry(self) -> list[dict[str, str]]:
+        snapshot = self.model.snapshot
+        telemetry = snapshot.get("controller_telemetry", {}) if isinstance(snapshot, dict) else {}
+        if not isinstance(telemetry, dict):
+            return []
+        measurements = telemetry.get("measurements", [])
+        if not isinstance(measurements, list):
+            return []
+        quality_labels = {
+            "OK": "Норма",
+            "STALE": "Устарело",
+            "INVALID": "Некорректно",
+            "UNAVAILABLE": "Недоступно",
+            "NOT_CONFIGURED": "Не настроен",
+            "UNKNOWN": "Неизвестно",
+        }
+        result: list[dict[str, str]] = []
+        for item in measurements:
+            if not isinstance(item, dict):
+                continue
+            value = item.get("value")
+            if isinstance(value, bool):
+                value_text = "Да" if value else "Нет"
+            elif isinstance(value, float):
+                value_text = f"{value:.3f}".rstrip("0").rstrip(".")
+            else:
+                value_text = str(value)
+            quality = str(item.get("quality_status", "UNKNOWN"))
+            result.append({
+                "sensor_id": str(item.get("sensor_id", "")),
+                "value": value_text,
+                "unit": str(item.get("unit", "")),
+                "quality": quality_labels.get(quality, "Неизвестно"),
+                "measured_at": str(item.get("measured_at", "")),
+            })
+        return result
+
     @Property("QVariantMap", notify=viewChanged)
     def systemMetrics(self) -> dict[str, str]:
         snapshot = self.model.snapshot

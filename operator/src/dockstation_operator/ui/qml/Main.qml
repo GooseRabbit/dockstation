@@ -970,6 +970,66 @@ ApplicationWindow {
                             font.bold: true
                         }
                         Panel {
+                            objectName: "sensors.controller-telemetry"
+                            Layout.fillWidth: true
+                            implicitHeight: controllerTelemetryPanel.implicitHeight + 40
+                            ColumnLayout {
+                                id: controllerTelemetryPanel
+                                anchors.fill: parent
+                                anchors.margins: 20
+                                spacing: 10
+                                Text {
+                                    text: "Последний снимок телеметрии ESP32"
+                                    color: root.primaryText
+                                    font.pixelSize: 16
+                                    font.bold: true
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: bridge.controllerTelemetrySummary
+                                    color: root.secondaryText
+                                    wrapMode: Text.WordWrap
+                                }
+                                Repeater {
+                                    model: bridge.controllerTelemetry
+                                    delegate: RowLayout {
+                                        required property var modelData
+                                        Layout.fillWidth: true
+                                        spacing: 12
+                                        Text {
+                                            text: modelData.sensor_id
+                                            color: root.primaryText
+                                            Layout.preferredWidth: 250
+                                            elide: Text.ElideRight
+                                        }
+                                        Text {
+                                            text: modelData.value + " " + modelData.unit
+                                            color: root.primaryText
+                                            font.bold: true
+                                            Layout.preferredWidth: 150
+                                        }
+                                        Text {
+                                            text: modelData.quality
+                                            color: root.secondaryText
+                                            Layout.preferredWidth: 110
+                                        }
+                                        Text {
+                                            text: modelData.measured_at
+                                            color: root.muted
+                                            Layout.fillWidth: true
+                                            elide: Text.ElideRight
+                                        }
+                                    }
+                                }
+                                Text {
+                                    visible: bridge.controllerTelemetry.length === 0
+                                    text: "Реальные измерения пока не поступали. Значения не генерируются и не подставляются."
+                                    color: root.muted
+                                    wrapMode: Text.WordWrap
+                                }
+                            }
+                        }
+                        Panel {
                             Layout.fillWidth: true
                             implicitHeight: sensorList.implicitHeight + 40
                             ColumnLayout {
