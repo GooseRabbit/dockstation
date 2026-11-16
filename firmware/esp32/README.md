@@ -77,13 +77,24 @@ caller; it does not read or generate keys and does not acquire sensor data.
 `app_main` still does not start it until board GPIO and secure credential
 provisioning are defined.
 
+A separate `controller_psk_nvs_credential_store/` component provides a
+read-only PSK/identity loader. It requires runtime Flash Encryption to be
+already enabled, an encrypted `nvs_keys` partition, and the `nvs` data
+partition. It reads existing NVS encryption keys and explicitly initializes
+NVS with them; it never creates, repairs, writes, rotates or erases keys. The
+credential namespace is `dockstation` with exact binary blobs `pair_psk`
+(32 bytes) and `pair_identity` (16 bytes). Missing partitions, unencrypted
+key storage, absent records or wrong blob lengths fail closed and clear the
+output credentials. This is a reader only: provisioning the pair secret and
+creating the production partition table remain separate tasks.
+
 Not implemented by this scaffold:
 
 - board-specific UART pin profile or a running UART connection;
 - GPIO, lid limit switches, motor control or interlocks;
 - DHT22 acquisition or any other sensor driver;
-- PSK provisioning or secure NVS storage;
-- Flash Encryption, Secure Boot policy or OTA update;
+- PSK provisioning/writing/rotation; the read-only NVS provider requires an existing production-encrypted key partition;
+- enabling/configuring Flash Encryption, Secure Boot policy or OTA update;
 - production partition/Flash sizing and final board profile.
 
 The CI build currently inherits ESP-IDF v5.5.6's default 2 MB SPI-flash
@@ -129,3 +140,10 @@ wrong PSK/identity rejection, bidirectional encrypted data, HELLO/HELLO_ACK,
 exporter gating and REQUEST_SNAPSHOT/TELEMETRY_SNAPSHOT. This host acceptance
 is separate from the Espressif-fork ESP-IDF target build and from physical
 UART/board acceptance.
+
+The credential reader is deliberately not invoked from `app_main`. The
+current CI sdkconfig does not enable irreversible Flash Encryption and the
+current default partition table has no production-provisioned `nvs_keys`
+partition. Thus the read-only provider compiles but correctly cannot load a
+real pair credential in the current unprovisioned build. Do not enable security
+efuses or flash this image as a provisioning action.

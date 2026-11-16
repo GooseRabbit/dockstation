@@ -1054,6 +1054,16 @@ Python/Operator/Gateway integration-тестов; ARM64 bundle/staging и Sigsto
 
 Проверка: \`verification/repka_gateway/test_controller_mbedtls_server_interop.cpp\`, CTest \`controller_mbedtls_server_interop\`; GitHub Actions [run 43904071591](https://github.com/GooseRabbit/dockstation/actions/runs/43904071591) — PASS (1/1); отдельная опция \`DOCKSTATION_BUILD_MBEDTLS_INTEROP_TESTS=ON\` скачивает официальный upstream Mbed TLS 3.6.7 с проверкой SHA-256. GitHub Actions соединяет существующий OpenSSL client и Mbed TLS server через POSIX socket pair: проверяет handshake, exporter parity, application data в обе стороны и отказ при неверной PSK identity/PSK. Это upstream Mbed TLS host interop; Espressif Mbed TLS fork, точная ESP32 плата/SDK, UART, secure NVS/Flash Encryption/Secure Boot и физическая приёмка пока не проверены.
 
+### firmware/esp32/components/controller_psk_nvs_credential_store/include/controller_psk_nvs_credential_store.hpp / controller_psk_nvs_credential_store.cpp
+
+| Функция / тип | Назначение |
+|---|---|
+| `ControllerPskNvsCredentialStore::initialize()` | Проверяет активный hardware Flash Encryption, наличие отдельной NVS data partition и encrypted `nvs_keys` partition; читает существующий NVS XTS security config и вызывает `nvs_flash_secure_init_partition()`. Не вызывает обычный `nvs_flash_init()`, который при включённой CONFIG_NVS_ENCRYPTION может автоматически создать новые ключи, и не вызывает API генерации/erase. |
+| `ControllerPskNvsCredentialStore::load()` | Открывает namespace `dockstation` через `NVS_READONLY` и читает бинарные `pair_psk`[32] и `pair_identity`[16]. Проверяет exact size и ненулевое содержимое; при любой ошибке очищает output через Mbed TLS zeroize. |
+| `ControllerPskNvsCredentialStore::last_error()` | Возвращает последний ESP-IDF error code без раскрытия секретов или их текстового представления. |
+
+Владение NVS initialisation глобально для partition, поэтому application должен вызвать `initialize()` до открытия handles и не запускать для той же partition обычный plaintext `nvs_flash_init()`. Компонент read-only: не генерирует NVS encryption keys и не записывает PSK. Пока на конкретной плате не включён Flash Encryption и не существует encrypted `nvs_keys` partition, `initialize()` намеренно отказывает. Compile/link target build не проверяет реальные eFuse, flash contents или credential provisioning.
+
 ### firmware/esp32/components/controller_link_firmware_runtime/include/controller_link_firmware_runtime.hpp / controller_link_firmware_runtime.cpp
 
 | Функция / тип | Назначение |
