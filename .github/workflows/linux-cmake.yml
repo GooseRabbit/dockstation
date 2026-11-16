@@ -54,7 +54,7 @@ jobs:
       - name: Build and run TLS 1.3 PSK-DHE interop test
         run: |
           cmake --build build-mbedtls-interop --target test_controller_mbedtls_server_interop --parallel 2
-          ctest --test-dir build-mbedtls-interop -R '^controller_mbedtls_server_interop
+          ctest --test-dir build-mbedtls-interop -R controller_mbedtls_server_interop --output-on-failure
       - name: Verify systemd unit and non-root Gateway startup
         run: |
           set -euo pipefail
