@@ -5,6 +5,7 @@
 #include "controller_link_firmware_runtime.hpp"
 #include "controller_uart_transport.hpp"
 #include "hardware/interfaces/controller_link_startup_readiness.hpp"
+#include "hardware/interfaces/controller_stable_identity.hpp"
 
 namespace {
 constexpr char kTag[] = "DockStationESP32";
