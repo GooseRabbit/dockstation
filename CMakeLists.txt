@@ -136,6 +136,19 @@ if(DOCKSTATION_BUILD_SQLITE_PERSISTENCE)
     target_link_libraries(dockstation_persistence_sqlite
         PUBLIC dockstation_station_events
     )
+
+    # The Gateway owns one connection and exposes both adapters only through
+    # a serialized callback; persistence remains independent from HTTP routes.
+    add_library(dockstation_gateway_persistence_context STATIC
+        src/application/linux/gateway_persistence_context.cpp
+    )
+    target_include_directories(dockstation_gateway_persistence_context
+        PUBLIC "${PROJECT_SOURCE_DIR}/src"
+    )
+    target_link_libraries(dockstation_gateway_persistence_context
+        PUBLIC dockstation_persistence_sqlite Threads::Threads
+    )
+    dockstation_apply_compile_policy(dockstation_gateway_persistence_context)
 endif()
 
 # The authenticated ingress adapter bridges accepted ControllerLink messages
@@ -167,6 +180,14 @@ add_executable(dockstation_linux_bootstrap
 target_link_libraries(dockstation_linux_bootstrap
     PRIVATE dockstation_linux_runtime
 )
+if(DOCKSTATION_BUILD_SQLITE_PERSISTENCE)
+    target_link_libraries(dockstation_linux_bootstrap
+        PRIVATE dockstation_gateway_persistence_context
+    )
+    target_compile_definitions(dockstation_linux_bootstrap
+        PRIVATE DOCKSTATION_WITH_SQLITE_PERSISTENCE
+    )
+endif()
 dockstation_apply_compile_policy(dockstation_linux_bootstrap)
 
 if(BUILD_TESTING)
@@ -379,6 +400,16 @@ if(BUILD_TESTING)
         dockstation_apply_compile_policy(test_sqlite_subsystem_status_store)
         add_test(NAME sqlite_subsystem_status_store
             COMMAND test_sqlite_subsystem_status_store)
+
+        add_executable(test_gateway_persistence_context
+            verification/repka_gateway/test_gateway_persistence_context.cpp
+        )
+        target_link_libraries(test_gateway_persistence_context
+            PRIVATE dockstation_gateway_persistence_context Threads::Threads
+        )
+        dockstation_apply_compile_policy(test_gateway_persistence_context)
+        add_test(NAME gateway_persistence_context
+            COMMAND test_gateway_persistence_context)
     endif()
 
     add_executable(test_controller_psk_credential_store
@@ -574,6 +605,17 @@ if(BUILD_TESTING)
                 target_compile_options(dockstation_persistence_sqlite PRIVATE
                     -fsanitize=address,undefined
                     -fno-omit-frame-pointer
+                )
+                target_compile_options(dockstation_gateway_persistence_context PRIVATE
+                    -fsanitize=address,undefined
+                    -fno-omit-frame-pointer
+                )
+                target_compile_options(test_gateway_persistence_context PRIVATE
+                    -fsanitize=address,undefined
+                    -fno-omit-frame-pointer
+                )
+                target_link_options(test_gateway_persistence_context PRIVATE
+                    -fsanitize=address,undefined
                 )
                 target_compile_options(test_sqlite_persistence_probe PRIVATE
                     -fsanitize=address,undefined

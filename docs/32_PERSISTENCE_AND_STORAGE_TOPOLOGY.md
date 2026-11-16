@@ -181,11 +181,11 @@ SQLite официально описывается как подходящий �
 
 1. проверить SQLite version/features и фактические каталоги/права на целевой Repka OS;
 2. schema v2 реализует source registry/session/cursor; schema v3 и `SqliteSubsystemStatusStore` дополнительно реализуют `SubsystemRegistrationReader`, `EventRepository` и `SubsystemStatusRepository` с одной транзакцией для Event, истории статусов, current pointer и source cursor;
-3. подключить оба адаптера в Gateway composition root с одним сериализованным владельцем SQLite connection, явно определить lifetime/ownership на startup/shutdown и не выдавать записи через read-only HTTP API;
-4. только после интеграции и pipeline end-to-end tests добавить `SUBSYSTEM_STATUS_UPDATED` в F13 router;
+3. **Выполнено на уровне Gateway composition root:** `GatewayPersistenceContext` владеет одной SQLite connection и обоими адаптерами; open/close и все вызовы stores сериализованы одним mutex. Production-путь — `/var/lib/dockstation/dockstation.sqlite3`; обе systemd-профили объявляют `StateDirectory=dockstation` с mode 0700. Context открывается до LocalApiServer и закрывается после его остановки; HTTP по-прежнему не предоставляет записи или provisioning.
+4. только после authenticated ingress + Pipeline end-to-end tests добавить `SUBSYSTEM_STATUS_UPDATED` в F13 router;
 5. расширить миграционные/конкурентные/crash-recovery и backup/restore проверки; затем провести power-loss/target-media acceptance на оборудовании.
 
-До выполнения шагов 3–5 Pipeline продолжает возвращать Unsupported для SUBSYSTEM_STATUS_UPDATED. Это намеренная fail-closed граница, её нельзя ослаблять ради демонстрации.
+Pipeline продолжает возвращать Unsupported для SUBSYSTEM_STATUS_UPDATED до завершения шага 4. Gateway-only сборка с SQLite disabled не открывает локальную БД и предоставляет только read-only diagnostics API. Создание StateDirectory в прямом host smoke test выполняется явно, потому что процесс там запускается вне systemd manager; на установленной системе каталог создаёт systemd. Target Repka OS и power-loss acceptance этим не подтверждаются.
 
 ## 9. Согласованная топология и оставшиеся технологические решения
 

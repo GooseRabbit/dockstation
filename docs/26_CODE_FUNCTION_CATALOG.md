@@ -1205,3 +1205,18 @@ hardwarePlatformInfo публикует выбранный платформен�
 | `ControllerSubsystemStatusEventProjector::reset()` | Очищает payload storage перед новым projection, чтобы output view не ссылался на прежнее сообщение. |
 
 Проверка: `verification/repka_gateway/test_controller_subsystem_status_event_projector.cpp`; CTest `controller_subsystem_status_event_projector`. Сквозной тест `controller_link_service` использует тот же production projector в TLS/PTY fixture: telemetry остаётся вне SSM, explicit subsystem ERROR доходит до Pipeline. Ожидаемый Unsupported означает, что профиль F13 и запись состояния ещё отсутствуют; этот тест не подтверждает доменный commit или физический ESP32.
+
+
+## Дополнение: Gateway SQLite persistence composition root
+
+### `src/application/linux/gateway_persistence_context.hpp/.cpp`
+
+| Тип / функция | Назначение |
+|---|---|
+| `GatewayPersistenceContext` | Единственный владелец `SqliteDatabase`, `SqliteSourceSessionStore` и `SqliteSubsystemStatusStore`. Database объявлена раньше адаптеров и поэтому уничтожается позже них. |
+| `open(path)` / `close()` / `is_open()` / `schema_version()` | Выполняют операции жизненного цикла под тем же mutex, который защищает вызовы адаптеров. Production-путь — `/var/lib/dockstation/dockstation.sqlite3`; альтернативный путь предусмотрен для host-тестов. |
+| `with_serialized_stores(callback)` | Выдаёт оба адаптера только внутри одного mutex-protected callback; callback обязан возвращать `void`, не удерживать borrowed views после возврата и не вызывать повторно методы самого context. При закрытой БД callback не вызывается. |
+
+Точка входа Gateway открывает context до запуска controller/API service и закрывает после остановки service, до завершения PlatformLogger. Обе systemd-профили используют `StateDirectory=dockstation`, `StateDirectoryMode=0700` и `UMask=0077`. HTTP API остаётся read-only; context не добавляет provisioning/CRUD routes. Сборка Gateway-only с `DOCKSTATION_BUILD_SQLITE_PERSISTENCE=OFF` не подключает SQLite и продолжает предоставлять только диагностический API, явно журналируя `NOT_CONFIGURED`.
+
+`verification/repka_gateway/test_gateway_persistence_context.cpp` проверяет invalid/missing paths, schema startup, наличие обоих адаптеров, сериализацию конкурентных callback, недоступность адаптеров при закрытой БД и close/reopen. Это host-проверка жизненного цикла; она не заменяет target Repka OS и power-loss acceptance. Маршрут `SUBSYSTEM_STATUS_UPDATED` остаётся `Unsupported` до завершения authenticated ingress + Pipeline end-to-end integration.

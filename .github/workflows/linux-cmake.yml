@@ -57,7 +57,7 @@ jobs:
           sudo -u dockstation test ! -w /usr/local/bin/dockstation_linux_bootstrap
           command -v setpriv
           gateway_log="$RUNNER_TEMP/dockstation-gateway.log"
-          sudo setpriv --reuid=dockstation --regid=dockstation --init-groups --no-new-privs -- /usr/local/bin/dockstation_linux_bootstrap --config-file /etc/dockstation/gateway.conf >"$gateway_log" 2>&1 &
+          sudo setpriv --reuid=dockstation --regid=dockstation --init-groups --no-new-privs -- /bin/sh -c 'umask 0077; exec "$@"' sh /usr/local/bin/dockstation_linux_bootstrap --config-file /etc/dockstation/gateway.conf >"$gateway_log" 2>&1 &
           gateway_pid=$!
           cleanup_gateway() {
             if [[ -n "${gateway_pid:-}" ]] && sudo kill -0 "$gateway_pid" 2>/dev/null; then

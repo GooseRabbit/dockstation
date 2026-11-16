@@ -27,6 +27,8 @@ config="$stage_root/usr/local/share/dockstation/gateway.conf.example"
 required_unit_lines=(
     "User=dockstation"
     "Group=dockstation"
+    "StateDirectory=dockstation"
+    "StateDirectoryMode=0700"
     "ExecStart=/usr/local/bin/dockstation_linux_bootstrap --config-file /etc/dockstation/gateway.conf"
     "Restart=on-failure"
     "KillSignal=SIGTERM"
@@ -58,6 +60,8 @@ fi
 required_uart_unit_lines=(
     "User=dockstation"
     "Group=dockstation"
+    "StateDirectory=dockstation"
+    "StateDirectoryMode=0700"
     "ExecStart=/usr/local/bin/dockstation_linux_bootstrap --config-file /etc/dockstation/gateway.conf"
     "Restart=on-failure"
     "KillSignal=SIGTERM"
