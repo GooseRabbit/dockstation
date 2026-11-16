@@ -40,10 +40,12 @@ bool ControllerLinkPeerService::start(
 
     if (!tls_server_.initialize(
             credentials, transport_context, send_callback, receive_callback)) {
+        last_mbedtls_error_ = tls_server_.last_mbedtls_error();
         state_ = ControllerLinkPeerServiceState::Error;
         return false;
     }
 
+    last_mbedtls_error_ = 0;
     clear_connection_buffers();
     logical_session_established_ = false;
     logical_handshake_ack_pending_ = false;
@@ -66,10 +68,12 @@ bool ControllerLinkPeerService::restart_transport(
     session_->stop();
     if (!tls_server_.initialize(
             credentials, transport_context, send_callback, receive_callback)) {
+        last_mbedtls_error_ = tls_server_.last_mbedtls_error();
         state_ = ControllerLinkPeerServiceState::Error;
         return false;
     }
 
+    last_mbedtls_error_ = 0;
     clear_connection_buffers();
     logical_session_established_ = false;
     logical_handshake_ack_pending_ = false;
@@ -114,10 +118,9 @@ void ControllerLinkPeerService::poll(std::string_view sent_at) noexcept {
         return;
     }
 
-    if (outbound_frame_size_ != 0U) {
-        // A WANT_READ write must still allow inbound TLS records to be
-        // processed; flush_outbound_message retains the exact retry buffer.
-        static_cast<void>(flush_outbound_message());
+    if (outbound_frame_size_ != 0U &&
+        !flush_outbound_message()) {
+        return;
     }
 
     if (inbound_size_ != 0U) {
@@ -273,7 +276,9 @@ bool ControllerLinkPeerService::flush_outbound_message() noexcept {
         outbound_frame_size_ - outbound_frame_offset_);
 
     if (sent.status == ControllerMbedTlsIoStatus::WouldBlock) {
-        return true;
+        // Retry the same write arguments on the next event-loop step after
+        // the transport makes progress; do not call SSL_read meanwhile.
+        return false;
     }
     if (sent.status != ControllerMbedTlsIoStatus::Success ||
         sent.bytes_transferred == 0U) {
@@ -310,8 +315,11 @@ bool ControllerLinkPeerService::send_telemetry_snapshot(
 
     const auto message = session_->make_telemetry_snapshot(snapshot, sent_at);
     last_protocol_status_ = message.status;
-    if (message.status != ControllerLinkPeerSessionStatus::Success ||
-        !message.has_outbound_message ||
+    if (message.status != ControllerLinkPeerSessionStatus::Success) {
+        // Invalid sensor data must not consume the request or close the link.
+        return false;
+    }
+    if (!message.has_outbound_message ||
         message.outbound_message.type !=
             hardware::interfaces::ControllerMessageType::TelemetrySnapshot ||
         !queue_outbound_message(message.outbound_message,
@@ -350,13 +358,14 @@ ControllerLinkPeerServiceStatus ControllerLinkPeerService::status() const noexce
     result.messages_received = messages_received_;
     result.telemetry_snapshots_sent = telemetry_snapshots_sent_;
     result.rejected_frames = rejected_frames_;
-    result.last_mbedtls_error = tls_server_.last_mbedtls_error();
+    result.last_mbedtls_error = last_mbedtls_error_;
     result.last_protocol_status = last_protocol_status_;
     return result;
 }
 
 void ControllerLinkPeerService::stop() noexcept {
     tls_server_.close();
+    last_mbedtls_error_ = 0;
     if (session_.has_value()) {
         session_->stop();
     }
@@ -368,6 +377,7 @@ void ControllerLinkPeerService::stop() noexcept {
 }
 
 void ControllerLinkPeerService::fail() noexcept {
+    last_mbedtls_error_ = tls_server_.last_mbedtls_error();
     tls_server_.close();
     if (session_.has_value()) {
         session_->stop();

@@ -128,6 +128,7 @@ private:
     bool logical_handshake_ack_pending_{false};
     bool logical_session_established_{false};
     bool snapshot_request_pending_{false};
+    int last_mbedtls_error_{0};
 };
 
 }  // namespace dockstation::firmware::esp32
