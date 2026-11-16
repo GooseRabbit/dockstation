@@ -1,0 +1,42 @@
+name: Mbed TLS / OpenSSL interoperability
+
+on:
+  push:
+    branches:
+      - chore/flatten-repka-directories
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mbedtls-interop:
+    name: TLS 1.3 PSK-DHE interop (OpenSSL / Mbed TLS)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ make libssl-dev libsqlite3-dev
+
+      - name: Configure pinned Mbed TLS 3.6.7 interop build
+        run: >-
+          cmake -S . -B build-mbedtls-interop
+          -DCMAKE_BUILD_TYPE=Release
+          -DBUILD_TESTING=ON
+          -DDOCKSTATION_ENABLE_SANITIZERS=OFF
+          -DDOCKSTATION_BUILD_MBEDTLS_INTEROP_TESTS=ON
+          -DDOCKSTATION_BUILD_SQLITE_PERSISTENCE=ON
+
+      - name: Build OpenSSL / Mbed TLS interop test
+        run: cmake --build build-mbedtls-interop --target test_controller_mbedtls_server_interop --parallel 2
+
+      - name: Run OpenSSL / Mbed TLS interop acceptance
+        run: ctest --test-dir build-mbedtls-interop -R controller_mbedtls_server_interop --output-on-failure
