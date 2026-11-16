@@ -586,7 +586,7 @@ public:
 5. Production `SubsystemRegistrationReader`/`SubsystemStatusRepository` и атомарное сохранение subsystem report + Event/event_id + cursor.
 6. Смена source_instance без отдельного подтверждения остаётся UNORDERED; отсутствие source_sequence остаётся UNORDERED.
 
-Этот срез добавляет production SQLite adapter для source registry/session/cursor, но не подключает его к Gateway composition root и не реализует EventRepository/F09/F10 или subsystem-status commit. Регистрация неизвестного источника и новая source session по-прежнему подтверждаются только через доверенные ports. Продвижение `last_sequence` для принятых событий остаётся частью атомарных профильных commit-портов.
+Примечание о состоянии на момент первоначальной реализации source registry/session adapter: тогда он ещё не был подключён к Gateway composition root, а EventRepository/F09/F10 и subsystem-status commit находились в последующих срезах. Текущее состояние интеграции описано ниже в §5.4.3: production `SqliteSourceSessionStore`, EventRepository и `SqliteSubsystemStatusStore` подключены через `GatewayPersistenceContext`; продвижение `last_sequence` выполняется атомарно вместе с принятым subsystem status report.
 
 ### 5.4.2. Доверенная регистрация источника и подтверждение source session
 
