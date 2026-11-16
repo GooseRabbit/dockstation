@@ -450,6 +450,9 @@ Wi-Fi WPA2/WPA3 и сегментация сети рассматриваютс�
 
 Это доказательство привязки к текущему TLS-каналу, а не самостоятельная регистрация или авторизация устройства. `PSK identity → Station ID → source/controller_id` registry, production `SourceSessionVerifier`, `AuthenticatedEventTransportAdapter`, проверка статуса регистрации, Mbed TLS exporter на ESP32 и согласованное provisioning ещё не реализованы. Не допускается пропускать эти проверки или считать один exporter достаточным доказательством права источника отправлять события.
 
+
+Обновление от 2026-11-16: общий crypto profile в `src/hardware/interfaces/controller_link_crypto_profile.hpp` теперь используется обеими сторонами для длины PSK/identity, exporter label/context, cipher-suite и группы. ESP32-side `ControllerMbedTlsPskServer` реализует TLS 1.3 server с единственным PSK-Ephemeral режимом, AES-128-GCM/SHA-256 и P-256; session tickets не выдаются, early data отключён. Host interop с upstream Mbed TLS 3.6.7 и OpenSSL проверяет одинаковый 32-байтовый exporter, двусторонний TLS application data и отказ при неверной identity/PSK. Это не подтверждает Espressif Mbed TLS fork/ESP-IDF target, физический UART или secure NVS/Flash Encryption/Secure Boot конкретного SoC. Вызывающий ESP32 session layer по-прежнему должен удерживать exporter до принятия HELLO/HELLO_ACK.
+
 ## 15. Правило согласования
 
 Владелец проекта отдельно согласует:

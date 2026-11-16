@@ -1028,6 +1028,20 @@ duplicate/invalid revision, Station ID mismatch и DB owner/mode. GitHub Actions
 Python/Operator/Gateway integration-тестов; ARM64 bundle/staging и Sigstore provenance
 прошли. Это не Mbed TLS или physical Repka acceptance.
 
+### firmware/esp32/components/controller_mbedtls_psk_server
+
+| Функция / тип | Назначение |
+|---|---|
+| \`ControllerMbedTlsPskCredentials::clear()\` | Очищает локальные копии pair PSK[32] и identity[16] через Mbed TLS zeroize helper. |
+| \`ControllerMbedTlsPskServer::initialize()\` | Поднимает TLS server config: TLS 1.3, TLS_AES_128_GCM_SHA256, единственная группа P-256, только PSK-Ephemeral, отключённые early data и TLS 1.3 session tickets; подключает injected byte-stream callbacks. |
+| \`ControllerMbedTlsPskServer::select_pair_psk()\` | Принимает только точную 16-байтовую pair identity, сравнивает все байты и устанавливает 32-байтовый PSK только для текущего handshake. Неизвестная identity отвергается. |
+| \`ControllerMbedTlsPskServer::advance_handshake()\` | Продвигает Mbed TLS handshake, возвращая NeedRead/NeedWrite; application data разрешены лишь после полного TLS 1.3 PSK-Ephemeral handshake и проверки согласованных версии/cipher. |
+| \`ControllerMbedTlsPskServer::read_application_data()\` / \`write_application_data()\` | Передаёт TLS application data после handshake; caller обязан сохранять остаток partial write и повторять неотправленный фрагмент при WANT_READ/WANT_WRITE. |
+| \`ControllerMbedTlsPskServer::export_session_proof()\` | Выводит 32-byte TLS exporter с общими Linux/ESP32 label/context. Вызывающий ESP32 session layer обязан дополнительно дождаться HELLO/HELLO_ACK, прежде чем использовать proof для session evidence. |
+| \`ControllerMbedTlsPskServer::close()\` | Закрывает TLS state, RNG/config контексты и очищает pair secret/identity; повторное соединение требует нового полного handshake. |
+
+Проверка: \`verification/repka_gateway/test_controller_mbedtls_server_interop.cpp\`, CTest \`controller_mbedtls_server_interop\`; отдельная опция \`DOCKSTATION_BUILD_MBEDTLS_INTEROP_TESTS=ON\` скачивает официальный upstream Mbed TLS 3.6.7 с проверкой SHA-256. GitHub Actions соединяет существующий OpenSSL client и Mbed TLS server через POSIX socket pair: проверяет handshake, exporter parity, application data в обе стороны и отказ при неверной PSK identity/PSK. Это upstream Mbed TLS host interop; Espressif Mbed TLS fork, точная ESP32 плата/SDK, UART, secure NVS/Flash Encryption/Secure Boot и физическая приёмка пока не проверены.
+
 ### src/hardware/interfaces/controller_link_peer_session.hpp/.cpp
 
 | Функция / тип | Назначение |

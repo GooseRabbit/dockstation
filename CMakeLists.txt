@@ -78,6 +78,49 @@ target_link_libraries(dockstation_controller_tls
 )
 dockstation_apply_compile_policy(dockstation_controller_tls)
 
+option(DOCKSTATION_BUILD_MBEDTLS_INTEROP_TESTS
+       "Build the pinned upstream Mbed TLS/OpenSSL TLS 1.3 interop test" OFF)
+
+if(DOCKSTATION_BUILD_MBEDTLS_INTEROP_TESTS)
+    enable_language(C)
+    include(FetchContent)
+    set(ENABLE_PROGRAMS OFF CACHE BOOL "" FORCE)
+    set(ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+    set(GEN_FILES OFF CACHE BOOL "" FORCE)
+    set(MBEDTLS_FATAL_WARNINGS OFF CACHE BOOL "" FORCE)
+    set(USE_STATIC_MBEDTLS_LIBRARY ON CACHE BOOL "" FORCE)
+    set(USE_SHARED_MBEDTLS_LIBRARY OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(
+        mbedtls
+        URL https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-3.6.7/mbedtls-3.6.7.tar.bz2
+        URL_HASH SHA256=a7e8bcbec0e6f761b4af24f25677626b35f762f68eef79c08677a363212d11f6
+    )
+    FetchContent_MakeAvailable(mbedtls)
+
+    add_library(dockstation_controller_mbedtls_server STATIC
+        firmware/esp32/components/controller_mbedtls_psk_server/controller_mbedtls_psk_server.cpp
+    )
+    target_include_directories(dockstation_controller_mbedtls_server PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/firmware/esp32/components/controller_mbedtls_psk_server/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    )
+    target_link_libraries(dockstation_controller_mbedtls_server
+        PUBLIC MbedTLS::mbedtls MbedTLS::mbedcrypto
+    )
+    dockstation_apply_compile_policy(dockstation_controller_mbedtls_server)
+
+    if(BUILD_TESTING)
+        add_executable(test_controller_mbedtls_server_interop
+            verification/repka_gateway/test_controller_mbedtls_server_interop.cpp
+        )
+        target_link_libraries(test_controller_mbedtls_server_interop
+            PRIVATE dockstation_controller_mbedtls_server dockstation_controller_tls Threads::Threads
+        )
+        dockstation_apply_compile_policy(test_controller_mbedtls_server_interop)
+        add_test(NAME controller_mbedtls_server_interop COMMAND test_controller_mbedtls_server_interop)
+    endif()
+endif()
+
 # Compose the POSIX UART byte stream and OpenSSL TLS client without
 # coupling either adapter to the current read-only Gateway runtime.
 add_library(dockstation_controller_transport STATIC

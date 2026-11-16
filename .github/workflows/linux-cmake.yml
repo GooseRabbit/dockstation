@@ -42,6 +42,490 @@ jobs:
       - name: Verify Gateway systemd install package
         run: bash verification/repka_gateway/test_systemd_deployment.sh
 
+      - name: Configure OpenSSL to Mbed TLS 3.6.7 interop test
+        run: >-
+          cmake -S . -B build-mbedtls-interop
+          -DCMAKE_BUILD_TYPE=Release
+          -DBUILD_TESTING=ON
+          -DDOCKSTATION_ENABLE_SANITIZERS=OFF
+          -DDOCKSTATION_BUILD_MBEDTLS_INTEROP_TESTS=ON
+          -DDOCKSTATION_BUILD_SQLITE_PERSISTENCE=ON
+
+      - name: Build and run TLS 1.3 PSK-DHE interop test
+        run: |
+          cmake --build build-mbedtls-interop --target test_controller_mbedtls_server_interop --parallel 2
+          ctest --test-dir build-mbedtls-interop -R '^controller_mbedtls_server_interop
+      - name: Verify systemd unit and non-root Gateway startup
+        run: |
+          set -euo pipefail
+          sudo groupadd --system dockstation
+          sudo useradd --system --gid dockstation --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin dockstation
+          sudo cmake --install build
+          sudo install -d -o root -g dockstation -m 0750 /etc/dockstation
+          gateway_config="$RUNNER_TEMP/gateway.conf"
+          cat > "$gateway_config" <<'EOF'
+          api_port=8080
+          log_level=info
+          log_stderr=true
+          controller_uart_device=/dev/ttyS0
+          controller_local_id=repka-ci
+          controller_peer_id=esp32-ci
+          station_id=station-ci
+          controller_source=esp32.main
+          EOF
+          sudo install -o root -g dockstation -m 0640 "$gateway_config" /etc/dockstation/gateway.conf
+          # This smoke test starts the process outside systemd, so prepare
+          # the same state directory that StateDirectory creates for the unit.
+          sudo install -d -o dockstation -g dockstation -m 0700 /var/lib/dockstation
+          sudo -u dockstation test -r /var/lib/dockstation
+          sudo -u dockstation test -w /var/lib/dockstation
+          sudo systemd-analyze verify /usr/local/lib/systemd/system/dockstation-gateway.service
+          sudo systemd-analyze verify /usr/local/lib/systemd/system/dockstation-gateway-uart@.service
+          sudo -u dockstation test -r /etc/dockstation/gateway.conf
+          sudo -u dockstation test ! -w /etc/dockstation/gateway.conf
+          sudo -u dockstation test ! -w /usr/local/bin/dockstation_linux_bootstrap
+          command -v setpriv
+          gateway_log="$RUNNER_TEMP/dockstation-gateway.log"
+          sudo setpriv --reuid=dockstation --regid=dockstation --init-groups --no-new-privs -- /bin/sh -c 'umask 0077; exec "$@"' sh /usr/local/bin/dockstation_linux_bootstrap --config-file /etc/dockstation/gateway.conf >"$gateway_log" 2>&1 &
+          gateway_pid=$!
+          cleanup_gateway() {
+            if [[ -n "${gateway_pid:-}" ]] && sudo kill -0 "$gateway_pid" 2>/dev/null; then
+              sudo kill -TERM "$gateway_pid"
+              wait "$gateway_pid" || true
+            fi
+          }
+          trap cleanup_gateway EXIT
+          ready=false
+          for attempt in {1..40}; do
+            if curl -fsS --max-time 1 http://127.0.0.1:8080/api/v1/health | grep -Fq '"status":"PASS"'; then
+              ready=true
+              break
+            fi
+            if ! sudo kill -0 "$gateway_pid" 2>/dev/null; then
+              break
+            fi
+            sleep 0.25
+          done
+          if [[ "$ready" != true ]]; then
+            cat "$gateway_log"
+            exit 1
+          fi
+          curl -fsS --max-time 10 http://127.0.0.1:8080/api/v1/system/diagnostics >/dev/null
+          ss -ltn | grep -F '127.0.0.1:8080'
+          database_file=/var/lib/dockstation/dockstation.sqlite3
+          sudo test -f "$database_file"
+          [[ "$(sudo stat -c '%U:%G' "$database_file")" == "dockstation:dockstation" ]]
+          [[ "$(sudo stat -c '%a' "$database_file")" == "600" ]]
+          sudo kill -TERM "$gateway_pid"
+          wait "$gateway_pid"
+          gateway_pid=""
+          grep -Fq 'Локальный read-only API остановлен' "$gateway_log"
+
+      - name: Verify local source and subsystem registry provisioning
+        run: bash verification/repka_gateway/ci_registry_provision_acceptance.sh
+
+      - name: Run all 31 core and ConfigurationManager host tests
+        run: bash tools/run_host_tests.sh
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install Qt runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1
+
+      - name: Install Python test runner
+        run: python -m pip install --disable-pip-version-check pytest "PySide6>=6.8,<7"
+
+      - name: Validate Operator QML package entry point
+        run: |
+          python -m pip install --disable-pip-version-check --no-deps -e "./operator[qml]"
+          python -c "from importlib.metadata import entry_points; eps = {ep.name: ep.value for ep in entry_points(group='gui_scripts')}; assert eps.get('dockstation-operator-qml') == 'dockstation_operator.qml_app:main'"
+          python -c "from importlib.resources import files; assert files('dockstation_operator').joinpath('ui/qml/Main.qml').is_file()"
+
+      - name: Compile all Python modules and tests
+        run: python -m compileall -q operator/src repka_gateway verification
+
+      - name: Run Operator, Python Gateway and end-to-end integration tests
+        env:
+          PYTHONPATH: operator/src:.
+          QT_QPA_PLATFORM: offscreen
+          QT_QUICK_CONTROLS_STYLE: Basic
+        run: python -m pytest -q verification/operator_app verification/repka_gateway verification/integration
+
+      - name: Check shell script syntax
+        run: |
+          find repka verification/repka_gateway -type f -name '*.sh' -print0 |
+            xargs -0 -n1 bash -n
+
+      - name: Run Repka network shell tests
+        run: |
+          for test_file in verification/repka_gateway/test_*.sh; do
+            echo "=== $test_file ==="
+            bash "$test_file"
+          done
+
+  arm64-build-and-test:
+    name: Build and CTest (Linux ARM64)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev libsqlite3-dev
+
+      - name: Confirm native ARM64 runner
+        run: test "$(uname -m)" = "aarch64"
+
+      - name: Configure CMake
+        run: >-
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Debug
+          -DDOCKSTATION_ENABLE_SANITIZERS=ON
+          -DDOCKSTATION_BUILD_SQLITE_PERSISTENCE=ON
+
+      - name: Build all Linux targets on ARM64
+        run: cmake --build build --parallel 2
+
+      - name: Run CTest on ARM64
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Verify Gateway deployment package on ARM64
+        run: bash verification/repka_gateway/test_systemd_deployment.sh
+
+      - name: Configure Gateway-only build without SQLite discovery
+        run: >-
+          cmake -S . -B build-gateway-only
+          -DCMAKE_BUILD_TYPE=Release
+          -DBUILD_TESTING=OFF
+          -DDOCKSTATION_BUILD_SQLITE_PERSISTENCE=OFF
+          -DCMAKE_DISABLE_FIND_PACKAGE_SQLite3=TRUE
+
+      - name: Build Gateway without SQLite development files
+        run: cmake --build build-gateway-only --target dockstation_linux_bootstrap --parallel 2
+
+      - name: Configure deployable ARM64 Release bundle
+        run: >-
+          cmake -S . -B build-release
+          -DCMAKE_BUILD_TYPE=Release
+          -DBUILD_TESTING=OFF
+          -DDOCKSTATION_ENABLE_SANITIZERS=OFF
+          -DDOCKSTATION_BUILD_SQLITE_PERSISTENCE=ON
+          -DCMAKE_INSTALL_PREFIX=/usr/local
+
+      - name: Build deployable ARM64 executables
+        run: |
+          cmake --build build-release --target dockstation_linux_bootstrap dockstation-credential-provision dockstation-registry-provision --parallel 2
+          cmake --build build-release --target preinstall --parallel 2
+
+      - name: Assemble and verify ARM64 deployment bundle
+        env:
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          package_root="$RUNNER_TEMP/dockstation-arm64/root"
+          artifact_dir="$RUNNER_TEMP/dockstation-arm64/artifacts"
+          mkdir -p "$package_root" "$artifact_dir"
+          DESTDIR="$package_root" cmake --install build-release
+
+          test -x "$package_root/usr/local/bin/dockstation_linux_bootstrap"
+          test -x "$package_root/usr/local/bin/dockstation-credential-provision"
+          test -x "$package_root/usr/local/bin/dockstation-registry-provision"
+          test -f "$package_root/usr/local/lib/systemd/system/dockstation-gateway.service"
+          test -f "$package_root/usr/local/lib/systemd/system/dockstation-gateway-uart@.service"
+          test -f "$package_root/usr/local/share/dockstation/gateway.conf.example"
+
+          [[ "$SOURCE_COMMIT" =~ ^[[:xdigit:]]{40}$ ]]
+          [[ "$(git rev-parse HEAD)" == "$SOURCE_COMMIT" ]]
+          source_date_epoch="$(git show -s --format=%ct "$SOURCE_COMMIT")"
+
+          # Record stable, sorted SONAMEs instead of ldd's ASLR-dependent
+          # memory addresses and host-specific resolved library paths.
+          dependencies="$package_root/RUNTIME-DEPENDENCIES.txt"
+          printf '%s\n' "# DockStation runtime dependency report v2" > "$dependencies"
+          for binary in \
+            "$package_root/usr/local/bin/dockstation_linux_bootstrap" \
+            "$package_root/usr/local/bin/dockstation-credential-provision" \
+            "$package_root/usr/local/bin/dockstation-registry-provision"; do
+            printf '%s\n' "### ${binary#"$package_root"/}" >> "$dependencies"
+            dependency_output="$(ldd "$binary" 2>&1)"
+            if grep -Fq 'not found' <<< "$dependency_output"; then
+              echo "ERROR: unresolved runtime dependency in $binary" >&2
+              printf '%s\n' "$dependency_output" >&2
+              exit 1
+            fi
+            dependency_names="$(
+              awk '
+                $1 == "linux-vdso.so.1" { next }
+                $2 == "=>" { print $1; next }
+                $1 ~ /^\// {
+                  name = $1
+                  sub(/^.*\//, "", name)
+                  print name
+                }
+              ' <<< "$dependency_output" | LC_ALL=C sort -u
+            )"
+            [[ -n "$dependency_names" ]] || {
+              echo "ERROR: no shared-library SONAMEs found for $binary" >&2
+              exit 1
+            }
+            printf '%s\n' "$dependency_names" >> "$dependencies"
+          done
+
+          os_pretty_name="$(. /etc/os-release && printf '%s' "$PRETTY_NAME")"
+          compiler_version="$(c++ --version | head -n 1)"
+          cmake_version="$(cmake --version | head -n 1)"
+          openssl_version="$(pkg-config --modversion openssl)"
+          {
+            printf '%s\n' "Bundle format: dockstation-repka-pi5-arm64-v2"
+            printf '%s\n' "Architecture: $(uname -m)"
+            printf '%s\n' "Build OS: $os_pretty_name"
+            printf '%s\n' "Build kernel: $(uname -r)"
+            printf '%s\n' "Compiler: $compiler_version"
+            printf '%s\n' "CMake: $cmake_version"
+            printf '%s\n' "OpenSSL build version: $openssl_version"
+            printf '%s\n' "Source commit: $SOURCE_COMMIT"
+            printf '%s\n' "Source date epoch: $source_date_epoch"
+            printf '%s\n' "Build type: Release"
+            printf '%s\n' "SQLite persistence: enabled"
+            printf '%s\n' "Install prefix: /usr/local"
+            printf '%s\n' "ABI ceilings: GLIBC<=2.34, GLIBCXX<=3.4.32, CXXABI<=1.3.9, OPENSSL<=3.0.0"
+            printf '%s\n' "Included: dockstation_linux_bootstrap, dockstation-credential-provision,"
+            printf '%s\n' "          dockstation-registry-provision, dockstation-gateway.service,"
+            printf '%s\n' "          dockstation-gateway-uart@.service,"
+            printf '%s\n' "          gateway.conf.example"
+          } > "$package_root/BUNDLE-MANIFEST.txt"
+
+          (
+            cd "$package_root"
+            find . -type f ! -name SHA256SUMS -print0 |
+              LC_ALL=C sort -z |
+              xargs -0 sha256sum > SHA256SUMS
+          )
+          archive="$artifact_dir/dockstation-repka-pi5-arm64.tar.gz"
+          archive_repeat="$artifact_dir/dockstation-repka-pi5-arm64-repeat.tar.gz"
+          create_archive() {
+            local output="$1"
+            tar --format=gnu --sort=name --owner=0 --group=0 --numeric-owner --mtime="@$source_date_epoch" \
+              -cf - -C "$package_root" . | gzip -n > "$output"
+          }
+          create_archive "$archive"
+          create_archive "$archive_repeat"
+          cmp -s "$archive" "$archive_repeat" || {
+            echo "ERROR: repeated packaging of the same payload is not deterministic." >&2
+            exit 1
+          }
+          rm -f "$archive_repeat"
+          (
+            cd "$artifact_dir"
+            sha256sum dockstation-repka-pi5-arm64.tar.gz > dockstation-repka-pi5-arm64.tar.gz.sha256
+            sha256sum --check --strict dockstation-repka-pi5-arm64.tar.gz.sha256
+          )
+          DOCKSTATION_REQUIRE_ABI_AUDIT=1 DOCKSTATION_REQUIRE_EXACT_RUNTIME_SONAMES=1 \
+          DOCKSTATION_EXPECTED_SOURCE_COMMIT="$SOURCE_COMMIT" \
+            bash repka/verify_arm64_bundle.sh "$archive"
+
+      - name: Exercise real ARM64 bundle installer in isolated staging
+        env:
+          DOCKSTATION_INSTALL_ROOT: ${{ runner.temp }}/dockstation-arm64/install-stage
+          DOCKSTATION_CMAKE_COMMAND: /bin/false
+          DOCKSTATION_REQUIRE_ABI_AUDIT: "1"
+          DOCKSTATION_REQUIRE_EXACT_RUNTIME_SONAMES: "1"
+          DOCKSTATION_EXPECTED_SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/dockstation-arm64/artifacts/dockstation-repka-pi5-arm64.tar.gz"
+          stage="$DOCKSTATION_INSTALL_ROOT"
+
+          # Run the actual runtime preflight, sidecar/internal checksum checks,
+          # archive verifier, native ldd checks and installer copy path on ARM64.
+          bash repka/install_gateway.sh --bundle "$archive"
+
+          test -x "$stage/usr/local/bin/dockstation_linux_bootstrap"
+          test -x "$stage/usr/local/bin/dockstation-credential-provision"
+          test -x "$stage/usr/local/bin/dockstation-registry-provision"
+          test -f "$stage/usr/local/lib/systemd/system/dockstation-gateway.service"
+          test -f "$stage/usr/local/lib/systemd/system/dockstation-gateway-uart@.service"
+          test -f "$stage/etc/dockstation/gateway.conf"
+          grep -Fqx 'api_port=8080' "$stage/etc/dockstation/gateway.conf"
+
+          printf '%s\n' 'operator_setting=preserve-me' >> "$stage/etc/dockstation/gateway.conf"
+          bash repka/install_gateway.sh --bundle "$archive"
+          grep -Fqx 'operator_setting=preserve-me' "$stage/etc/dockstation/gateway.conf"
+
+      - name: Upload ARM64 build output for signing job
+        id: upload-arm64-build-bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: dockstation-repka-pi5-arm64-build-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/dockstation-arm64/artifacts/dockstation-repka-pi5-arm64.tar.gz
+            ${{ runner.temp }}/dockstation-arm64/artifacts/dockstation-repka-pi5-arm64.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+  attest-arm64-bundle:
+    name: Sign and verify ARM64 release bundle
+    needs: arm64-build-and-test
+    # Never grant signing identity to pull-request code. Only the named working
+    # branch may publish a signed distribution artifact.
+    if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/chore/flatten-repka-directories' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      attestations: write
+      contents: read
+      id-token: write
+    steps:
+      - name: Download tested ARM64 build output
+        # actions/download-artifact v7, pinned to its immutable commit.
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: dockstation-repka-pi5-arm64-build-${{ github.sha }}
+          path: ${{ runner.temp }}/dockstation-arm64/build
+
+      - name: Verify build output and embedded source commit
+        env:
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/dockstation-arm64/build/dockstation-repka-pi5-arm64.tar.gz"
+          sidecar="$archive.sha256"
+          test -s "$archive"
+          test -s "$sidecar"
+          (
+            cd "$RUNNER_TEMP/dockstation-arm64/build"
+            sha256sum --check --strict dockstation-repka-pi5-arm64.tar.gz.sha256
+          )
+          manifest_commit="$(tar -xOf "$archive" ./BUNDLE-MANIFEST.txt |
+            sed -n 's/^Source commit: //p')"
+          [[ "$manifest_commit" == "$SOURCE_COMMIT" ]]
+
+      - name: Create signed GitHub build provenance
+        id: attest-arm64-bundle
+        # actions/attest v4, pinned to its immutable commit.
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-path: ${{ runner.temp }}/dockstation-arm64/build/dockstation-repka-pi5-arm64.tar.gz
+
+      - name: Download and verify signed provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_COMMIT: ${{ github.sha }}
+          SOURCE_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/dockstation-arm64/build/dockstation-repka-pi5-arm64.tar.gz"
+          signed_dir="$RUNNER_TEMP/dockstation-arm64/signed"
+          provenance_dir="$RUNNER_TEMP/dockstation-arm64/provenance"
+          mkdir -p "$signed_dir" "$provenance_dir"
+
+          # Download the API-published Sigstore bundle so the exact sidecar
+          # shipped to the operator can be verified independently of the API.
+          (
+            cd "$provenance_dir"
+            gh attestation download "$archive" --repo GooseRabbit/dockstation
+          )
+          mapfile -t bundles < <(find "$provenance_dir" -maxdepth 1 -type f -name '*.jsonl' -print)
+          [[ "${#bundles[@]}" -eq 1 ]] || {
+            echo "ERROR: expected exactly one downloaded attestation bundle." >&2
+            exit 1
+          }
+          attestation_bundle="$signed_dir/dockstation-repka-pi5-arm64.tar.gz.attestation.jsonl"
+          cp -- "${bundles[0]}" "$attestation_bundle"
+
+          verify_policy=(
+            --repo GooseRabbit/dockstation
+            --signer-workflow GooseRabbit/dockstation/.github/workflows/linux-cmake.yml
+            --source-ref "$SOURCE_REF"
+            --source-digest "$SOURCE_COMMIT"
+            --deny-self-hosted-runners
+          )
+
+          # Verify against GitHub's repository attestation API first, then
+          # verify the exact JSONL bundle that will be distributed.
+          gh attestation verify "$archive" "${verify_policy[@]}"
+          gh attestation verify "$archive" --bundle "$attestation_bundle" "${verify_policy[@]}"
+
+          # Negative controls: altered bytes, an unexpected workflow identity,
+          # or another source commit must never be accepted.
+          tampered_archive="$RUNNER_TEMP/dockstation-arm64/tampered.tar.gz"
+          cp -- "$archive" "$tampered_archive"
+          printf '%s' 'tampered' >> "$tampered_archive"
+          if gh attestation verify "$tampered_archive" "${verify_policy[@]}" >/dev/null 2>&1; then
+            echo "ERROR: modified archive unexpectedly passed provenance verification." >&2
+            exit 1
+          fi
+
+          if gh attestation verify "$archive" \
+            --repo GooseRabbit/dockstation \
+            --signer-workflow GooseRabbit/dockstation/.github/workflows/untrusted.yml \
+            --source-ref "$SOURCE_REF" \
+            --source-digest "$SOURCE_COMMIT" \
+            --deny-self-hosted-runners >/dev/null 2>&1; then
+            echo "ERROR: unexpected signer workflow identity was accepted." >&2
+            exit 1
+          fi
+
+          wrong_commit="0000000000000000000000000000000000000000"
+          if gh attestation verify "$archive" \
+            --repo GooseRabbit/dockstation \
+            --signer-workflow GooseRabbit/dockstation/.github/workflows/linux-cmake.yml \
+            --source-ref "$SOURCE_REF" \
+            --source-digest "$wrong_commit" \
+            --deny-self-hosted-runners >/dev/null 2>&1; then
+            echo "ERROR: unexpected source commit was accepted." >&2
+            exit 1
+          fi
+
+          cp -- "$archive" "$signed_dir/dockstation-repka-pi5-arm64.tar.gz"
+          cp -- "$archive.sha256" "$signed_dir/dockstation-repka-pi5-arm64.tar.gz.sha256"
+          (
+            cd "$signed_dir"
+            sha256sum --check --strict dockstation-repka-pi5-arm64.tar.gz.sha256
+          )
+
+      - name: Upload signed ARM64 distribution bundle
+        id: upload-signed-arm64-bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: dockstation-repka-pi5-arm64-${{ github.sha }}
+          path: ${{ runner.temp }}/dockstation-arm64/signed/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish signed ARM64 bundle and provenance in workflow summary
+        env:
+          BUNDLE_URL: ${{ steps.upload-signed-arm64-bundle.outputs.artifact-url }}
+          ATTESTATION_URL: ${{ steps.attest-arm64-bundle.outputs.attestation-url }}
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          bundle_sha256="$(awk '{ print $1 }' "$RUNNER_TEMP/dockstation-arm64/signed/dockstation-repka-pi5-arm64.tar.gz.sha256")"
+          {
+            printf '%s\n' "## DockStation Repka Pi 5 ARM64 — signed bundle"
+            printf '%s\n' ""
+            printf '%s\n' "- Source commit: $SOURCE_COMMIT"
+            printf '%s\n' "- Download signed distribution: $BUNDLE_URL"
+            printf '%s\n' "- GitHub attestation record: $ATTESTATION_URL"
+            printf '%s\n' "- Archive SHA-256: $bundle_sha256"
+            printf '%s\n' "- Included files: archive, SHA-256 sidecar, detached Sigstore attestation JSONL."
+            printf '%s\n' "- Provenance verified against repository, workflow, branch and exact source commit."
+            printf '%s\n' "- Negative checks passed: modified archive, wrong workflow and wrong source commit were rejected."
+            printf '%s\n' "- Verify online: gh attestation verify dockstation-repka-pi5-arm64.tar.gz --repo GooseRabbit/dockstation --signer-workflow GooseRabbit/dockstation/.github/workflows/linux-cmake.yml --source-ref refs/heads/chore/flatten-repka-directories --source-digest $SOURCE_COMMIT"
+            printf '%s\n' "- Retention: 30 days."
+            printf '%s\n' "- The ARM64 build runner is Ubuntu 24.04; official Repka OS runtime compatibility remains to be checked on the target image."
+          } >> "$GITHUB_STEP_SUMMARY"
+ --output-on-failure
+
       - name: Verify systemd unit and non-root Gateway startup
         run: |
           set -euo pipefail

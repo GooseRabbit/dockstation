@@ -19,20 +19,25 @@ firmware build configuration and flash/partition settings belong here.
 
 ## Project status
 
-The transport-independent peer-side logical session is now implemented in
-`src/hardware/interfaces/controller_link_peer_session.hpp/.cpp`. It accepts a
-decoded HELLO only after the caller starts it following transport
-authentication, returns HELLO_ACK, validates the peer identity/version/instance
-and increasing sequence, accepts HEARTBEAT and REQUEST_SNAPSHOT, and can build a
-typed TELEMETRY_SNAPSHOT from measurements supplied by the caller. Linux host
-CTest covers this shared logic through the production ControllerCodec.
+An ESP-IDF component now exists at
+\`components/controller_mbedtls_psk_server/\`. It implements the ESP32-side
+TLS 1.3 server for the internal Repka link and receives encrypted UART bytes
+through injected Mbed TLS send/receive callbacks. The fixed profile is
+TLS 1.3 PSK-Ephemeral, TLS_AES_128_GCM_SHA256 and P-256; it checks the exact
+16-byte pair identity before selecting the 32-byte PSK, blocks application
+plaintext until handshake completion, disables early data and issues no
+session tickets. Its 32-byte TLS exporter uses the same label/context as the
+Repka OpenSSL client.
 
-This is not ESP32 firmware and does not implement a TLS server, Mbed TLS, UART,
-sensor acquisition, GPIO or board startup. The ESP-IDF project files, `main/`
-application component, board profile and `sdkconfig` remain intentionally
-uncreated: the exact ESP32 module/SoC, flash size and final GPIO assignment have
-not been confirmed. Once the board profile is confirmed, the ESP-IDF project
-will be added here with its own `CMakeLists.txt`, `main/`, shared protocol
-component and explicit build instructions. It will be built independently
-from the root Linux Gateway build, without an ESP32 emulator or virtual
-GPIO/UART devices.
+The component is included in a host interop test against upstream Mbed TLS
+3.6.7 with the existing OpenSSL client over a POSIX socket pair. The test
+covers handshake, matching exporter output, bidirectional encrypted application
+data and rejection of a wrong PSK or identity. This is not yet an ESP-IDF
+firmware image and does not prove compatibility with Espressif's Mbed TLS fork
+or a physical UART.
+
+The ESP-IDF application project, board profile and \`sdkconfig\` remain
+intentionally uncreated until the exact ESP32 module/SoC and flash size are
+confirmed. The TLS server component can be included by the future project
+without moving or copying its source. Secure NVS provisioning, Flash Encryption,
+Secure Boot, DHT22 acquisition and GPIO drivers remain separate tasks.
