@@ -56,6 +56,7 @@ physical module revision, SPI Flash capacity, PSRAM presence, exact board
 revision and production partition layout are still unconfirmed. See
 `docs/33_ESP32_HARDWARE_PROFILE.md` for the evidence matrix and acceptance
 steps.
+
 ## Current firmware entry point
 
 `main/app_main.cpp` remains diagnostic-only. It generates the per-boot
