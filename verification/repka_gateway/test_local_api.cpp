@@ -65,6 +65,8 @@ void test_diagnostics_serialization() {
            std::string::npos);
     assert(payload.find("\"physical_sensors_configured\":false") !=
            std::string::npos);
+    assert(payload.find("expected physical sensor inventory/configuration is not yet integrated") !=
+           std::string::npos);
     assert(payload.find(":nan") == std::string::npos);
     assert(payload.find(":inf") == std::string::npos);
     assert(payload.find(":-inf") == std::string::npos);

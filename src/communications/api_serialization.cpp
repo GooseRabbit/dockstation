@@ -546,7 +546,7 @@ std::string serialize_system_diagnostics(
            << "\"hardware_controller_connected\":"
            << (hardware_controller_connected ? "true" : "false") << ","
            << "\"physical_sensors_configured\":false,"
-           << "\"note\":\"Linux host diagnostics are separate from controller link status; sensor measurements are not yet included.\"}}";
+           << "\"note\":\"Linux host diagnostics, controller link and the latest accepted controller telemetry are separate; the expected physical sensor inventory/configuration is not yet integrated.\"}}";
     return output.str();
 }
 
