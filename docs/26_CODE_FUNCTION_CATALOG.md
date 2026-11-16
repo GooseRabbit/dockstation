@@ -1028,6 +1028,19 @@ duplicate/invalid revision, Station ID mismatch и DB owner/mode. GitHub Actions
 Python/Operator/Gateway integration-тестов; ARM64 bundle/staging и Sigstore provenance
 прошли. Это не Mbed TLS или physical Repka acceptance.
 
+### src/hardware/interfaces/controller_link_peer_session.hpp/.cpp
+
+| Функция / тип | Назначение |
+|---|---|
+| `ControllerLinkPeerSessionConfig` | Локальные ID/instance ESP32, ожидаемый peer ID Repka и точная версия логического протокола. |
+| `ControllerLinkPeerSessionState` / `ControllerLinkPeerSessionStatus` / `ControllerLinkPeerSessionEvent` | Состояния Stopped/AwaitingHello/Established, причины отказов и события SessionEstablished/PeerHeartbeatReceived/SnapshotRequested. |
+| `ControllerLinkPeerSession::start()` | Начинает логическую обработку только после того, как вызывающий transport подтвердил аутентификацию канала; TLS не реализует. |
+| `ControllerLinkPeerSession::handle_message()` | Принимает HELLO и формирует HELLO_ACK; затем разрешает только HEARTBEAT и REQUEST_SNAPSHOT. Проверяет структуру, точную protocol version, peer ID/instance и строго возрастающий входящий sequence. |
+| `ControllerLinkPeerSession::make_telemetry_snapshot()` | Проверяет типизированный снимок, формирует TELEMETRY_SNAPSHOT с единым возрастающим outbound sequence. Измерения и их строки остаются во владении вызывающей стороны до кодирования кадра. |
+| `ControllerLinkPeerSession::stop()` | Заканчивает логическую сессию, сохраняя sequence/replay history на время жизни объекта для защиты при reconnect. |
+
+Идентификаторы хранятся в фиксированных буферах до 128 байт; динамическое выделение памяти не выполняется. Новый peer instance может начать входящую последовательность заново, но повтор старого sequence в пределах прежнего instance отклоняется. Проверка: `verification/repka_gateway/test_controller_link_peer_session.cpp`, CTest `controller_link_peer_session`; host-тест проходит через production ControllerCodec и проверяет HELLO/HELLO_ACK, REQUEST_SNAPSHOT, HEARTBEAT, типизированный snapshot, неверные сообщения и replay после reconnect. Это транспортно-независимая логика, а не Mbed TLS/ESP-IDF/физическая проверка.
+
 ### src/hardware/interfaces/controller_link_session.hpp/.cpp
 
 | Функция / тип | Назначение |

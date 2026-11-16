@@ -19,14 +19,20 @@ firmware build configuration and flash/partition settings belong here.
 
 ## Project status
 
-This directory is reserved and its separation boundary is established. The
-ESP-IDF project files, `main/` application component, board profile and
-`sdkconfig` are intentionally not created yet: the exact ESP32 module/SoC,
-flash size and final GPIO assignment have not been confirmed. Creating a
-buildable target with guessed board settings would give a false sense of
-hardware compatibility.
+The transport-independent peer-side logical session is now implemented in
+`src/hardware/interfaces/controller_link_peer_session.hpp/.cpp`. It accepts a
+decoded HELLO only after the caller starts it following transport
+authentication, returns HELLO_ACK, validates the peer identity/version/instance
+and increasing sequence, accepts HEARTBEAT and REQUEST_SNAPSHOT, and can build a
+typed TELEMETRY_SNAPSHOT from measurements supplied by the caller. Linux host
+CTest covers this shared logic through the production ControllerCodec.
 
-Once the board profile is confirmed, the ESP-IDF project will be added here
-with its own `CMakeLists.txt`, `main/`, shared protocol component and explicit
-build instructions. It will be built independently from the root Linux
-Gateway build, without an ESP32 emulator or virtual GPIO/UART devices.
+This is not ESP32 firmware and does not implement a TLS server, Mbed TLS, UART,
+sensor acquisition, GPIO or board startup. The ESP-IDF project files, `main/`
+application component, board profile and `sdkconfig` remain intentionally
+uncreated: the exact ESP32 module/SoC, flash size and final GPIO assignment have
+not been confirmed. Once the board profile is confirmed, the ESP-IDF project
+will be added here with its own `CMakeLists.txt`, `main/`, shared protocol
+component and explicit build instructions. It will be built independently
+from the root Linux Gateway build, without an ESP32 emulator or virtual
+GPIO/UART devices.

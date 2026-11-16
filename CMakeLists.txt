@@ -50,6 +50,7 @@ add_library(dockstation_linux_runtime STATIC
     src/hardware/interfaces/controller_codec.cpp
     src/hardware/interfaces/controller_frame_stream_decoder.cpp
     src/hardware/interfaces/controller_link_session.cpp
+    src/hardware/interfaces/controller_link_peer_session.cpp
     src/hardware/interfaces/controller_telemetry_snapshot.cpp
     src/platform/linux/controller_link_service.cpp
     src/communications/api_serialization.cpp
@@ -327,6 +328,16 @@ if(BUILD_TESTING)
     dockstation_apply_compile_policy(test_controller_link_session)
     add_test(NAME controller_link_session
         COMMAND test_controller_link_session)
+
+    add_executable(test_controller_link_peer_session
+        verification/repka_gateway/test_controller_link_peer_session.cpp
+    )
+    target_link_libraries(test_controller_link_peer_session
+        PRIVATE dockstation_linux_runtime
+    )
+    dockstation_apply_compile_policy(test_controller_link_peer_session)
+    add_test(NAME controller_link_peer_session
+        COMMAND test_controller_link_peer_session)
 
     add_executable(test_controller_psk_tls_client
         verification/repka_gateway/test_controller_psk_tls_client.cpp
