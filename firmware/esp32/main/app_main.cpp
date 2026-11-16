@@ -122,6 +122,8 @@ extern "C" void dockstation_link_check_psk_nvs_credential_store(void) {
     dockstation::firmware::esp32::ControllerMbedTlsPskCredentials credentials;
     (void)store.initialize();
     (void)store.load(credentials);
+    dockstation::hardware::interfaces::ControllerStableIdPair controller_ids{};
+    (void)store.load_controller_ids(controller_ids);
 }
 
 // Link-only acceptance hook for the runtime API. It is never called; its

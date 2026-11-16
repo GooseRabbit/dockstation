@@ -1,6 +1,7 @@
 #pragma once
 
 #include "controller_mbedtls_psk_server.hpp"
+#include "hardware/interfaces/controller_stable_identity.hpp"
 #include "esp_err.h"
 
 namespace dockstation::firmware::esp32 {
@@ -24,6 +25,11 @@ public:
     // Loads exact-size blobs from a read-only NVS handle. Clears output on
     // any failure; secret bytes are never logged or returned as text.
     [[nodiscard]] bool load(ControllerMbedTlsPskCredentials& output) noexcept;
+
+    // Reads this ESP32's ID and the paired Repka ID from read-only NVS.
+    // Missing, malformed or identical IDs fail closed and clear the output.
+    [[nodiscard]] bool load_controller_ids(
+        hardware::interfaces::ControllerStableIdPair& output) noexcept;
 
     [[nodiscard]] bool is_initialized() const noexcept { return initialized_; }
     [[nodiscard]] esp_err_t last_error() const noexcept { return last_error_; }

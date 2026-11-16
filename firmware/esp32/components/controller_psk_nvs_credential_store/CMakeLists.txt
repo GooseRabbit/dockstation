@@ -1,6 +1,6 @@
 idf_component_register(
     SRCS "controller_psk_nvs_credential_store.cpp"
-    INCLUDE_DIRS "include"
+    INCLUDE_DIRS "include" "../../../../src"
     REQUIRES
         controller_mbedtls_psk_server
         nvs_flash

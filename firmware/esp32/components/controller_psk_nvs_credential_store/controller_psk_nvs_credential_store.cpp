@@ -17,6 +17,8 @@ constexpr char kNvsKeysPartitionLabel[] = "nvs_keys";
 constexpr char kCredentialNamespace[] = "dockstation";
 constexpr char kPskBlobKey[] = "pair_psk";
 constexpr char kIdentityBlobKey[] = "pair_identity";
+constexpr char kControllerIdKey[] = "controller_id";
+constexpr char kPeerControllerIdKey[] = "peer_controller_id";
 constexpr std::size_t kMinimumNvsKeysPartitionSize =
     (2U * static_cast<std::size_t>(NVS_KEY_SIZE)) + 16U;
 
@@ -133,6 +135,68 @@ bool ControllerPskNvsCredentialStore::load(
         result = ESP_ERR_INVALID_RESPONSE;
     }
 
+    if (result != ESP_OK) {
+        output.clear();
+        last_error_ = result;
+        return false;
+    }
+
+    last_error_ = ESP_OK;
+    return true;
+}
+
+bool ControllerPskNvsCredentialStore::load_controller_ids(
+    hardware::interfaces::ControllerStableIdPair& output) noexcept {
+    output.clear();
+    if (!initialized_) {
+        last_error_ = ESP_ERR_INVALID_STATE;
+        return false;
+    }
+
+    nvs_handle_t handle{0U};
+    esp_err_t result = nvs_open_from_partition(
+        kNvsPartitionLabel,
+        kCredentialNamespace,
+        NVS_READONLY,
+        &handle);
+    if (result != ESP_OK) {
+        last_error_ = result;
+        return false;
+    }
+
+    // nvs_get_str reports string storage size including the terminating NUL.
+    std::size_t local_storage_size = output.local.size();
+    result = nvs_get_str(
+        handle, kControllerIdKey, output.local.data(), &local_storage_size);
+    if (result == ESP_OK) {
+        if (local_storage_size == 0U ||
+            local_storage_size > output.local.size()) {
+            result = ESP_ERR_INVALID_SIZE;
+        } else {
+            output.local_size = local_storage_size - 1U;
+        }
+    }
+
+    if (result == ESP_OK) {
+        std::size_t peer_storage_size = output.peer.size();
+        result = nvs_get_str(
+            handle, kPeerControllerIdKey, output.peer.data(),
+            &peer_storage_size);
+        if (result == ESP_OK) {
+            if (peer_storage_size == 0U ||
+                peer_storage_size > output.peer.size()) {
+                result = ESP_ERR_INVALID_SIZE;
+            } else {
+                output.peer_size = peer_storage_size - 1U;
+            }
+        }
+    }
+
+    nvs_close(handle);
+
+    if (result == ESP_OK && !output.is_valid()) {
+        result = ESP_ERR_INVALID_RESPONSE;
+    }
     if (result != ESP_OK) {
         output.clear();
         last_error_ = result;
