@@ -383,6 +383,13 @@ int main() {
     expect(started.state == ControllerLinkServiceState::TlsHandshake,
            "starts the production service over the PTY without pre-claiming TLS");
 
+    std::array<std::uint8_t, kControllerSessionProofSize> premature_proof{};
+    premature_proof.fill(0xA5U);
+    expect(!e2e_service.export_authenticated_session_proof(premature_proof) &&
+               std::all_of(premature_proof.begin(), premature_proof.end(),
+                           [](std::uint8_t value) noexcept { return value == 0U; }),
+           "does not expose exporter proof before TLS and logical authentication complete");
+
     expect(complete_tls_handshake(e2e_service, peer, pty.master) &&
                e2e_service.status().tls_authenticated,
            "authenticates the complete service-to-peer TLS 1.3 PSK-DHE handshake");
