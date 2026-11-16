@@ -33,8 +33,10 @@ The target build passed on commit
 [ESP32 firmware build #43923515234](https://github.com/GooseRabbit/dockstation/actions/runs/43923515234).
 The log confirms compilation of the TLS server, peer/runtime composition, UART
 transport and read-only NVS credential store, followed by a successful ESP32
-ELF/BIN link. This is compile/link acceptance only; the workflow does not flash
-or run the image on a physical board.
+ELF/BIN link. A linker-forced, non-invoked acceptance hook also makes the final ELF
+resolve the NVS provider's external dependencies without running its NVS/eFuse
+calls during startup. This is compile/link acceptance only; the workflow does
+not flash or run the image on a physical board.
 
 ## Board identification and limitations
 
@@ -76,7 +78,7 @@ and `ControllerLinkPeerService`: it owns startup, bounded polling, restart and
 shutdown order. The runtime accepts credentials and session IDs from its
 caller; it does not read or generate keys and does not acquire sensor data.
 `app_main` still does not start it until board GPIO and secure credential
-provisioning are defined.
+provisioning are defined. The link-only acceptance hook is retained by the linker but never called.
 
 A separate `controller_psk_nvs_credential_store/` component provides a
 read-only PSK/identity loader. It requires runtime Flash Encryption to be
