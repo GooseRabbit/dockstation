@@ -130,6 +130,10 @@ target_link_libraries(dockstation_linux_bootstrap
 dockstation_apply_compile_policy(dockstation_linux_bootstrap)
 
 if(BUILD_TESTING)
+    # Keep the credential-loader injection seam out of production/release builds.
+    target_compile_definitions(dockstation_linux_runtime
+        PUBLIC DOCKSTATION_ENABLE_TEST_SEAMS)
+
     add_executable(test_application_bootstrap
         verification/repka_gateway/test_application_bootstrap.cpp
     )

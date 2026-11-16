@@ -69,12 +69,13 @@ public:
     telemetry_snapshot() const noexcept { return telemetry_snapshot_; }
 
 private:
-    // The test peer injects a generated PSK pair through this private seam.
-    // Production always retains the protected on-disk credential loader.
+#ifdef DOCKSTATION_ENABLE_TEST_SEAMS
+    // Present only in CMake verification builds; release Gateway builds always
+    // call the protected on-disk credential loader directly.
     friend class ControllerLinkServiceTestAccess;
-
     decltype(&load_controller_psk_credentials) credential_loader_{
         &load_controller_psk_credentials};
+#endif
 
     [[nodiscard]] bool copy_configuration(
         const ControllerLinkServiceConfig& config) noexcept;
