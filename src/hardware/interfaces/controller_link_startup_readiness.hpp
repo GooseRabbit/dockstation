@@ -26,7 +26,7 @@ struct ControllerLinkStartupReadinessInput final {
     bool pair_credentials_available{false};
     bool instance_identity_generated{false};
     bool instance_identity_configuration_matches{false};
-    std::uint8_t protocol_version_major{0U};
+    std::uint16_t protocol_version_major{0U};
     std::string_view local_controller_id{};
     std::string_view peer_controller_id{};
 };
