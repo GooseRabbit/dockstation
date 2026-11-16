@@ -1,7 +1,7 @@
 # Полный план реализации программного комплекса DockStation на Repka Pi 5
 
 **Статус:** мастер-план реализации; последовательность разработки согласована, открытые платформенные, сетевые, серверные и аппаратные детали требуют отдельной проверки и решения.  
-**Редакция:** 1.96.
+**Редакция:** 1.97.
 **Дата:** 2026-11-16.  
 **Вычислительная платформа:** Repka Pi 5.  
 **Предполагаемая ОС:** официальная Repka OS; образ и версия проверяются перед развёртыванием.
@@ -439,7 +439,7 @@ Host-тест `verification/repka_gateway/test_controller_link_session.cpp` за
 
 **Цель:** подключить реальные адаптеры хранения к уже реализованным логическим контрактам StationStateManager и ConfigurationManager, не переписывая их чистую бизнес-логику. Обеспечить атомарность записей, защиту от повторной обработки, сохранение курсоров источников и безопасное восстановление после перезапуска.
 
-**Фактическая граница на редакцию 1.70:** логические функции F01–F17 и CFG-F00…CFG-F08, а также перечисленные ниже интерфейсы портов существуют и покрыты host-тестами с fake-адаптерами. В изолированной кандидатной ветке добавлен первый Linux backend foundation src/platform/persistence/sqlite_database.hpp/.cpp и отдельная CMake-цель dockstation_persistence_sqlite. Он открывает/проверяет файл, фиксирует профиль SQLite, создаёт миграцию schema_migrations и не подключён к Gateway runtime или SSM/CFG repository-портам. Реальных таблиц событий, snapshot, истории, операций, курсоров и конфигурации ещё нет. SQLite описан только как предложение DEC-068, не как утверждённое владельцем решение.
+**Фактическая граница на редакцию 1.70:** логические функции F01–F17 и CFG-F00…CFG-F08, а также перечисленные ниже интерфейсы портов существуют и покрыты host-тестами с fake-адаптерами. В изолированной кандидатной ветке добавлен первый Linux backend foundation src/platform/persistence/sqlite_database.hpp/.cpp и отдельная CMake-цель dockstation_persistence_sqlite. Он открывает/проверяет файл, фиксирует профиль SQLite, создаёт миграцию schema_migrations и не подключён к Gateway runtime или SSM/CFG repository-портам. Реальных таблиц событий, snapshot, истории, операций, курсоров и конфигурации ещё нет. SQLite утверждён владельцем как локальный backend по DEC-068; это решение не означает, что доменные таблицы, адаптеры и Gateway integration уже реализованы.
 
 ### 5.1. Карта архитектурных слоёв
 
@@ -467,9 +467,9 @@ Persistence adapters / Clock / Timer / ID providers
 
 Системный журнал Gateway (stderr → journald) остаётся отдельным от долговременных данных SSM. `EventRepository` хранит нормализованные события, необходимые для дедупликации и доказательства изменений; он не становится хранилищем сырых сетевых/аппаратных логов. Конфигурация процесса Linux Gateway из `/etc/dockstation/gateway.conf` (порт и параметры журналирования) также не является конфигурацией станции CFG-F00…CFG-F08.
 
-### 5.1.1. Кандидат SQLite (DEC-068 — предложение, не утверждено)
+### 5.1.1. Утверждённый локальный SQLite backend (DEC-068)
 
-**Статус:** технический spike реализован и прошёл host CI; выбор SQLite, файловый путь и deployment-политика ожидают явного утверждения владельца.
+**Статус:** выбор локального SQLite backend и базовый профиль утверждены владельцем 2026-11-16. Техническая foundation прошла host CI; production schema/adapters и целевая Repka OS acceptance ещё предстоят.
 
 - Backend-кандидат — SQLite для небольшого локального структурированного состояния станции и транзакционных SSM/CFG repository-портов. Он не предназначен для хранения видео/крупных материалов; для них остаётся отдельный LocalStorageManager/backend по DEC-057.
 - Начальный профиль — rollback journal DELETE, synchronous=EXTRA, foreign_keys=ON, trusted_schema=OFF; WAL не включается. Одна композиционная точка владеет соединением и сериализует repository-вызовы; FULLMUTEX является дополнительной защитой, но не заменяет эту политику.
@@ -479,6 +479,13 @@ Persistence adapters / Clock / Timer / ID providers
 - CTest sqlite_persistence_probe проверяет реальный on-disk файл, настройки PRAGMA, начальную schema migration, отклонение относительного пути и final symlink, отказ чужой БД без изменения её WAL-режима, отказ закрытия при незавершённом statement, rollback/commit нескольких связанных строк, close/reopen, crash recovery после _exit(), integrity_check и блокировку конкурирующего writer.
 - Полный GitHub Actions run 43699555707 завершился SUCCESS для candidate HEAD 53f3289bb58d1fd9dc0f67111299a546aaf7b49e: 23/23 CTest с ASan/UBSan, 31/31 C++ host-программ и 141 pytest; прошли QML/package, Python compileall, Gateway/systemd/non-root и shell/network checks. Это host-проверка на Ubuntu 24.04.5 x86_64: завершение процесса до COMMIT не является испытанием внезапного отключения питания или отказа реального накопителя.
 - SQLite пока не включён в dockstation_linux_runtime, Gateway не открывает файл БД и не сохраняет реальные station events. При последующей интеграции отсутствие/ошибка локального хранилища должны выдавать явный UNAVAILABLE/ERROR для persistence-зависимых операций; Gateway и диагностика, не требующие записи, не должны заявлять несуществующий commit.
+
+### 5.1.2. Распределение локальных, серверных и резервных данных
+
+Согласованная топология хранения и оценка backend вариантов вынесены в docs/32_PERSISTENCE_AND_STORAGE_TOPOLOGY.md (DEC-072 — СОГЛАСОВАНО). В ней отдельно рассматриваются локальная транзакционная БД Repka, файловое хранилище видео/материалов, центральный источник истины для аккаунтов/OwnerSpace/прав, серверное объектное хранилище и резервная копия в независимом домене отказа.
+
+Топология не утверждает конкретную серверную СУБД или объектный сервис. SQLite утверждён DEC-068 как локальный backend Repka; PostgreSQL остаётся только кандидатом для центрального сервера, а не требованием устанавливать его на Repka. SSD по DEC-057 остаётся необязательным backend; политика записи при его отсутствии должна быть явной. Пароли пользователей и серверный реестр владения станциями не копируются в локальную БД как второй источник истины. Доступ без сервера возможен только по ограниченным подписанным grants в рамках DEC-055.
+
 ### 5.2. Карта существующих портов и требуемых адаптеров
 
 | Область | Существующий логический контракт | Что должен обеспечить постоянный адаптер |
@@ -778,13 +785,13 @@ SourceSessionVerifier вызывается для каждого события.
 6. Закрытие канала, повторное подключение, новое challenge/session establishment и lifetime peer identity должны быть видимы verifier-у. Повторная проверка внутри одного непрерывно открытого канала допустима; повтор proof на новом канале — нет.
 7. Transport decoder сначала проверяет framing, размер, encoding и структуру сообщения, затем формирует нормализованный Event. Payload не может подменить состояние канала или напрямую создать VerifiedSourceSession.
 
-**Ограничения и запреты:** не подключать LocalApiServer/Python test route к StationEventPipeline; не принимать evidence из HTTP или пользовательского JSON; не считать loopback, SSH port-forward или source ID самостоятельной аутентификацией устройства. Не выводить subsystem_status из severity или error_code. Не добавлять F13 route для SUBSYSTEM_STATUS_UPDATED только ради прохождения теста: маршрут должен иметь реальный профильный обработчик и согласованный транзакционный контракт. Реальный registry reader, SourceSessionRepository, composition-root wiring и Mbed TLS interoperability остаются отдельными задачами; DEC-068 и физический транспорт этим срезом не утверждаются.
+**Ограничения и запреты:** не подключать LocalApiServer/Python test route к StationEventPipeline; не принимать evidence из HTTP или пользовательского JSON; не считать loopback, SSH port-forward или source ID самостоятельной аутентификацией устройства. Не выводить subsystem_status из severity или error_code. Не добавлять F13 route для SUBSYSTEM_STATUS_UPDATED только ради прохождения теста: маршрут должен иметь реальный профильный обработчик и согласованный транзакционный контракт. Реальный registry reader, SourceSessionRepository, composition-root wiring и Mbed TLS interoperability остаются отдельными задачами; утверждение DEC-068 не означает готовность или аппаратную приёмку физического транспорта.
 
 **Следующий реальный срез после текущей реализации:** реализовать production `SubsystemRegistrationReader` и `SubsystemStatusRepository` на согласованном backend, обеспечив одну транзакцию для актуального статуса, Event/event_id, регистрации и source cursor. До появления этих production adapters и composition root Pipeline должен продолжать возвращать Unsupported без изменения состояния. Текущий storage-neutral `SubsystemStatusEventProcessor` проверяет exact subsystem_id, локальный Station ID, привязку к Event.source, ACTIVE/revision, VALID/schema 1, source_instance/sequence и атомарный commit contract через fake-порты. Наблюдательные статусы PASS/DEGRADED/FAIL/UNKNOWN допускают смену друг на друга только в строгом порядке источника; каждый принятый отчёт возвращается в F13 как NoStateChange относительно глобального автомата и не запускает физические действия. Отдельно определить policy хранения отчётного потока телеметрии: текущий Gateway хранит только последний снимок в памяти; исторический список, сроки хранения и backup/restore требуют утверждения backend и не сводятся к SSM EventRepository. Production SourceRegistrationReader/SourceSessionRepository и Gateway composition-root wiring выполняются в рамках общей интеграции хранения после выбора backend. ControllerLink protocol 1.1 требует согласованного обновления ESP32 firmware; Mbed TLS interop и физическая UART-приёмка остаются открытыми.
 
 ### 5.5. Выбор физического хранилища
 
-SQLite остаётся кандидатом, не решением. Сравнение и испытания должны учитывать:
+SQLite утверждён как локальный backend по DEC-068. До целевой приёмки необходимо подтвердить его точную версию/возможности на Repka OS, файловую систему, каталог/права, накопитель, durability и backup/restore. Проверки должны учитывать:
 - транзакционность и условную запись с проверкой revision/cursor;
 - восстановление после принудительного завершения процесса и потери питания;
 - поведение при конкурентных чтениях/записях и блокировках;
@@ -793,13 +800,13 @@ SQLite остаётся кандидатом, не решением. Сравн�
 - резервное копирование, восстановление и политику хранения;
 - возможность безопасно хранить чувствительные параметры; криптографический механизм не выбирать до согласования docs/24.
 
-До выбора backend нельзя называть конкретную БД, формат файла, политику WAL, каталог данных или шифрование утверждёнными.
+Согласованный профиль SQLite: rollback journal DELETE, synchronous=EXTRA, foreign_keys=ON, trusted_schema=OFF, без WAL на первом этапе; путь БД — /var/lib/dockstation/station.sqlite3 через systemd StateDirectory=dockstation. Фактические свойства Repka OS, файловой системы и накопителя должны быть проверены до установки; эти проверки не дают права менять утверждённый профиль без отдельного согласования.
 
 ### 5.6. Порядок реализации небольшими срезами
 
 1. **Уточнить оставшиеся контракты из §6.4:** список незавершённых операций, завершение recovery, выдача ID, атомарная связь исходного Event/cursor с F07 и поведение таймеров при reboot. Порт чтения cursor уже согласован и реализован; production adapter остаётся частью последующего подключения хранения.
-2. **Выбрать и проверить backend:** сравнить кандидаты, сделать минимальный опыт транзакций/восстановления на Ubuntu VM и зафиксировать критерии; не переписывать ядро и не менять его интерфейсы на этом шаге.
-3. **Создать основу persistence:** открыть/закрыть хранилище, проверить схему, выполнить миграции и предоставить узкий механизм транзакций с явными статусами ошибок.
+2. **Проверить утверждённый backend на целевой платформе:** подтвердить SQLite version/features, доступные пакеты и характеристики файловой системы/накопителя на Repka OS; не менять backend/profile из-за неподтверждённого предположения.
+3. **Расширить существующую persistence foundation:** добавить версионируемые доменные миграции, минимальные таблицы реестра/сессий/cursors/events/subsystem reports и узкие транзакционные методы с явными статусами ошибок.
 4. **Подключить чтение:** snapshot, transition history, event lookup, source cursor и сохранённую конфигурацию; проверить корректные NOT_FOUND/UNAVAILABLE/READ_ERROR/INVALID состояния.
 5. **Подключить запись намерений F07 и ID providers:** сохранить REQUESTED до передачи ActionDispatcher; отдельно проверить уникальность после пересоздания адаптера/перезапуска процесса.
 6. **Подключить атомарные F09/F11 и F10:** сначала operation lifecycle, затем global snapshot/history/event/cursor; покрыть конкурентные revision/cursor конфликты и неизвестный результат commit.
@@ -1345,3 +1352,4 @@ GitHub Actions [run 43699555707](https://github.com/GooseRabbit/dockstation/acti
 | 1.94 | 2026-11-16 | Реализованы ControllerLinkMessageHandler и generic AuthenticatedEventTransportAdapter: callback вызывается только после TLS + HELLO_ACK и успешной проверки ControllerLink кадра; локальная pair PSK identity очищается при transport failure/stop, TLS exporter и Event создаются в одном синхронном контексте. Event ID включает pair identity/source/instance/sequence, receiver назначает received_at. Добавлен TLS/PTY host test с test-only projector: подтверждены gating до HELLO_ACK, точная передача identity/exporter, вызов session-gated Pipeline и блокировка replay до adapter. CMake выделяет `dockstation_station_events` и `dockstation_event_transport`. Production projector/mapping, RegistryReader/SourceSessionRepository и Gateway composition root остаются открытыми; тестовый SUBSYSTEM_STATUS_UPDATED ожидаемо не имеет F13 route. Физические Repka/ESP32 и Mbed TLS interop не проверены. |
 | 1.95 | 2026-11-16 | Добавлен production `ControllerSubsystemStatusEventProjector`: TELEMETRY_SNAPSHOT и generic ERROR не поступают в SSM; только ERROR с полной парой subsystem_id/subsystem_status (PASS/DEGRADED/FAIL/UNKNOWN) проецируется в SUBSYSTEM_STATUS_UPDATED. ERROR body расширен и логическая ControllerLink version поднята с 1.0 до 1.1 с точным version match/no downgrade; wire-frame ControllerCodec остаётся v1. Добавлены проверки partial/unknown status, ERROR codec round-trip, JSON escaping, отдельный projector CTest и TLS/PTY сквозной сценарий, где телеметрия обходит Pipeline, а explicit subsystem ERROR доходит до Pipeline и получает ожидаемый Unsupported из-за отсутствия F13 route. CI и аппаратная проверка для этой редакции ещё не выполнялись. Текущий report storage по-прежнему только latest in-memory snapshot; history/persistence, RegistryReader/SourceSessionRepository, F13 processor, Gateway composition, Mbed TLS interop и физическая Repka/ESP32 остаются открытыми. |
 | 1.96 | 2026-11-16 | Добавлен storage-neutral `SubsystemStatusEventProcessor` без включения нового маршрута в StationEventPipeline. Определены decoder port, точная регистрация subsystem_id в рамках local Station ID и source binding, состояния ACTIVE/DISABLED/REVOKED, допустимые наблюдения PASS/DEGRADED/FAIL/UNKNOWN и атомарный commit contract для статуса, Event/event_id и SourceCursor. Добавлен CTest harness с fake-портами на повтор, конфликт, stale/sequence, регистрацию, revision/cursor races и commit results; CI нового среза и production adapters ещё не выполнялись. Pipeline сохраняет Unsupported до production registry/repository/composition-root wiring; backend не выбран, telemetry report history остаётся отдельной задачей, Mbed TLS interop и физическая Repka/ESP32 не проверены. |
+| 1.97 | 2026-11-16 | Владелец утвердил DEC-068 (локальный SQLite с DELETE journal/EXTRA, foreign_keys, trusted_schema и /var/lib/dockstation) и DEC-072 (раздельное локальное, серверное, файловое и независимое резервное хранение). Добавлена docs/32_PERSISTENCE_AND_STORAGE_TOPOLOGY.md и обновлены README/управление документацией. Утверждение backend не означает завершение доменных миграций, production repository adapters, Gateway wiring, target Repka OS проверки или backup/restore испытаний. |
