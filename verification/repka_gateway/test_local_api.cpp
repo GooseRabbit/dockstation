@@ -128,9 +128,10 @@ void test_controller_telemetry_serialization() {
     using dockstation::hardware::interfaces::ControllerTelemetrySnapshotPayload;
     using dockstation::hardware::interfaces::SensorQualityStatus;
 
-    const std::array<ControllerTelemetryMeasurement, 4U> measurements{{
+    const std::array<ControllerTelemetryMeasurement, 5U> measurements{{
         {"dht22-01.temperature", 23.75, "degC", SensorQualityStatus::Ok, "m-001"},
         {"dht22-01.humidity", std::uint64_t{61U}, "%", SensorQualityStatus::Stale, "m-002"},
+        {"sensor.count", std::int64_t{-7}, "count", SensorQualityStatus::Ok, "m-005"},
         {"cover.closed", true, "bool", SensorQualityStatus::Unknown, "m-003"},
         {"sensor.note", std::string_view{"probe\"ok"}, "text", SensorQualityStatus::Invalid, "m-004"},
     }};
@@ -156,6 +157,7 @@ void test_controller_telemetry_serialization() {
     assert(payload.find("\"sensor_id\":\"dht22-01.temperature\"") != std::string::npos);
     assert(payload.find("\"value_type\":\"NUMBER\",\"value\":23.75") != std::string::npos);
     assert(payload.find("\"value_type\":\"UNSIGNED_INTEGER\",\"value\":61") != std::string::npos);
+    assert(payload.find("\"value_type\":\"INTEGER\",\"value\":-7") != std::string::npos);
     assert(payload.find("\"value_type\":\"BOOLEAN\",\"value\":true") != std::string::npos);
     assert(payload.find("probe\\\"ok") != std::string::npos);
     assert(payload.find("\"quality_status\":\"STALE\"") != std::string::npos);
