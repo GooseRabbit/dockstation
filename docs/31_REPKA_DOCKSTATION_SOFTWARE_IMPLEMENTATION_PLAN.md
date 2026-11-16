@@ -530,9 +530,9 @@ F03 выполняет предварительный read-only поиск event
 
 ### 5.4.1. Контракт чтения SourceCursor
 
-**Статус: storage-neutral порт и production SQLite adapter реализованы.** `SqliteSourceSessionStore::read_source_cursor()` читает согласованный снимок source/source_instance/last_sequence; Gateway composition root пока не использует адаптер.
+**Статус: storage-neutral порт, production SQLite adapter и Gateway composition root интегрированы.** `SqliteSourceSessionStore::read_source_cursor()` читает согласованный снимок source/source_instance/last_sequence; вызов выполняется через единый сериализованный GatewayPersistenceContext.
 
-Текущий факт: StationEventPipeline::handle(event, validation_policy, evidence) принимает SourceSessionEvidence, а не произвольный cursor. Pipeline выполняет F01/F02, затем SourceSessionCoordinator вызывает verifier → SourceCursorReader → SourceSessionRepository. SQLite production adapters `SourceRegistrationReader`, `SourceCursorReader` и `SourceSessionRepository` реализованы в `SqliteSourceSessionStore`; атомарное подтверждение сессии перепроверяет ACTIVE/revision регистрации и expected cursor. Gateway composition root и реальный ESP32/Mbed TLS transport context ещё не подключены.
+Текущий факт: StationEventPipeline::handle(event, validation_policy, evidence) принимает SourceSessionEvidence, а не произвольный cursor. Pipeline выполняет F01/F02, затем SourceSessionCoordinator вызывает verifier → SourceCursorReader → SourceSessionRepository. SQLite production adapters `SourceRegistrationReader`, `SourceCursorReader` и `SourceSessionRepository` реализованы в `SqliteSourceSessionStore`; атомарное подтверждение сессии перепроверяет ACTIVE/revision регистрации и expected cursor. Gateway composition root подключён. На стороне Repka host transport проверяется OpenSSL TLS 1.3 PSK-DHE; реальный ESP32/Mbed TLS endpoint и физический UART ещё не прошли аппаратную приёмку.
 
 **Реализованный минимальный read-only интерфейс** (production adapter `SqliteSourceSessionStore` реализован):
 
@@ -725,13 +725,13 @@ public:
 4. Прочитать курсор для подтверждённого source через `SourceCursorReader`. Ошибка, неизвестный статус или противоречивый payload возвращают `CursorReadError`; `Error` не превращается в `NotFound`.
 5. Передать результат чтения и полученный непосредственно от verifier-а `VerifiedSourceSession` в `SourceSessionRepository`. Только корректные `Confirmed` и `AlreadyCurrent` возвращают cursor. Конфликты и ошибки возвращаются без cursor; автоматического retry нет.
 
-Координатор не владеет адаптерами, не реализует криптографию или постоянное хранение и не продвигает `last_sequence`. Он встроен в `StationEventPipeline`. Реализованный `AuthenticatedEventTransportAdapter` передаёт Event и SourceSessionEvidence из одного синхронного callback принятого ControllerLink кадра; Pipeline сам подтверждает сессию, получает cursor и передаёт его в `handle_event()`/профиль. Production registry/storage adapters, production ControllerEventProjector и Gateway composition root ещё не реализованы.
+Координатор не владеет адаптерами, не реализует криптографию или постоянное хранение и не продвигает `last_sequence`. Он встроен в `StationEventPipeline`. Реализованный `AuthenticatedEventTransportAdapter` передаёт Event и SourceSessionEvidence из одного синхронного callback принятого ControllerLink кадра; Pipeline сам подтверждает сессию, получает cursor и передаёт его в `handle_event()`/профиль. Production Registry/Session adapters, ControllerSubsystemStatusEventProjector и Gateway composition root подключены; host end-to-end проверка с SQLite зафиксировала весь путь.
 
 #### Порядок входного Pipeline и повторная проверка канала
 
 До вызова Coordinator Pipeline выполняет чистые F01 (структура Event) и F02 (известность event_type). Невалидный Event или неизвестный тип возвращается без попытки session confirmation: event_result заполнен, session_status пуст, verifier/reader/repository не вызываются и source cursor не меняется. После подтверждения сессии handle_event() повторяет F01/F02 для защиты от обхода общего входа, затем выполняет F03/F04 и профильную маршрутизацию.
 
-SourceSessionVerifier вызывается для каждого события. session_proof подтверждает установление текущего канала, а peer_identity_evidence должен позволять убедиться, что именно этот канал всё ещё открыт и аутентифицирован. Повторная проверка на том же непрерывно открытом канале должна быть идемпотентной; повтор proof на новом/закрытом канале или вне исходного channel binding отклоняется. Новый канал проходит новое challenge/session establishment. Это обязательное поведение будущего production verifier/transport adapter; fake host tests криптографическую реализацию не доказывают.
+SourceSessionVerifier вызывается для каждого события. session_proof подтверждает установление текущего канала, а peer_identity_evidence должен позволять убедиться, что именно этот канал всё ещё открыт и аутентифицирован. Повторная проверка на том же непрерывно открытом канале должна быть идемпотентной; повтор proof на новом/закрытом канале или вне исходного channel binding отклоняется. Новый канал проходит новое challenge/session establishment. Production RegistrySourceSessionVerifier проверяет локальную регистрацию, точную PSK identity, Station ID/source и channel-bound evidence на каждом принятом событии. Host TLS/PTY test проверяет OpenSSL↔OpenSSL сценарий; он не доказывает совместимость с Mbed TLS на ESP32.
 
 #### Атомарные правила фиксации cursor
 
@@ -753,15 +753,15 @@ SourceSessionVerifier вызывается для каждого события.
 
 `SourceSessionVerifier`/`SourceSessionRepository` не заменяют `validate_event()`, `check_event_freshness()`, duplicate check или атомарный compare-and-advance F09/F10. Подтверждение сессии устанавливает границу текущего источника; номера событий продвигаются только существующими commit-портами.
 
-#### Не входит в этот срез
+#### Границы первоначального среза SourceSessionCoordinator
 
-Не выбираются и не реализуются: схема и физическое хранилище реестра; формат аппаратной идентичности; способ хранения ключей; онлайн/офлайн provisioning; физическая кнопка, перемычка или сервисный ключ активации; challenge-response wire format; TLS/mTLS или иной конкретный защищённый канал; криптографические алгоритмы; транспорт Repka—ESP32; формат и генератор `source_instance`; production adapter и composition-root wiring. Эти решения нельзя подменять тестовыми заглушками или выводить из текущего VM Gateway.
+На момент реализации самого Coordinator за рамками его core-контракта оставались production registry/storage adapters, транспорт и composition-root wiring. Они реализованы последующими срезами и описаны ниже в §5.4.3. Физическая кнопка/сервисный ключ provisioning, сопряжение и ротация PSK на ESP32, реализация challenge-response вне текущего TLS+HELLO/HELLO_ACK, генерация `source_instance` на целевом устройстве и совместимость Mbed TLS остаются отдельными задачами аппаратной/эксплуатационной приёмки.
 
 **Проверка:** host harness `verification/regression/test_source_session_contract.cpp` покрывает SSR-01…SSR-18 через production `SourceSessionCoordinator`. Fake verifier/reader/repository моделируют только внешние адаптеры, CAS и ревизию регистрации; они не доказывают реальную криптографию, provisioning, постоянство данных после отключения питания или работу ESP32. Подробная матрица ограничений остаётся в `verification/regression/source_session_contract_scenarios.md`.
 
 ### 5.4.3. Доверенная граница входа событий
 
-**Статус: generic transport ingress, production ControllerSubsystemStatusEventProjector и storage-neutral SubsystemStatusEventProcessor реализованы; отдельный CTest добавлен, CI для нового среза ожидает выполнения. Production registry/storage adapters и Gateway composition-root wiring отсутствуют; профильный F13 route намеренно пока не зарегистрирован.**
+**Статус: полный host ingress → F13 → SQLite путь интегрирован и проверен CI #498. ControllerLinkService → AuthenticatedEventTransportAdapter → RegistrySourceSessionVerifier/SourceSessionCoordinator → StationEventPipeline → SubsystemStatusEventProcessor → SqliteSubsystemStatusStore. x86_64 и ARM64: CTest 31/31; дополнительно 31/31 C++ host-программ и 158 Python/Operator/Gateway integration tests. Это host OpenSSL↔OpenSSL TLS/PTY verification, не подтверждение ESP32/Mbed TLS или физического UART.
 
 Аудит текущего дерева показал:
 
