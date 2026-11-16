@@ -60,19 +60,35 @@ exact board revision and production partition layout remain unconfirmed.
 ESP32-WROOM-32; it is not yet a measured property of the board. See
 `docs/33_ESP32_HARDWARE_PROFILE.md` for the evidence matrix and acceptance
 steps.
+
 ## Current firmware entry point
 
-`main/app_main.cpp` remains diagnostic-only. It generates the per-boot
-instance ID, evaluates startup prerequisites and logs every blocker. It does
-not initialize NVS, install the UART driver, initialize TLS or call runtime
-`start()`. The main component depends on the existing ESP32-side ControllerLink
-components so the ESP-IDF build compiles the complete target path.
+`main/app_main.cpp` generates a fresh per-boot instance ID before ADC, I²S or
+radio subsystems are used. It then applies two guards **before touching NVS**:
+the exact hardware profile must be explicitly confirmed and the UART port/TX/RX
+configuration must be valid. The checked-in profile deliberately keeps
+`hardware_profile_confirmed=false` and the GPIOs unset, so the current image
+returns before opening NVS.
+
+Only after those two guards have been deliberately satisfied will
+`app_main` initialize the already-provisioned encrypted NVS store in
+read-only-key mode, load the existing PSK/identity and stable local/peer
+controller IDs, and run the common startup-readiness evaluator. It never
+generates, repairs, writes, rotates or erases credentials. Any failed load
+clears secret output and leaves ControllerLink NOT_CONFIGURED.
+
+Even after a successful preflight, `app_main` does **not** install the UART
+driver, initialize TLS or start `ControllerLinkFirmwareRuntime`. The
+FreeRTOS polling/lifecycle task and a real telemetry source must be integrated
+first; starting the transport without them would leave an unserviced link.
+The link-only acceptance hook is forced into the ELF for compile/link coverage
+but is not executed.
 
 The default Mbed TLS configuration enables the required TLS 1.3 server,
 PSK-Ephemeral key exchange, AES-128-GCM/SHA-256, P-256 and keying-material
 export. TLS 1.2 and server session tickets are disabled in this initial
 profile. These compile-time settings do **not** mean that a live TLS session is
-started: there is no credential loading or UART transport in `app_main`.
+started.
 
 An ESP-IDF UART byte-stream adapter exists in
 `components/controller_uart_transport/`. It provides non-blocking Mbed TLS
@@ -97,10 +113,9 @@ acquire sensor data.
 
 The pure `ControllerLinkStartupReadiness` evaluator exposes missing
 startup prerequisites as explicit blockers, including a zero major protocol version and conflicting boot ID, and is covered by host CTest.
-`app_main` evaluates the default-off configuration and logs the blockers.
-The current configuration deliberately has no confirmed board profile, no
-assigned UART GPIOs, no loaded pair credentials and no stable local/peer
-controller IDs. The NVS reader is not called during this bootstrap.
+It remains the final fail-closed policy check after the gated NVS reads. The
+checked-in configuration does not reach this stage because the physical
+hardware-profile guard remains false.
 
 The `controller_instance_identity/` component generates a fresh UUIDv4
 `controller_instance_id` once per ESP32 boot. It calls
@@ -117,22 +132,23 @@ A separate `controller_psk_nvs_credential_store/` component provides a
 read-only PSK/identity loader. It requires runtime Flash Encryption to be
 already enabled, an encrypted `nvs_keys` partition, and the `nvs` data
 partition. It reads existing NVS encryption keys and explicitly initializes
-NVS with them; it never creates, repairs, writes, rotates or erases keys. The
-credential namespace is `dockstation` with binary blobs `pair_psk`
-(32 bytes) and `pair_identity` (16 bytes), plus NVS strings `controller_id`
-(this ESP32's stable ID) and `peer_ctrl_id` (the paired Repka ID).
-Both IDs must be distinct, non-empty ASCII identifiers of at most 128 bytes
-using only letters, digits, `_`, `-`, `.` or `:`. The read-only loader
-rejects missing, malformed or identical values and clears its output on
-failure. It never creates or repairs records. Provisioning these two IDs and
-the pair secret, and creating the production partition table, remain separate tasks.
+NVS with them; it never creates or repairs encryption keys. Credential and
+controller-ID values are read with `NVS_READONLY` handles. The credential
+namespace is `dockstation` with binary blobs `pair_psk` (32 bytes) and
+`pair_identity` (16 bytes), plus NVS strings `controller_id` (this ESP32's
+stable ID) and `peer_ctrl_id` (the paired Repka ID). Both IDs must be
+distinct, non-empty ASCII identifiers of at most 128 bytes using only letters,
+digits, `_`, `-`, `.` or `:`. The loader rejects missing, malformed or
+identical values and clears its output on failure. It never creates or repairs
+records.
 
 Not implemented by this scaffold:
 
-- board-specific UART pin profile or a running UART connection;
+- a provisioning writer/utility for PSK, PSK identity or stable controller IDs;
+- board-specific UART pin assignment or a running UART connection;
+- the FreeRTOS ControllerLink polling/lifecycle task;
 - GPIO, lid limit switches, motor control or interlocks;
 - DHT22 acquisition or any other sensor driver;
-- PSK provisioning/writing/rotation; the read-only NVS provider requires an existing production-encrypted key partition;
 - enabling/configuring Flash Encryption, Secure Boot policy or OTA update;
 - production partition/Flash sizing and final board profile.
 
@@ -183,9 +199,8 @@ exporter gating and REQUEST_SNAPSHOT/TELEMETRY_SNAPSHOT. This host acceptance
 is separate from the Espressif-fork ESP-IDF target build and from physical
 UART/board acceptance.
 
-The credential reader is deliberately not invoked from `app_main`. The
-current CI sdkconfig does not enable irreversible Flash Encryption and the
-current default partition table has no production-provisioned `nvs_keys`
-partition. Thus the read-only provider compiles but correctly cannot load a
-real pair credential in the current unprovisioned build. Do not enable security
-efuses or flash this image as a provisioning action.
+The current CI sdkconfig does not enable Flash Encryption and the current
+default partition table has no production-provisioned `nvs_keys` partition.
+Thus the gated read-only provider cannot load real pair credentials in the
+current unprovisioned build. Do not enable security eFuses, generate NVS keys
+or treat the CI image as a provisioning image.
