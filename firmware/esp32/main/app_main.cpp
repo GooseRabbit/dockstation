@@ -184,7 +184,8 @@ extern "C" void app_main(void) {
 
 // Link-only acceptance hook. The main component forces this symbol into the
 // final ELF so the linker resolves every dependency of the read-only NVS
-// provider. app_main invokes it only indirectly through the gated read path.
+// provider. It is never executed; app_main calls the same store API through
+// its separately gated, normal startup path.
 extern "C" void dockstation_link_check_psk_nvs_credential_store(void) {
     dockstation::firmware::esp32::ControllerPskNvsCredentialStore store;
     dockstation::firmware::esp32::ControllerMbedTlsPskCredentials credentials;
