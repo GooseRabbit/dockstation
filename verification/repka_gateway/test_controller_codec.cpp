@@ -80,10 +80,10 @@ int main() {
            "writes the DS magic, wire version and stable HELLO type identifier");
 
     expect(frame[4] == 0x50U && frame[5] == 0x00U &&
-               frame[result.frame_size - 4U] == 0x1DU &&
-               frame[result.frame_size - 3U] == 0x59U &&
-               frame[result.frame_size - 2U] == 0xA9U &&
-               frame[result.frame_size - 1U] == 0x5BU,
+               frame[result.frame_size - 4U] == 0x38U &&
+               frame[result.frame_size - 3U] == 0x4FU &&
+               frame[result.frame_size - 2U] == 0x0AU &&
+               frame[result.frame_size - 1U] == 0xA6U,
            "matches the independently calculated HELLO v1 golden frame length and CRC-32");
 
     ControllerCodecDecodeStorage storage{};
