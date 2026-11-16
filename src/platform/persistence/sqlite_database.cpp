@@ -15,6 +15,7 @@ constexpr std::size_t kMaximumDatabasePathBytes = 4095U;
 constexpr int kDockStationApplicationId = 0x4453544E;  // "DSTN"
 constexpr int kInitialSchemaVersion = 1;
 constexpr int kSourceSessionSchemaVersion = 2;
+constexpr int kSubsystemStatusSchemaVersion = 3;
 constexpr char kMigrationSql[] =
     "CREATE TABLE schema_migrations ("
     " version INTEGER PRIMARY KEY NOT NULL CHECK(version > 0),"
@@ -47,6 +48,84 @@ constexpr char kSourceSessionMigrationSql[] =
     "INSERT INTO schema_migrations(version, applied_at_utc) "
     "VALUES (2, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));"
     "PRAGMA user_version=2;";
+
+constexpr char kSubsystemStatusMigrationSql[] =
+    "CREATE TABLE subsystem_registrations ("
+    " station_id TEXT NOT NULL CHECK(length(station_id) BETWEEN 1 AND 128),"
+    " subsystem_id TEXT NOT NULL CHECK(length(subsystem_id) BETWEEN 1 AND 128),"
+    " source TEXT NOT NULL REFERENCES source_registrations(source)"
+    "   ON UPDATE RESTRICT ON DELETE RESTRICT,"
+    " registration_revision TEXT NOT NULL CHECK(length(registration_revision) BETWEEN 1 AND 128),"
+    " state INTEGER NOT NULL CHECK(state IN (1, 2, 3)),"
+    " PRIMARY KEY(station_id, subsystem_id),"
+    " UNIQUE(station_id, subsystem_id, source)"
+    ") WITHOUT ROWID;"
+    "CREATE TRIGGER subsystem_registration_source_guard_insert "
+    "BEFORE INSERT ON subsystem_registrations "
+    "WHEN NOT EXISTS (SELECT 1 FROM source_registrations s "
+    " WHERE s.station_id=NEW.station_id AND s.source=NEW.source AND s.state=1) "
+    "BEGIN SELECT RAISE(ABORT, 'subsystem source must be active for this station'); END;"
+    "CREATE TRIGGER subsystem_registration_source_guard_update "
+    "BEFORE UPDATE OF station_id, source ON subsystem_registrations "
+    "WHEN NOT EXISTS (SELECT 1 FROM source_registrations s "
+    " WHERE s.station_id=NEW.station_id AND s.source=NEW.source AND s.state=1) "
+    "BEGIN SELECT RAISE(ABORT, 'subsystem source must be active for this station'); END;"
+    "CREATE TABLE accepted_events ("
+    " event_id TEXT PRIMARY KEY NOT NULL,"
+    " event_type TEXT NOT NULL,"
+    " source TEXT NOT NULL,"
+    " source_instance TEXT NULL,"
+    " occurred_at TEXT NULL,"
+    " received_at TEXT NOT NULL,"
+    " source_sequence TEXT NULL CHECK(source_sequence IS NULL OR "
+    "   (length(source_sequence) BETWEEN 1 AND 20 AND source_sequence NOT GLOB '*[^0-9]*')),"
+    " operation_id TEXT NULL,"
+    " correlation_id TEXT NULL,"
+    " payload TEXT NULL,"
+    " quality_status TEXT NOT NULL,"
+    " schema_version TEXT NOT NULL,"
+    " reason_code TEXT NULL,"
+    " reason_text TEXT NULL"
+    ") WITHOUT ROWID;"
+    "CREATE INDEX accepted_events_source_cursor_idx "
+    "ON accepted_events(source, source_instance, event_id);"
+    "CREATE TABLE subsystem_status_history ("
+    " event_id TEXT PRIMARY KEY NOT NULL REFERENCES accepted_events(event_id)"
+    "   ON UPDATE RESTRICT ON DELETE RESTRICT,"
+    " station_id TEXT NOT NULL,"
+    " subsystem_id TEXT NOT NULL,"
+    " source TEXT NOT NULL,"
+    " status INTEGER NOT NULL CHECK(status IN (0, 1, 2, 3)),"
+    " error_code TEXT NOT NULL,"
+    " severity TEXT NOT NULL CHECK(severity IN ('INFO','WARNING','ERROR','CRITICAL')),"
+    " description TEXT NOT NULL CHECK(length(description)>0),"
+    " reason_text TEXT NULL,"
+    " source_instance TEXT NOT NULL,"
+    " source_sequence TEXT NOT NULL CHECK(length(source_sequence) BETWEEN 1 AND 20 "
+    "   AND source_sequence NOT GLOB '*[^0-9]*'),"
+    " committed_at_utc TEXT NOT NULL CHECK(length(committed_at_utc)>0),"
+    " FOREIGN KEY(station_id, subsystem_id, source)"
+    "   REFERENCES subsystem_registrations(station_id, subsystem_id, source)"
+    "   ON UPDATE RESTRICT ON DELETE RESTRICT,"
+    " UNIQUE(station_id, subsystem_id, event_id)"
+    ") WITHOUT ROWID;"
+    "CREATE INDEX subsystem_status_history_lookup_idx "
+    "ON subsystem_status_history(station_id, subsystem_id, committed_at_utc);"
+    "CREATE TABLE subsystem_status_current ("
+    " station_id TEXT NOT NULL,"
+    " subsystem_id TEXT NOT NULL,"
+    " last_event_id TEXT NOT NULL,"
+    " PRIMARY KEY(station_id, subsystem_id),"
+    " FOREIGN KEY(station_id, subsystem_id)"
+    "   REFERENCES subsystem_registrations(station_id, subsystem_id)"
+    "   ON UPDATE RESTRICT ON DELETE RESTRICT,"
+    " FOREIGN KEY(station_id, subsystem_id, last_event_id)"
+    "   REFERENCES subsystem_status_history(station_id, subsystem_id, event_id)"
+    "   ON UPDATE RESTRICT ON DELETE RESTRICT"
+    ") WITHOUT ROWID;"
+    "INSERT INTO schema_migrations(version, applied_at_utc) "
+    "VALUES (3, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));"
+    "PRAGMA user_version=3;";
 
 [[nodiscard]] bool valid_database_path(std::string_view path) noexcept {
     if (path.size() < 2U || path.size() > kMaximumDatabasePathBytes ||
@@ -157,12 +236,17 @@ constexpr char kSourceSessionMigrationSql[] =
     return query_int64(
         database,
         "SELECT count(*) FROM schema_migrations;",
-        count) && count == kSourceSessionSchemaVersion &&
+        count) && count == kSubsystemStatusSchemaVersion &&
         has_initial_migration(database) &&
         query_int64(
             database,
             "SELECT count(*) FROM schema_migrations "
             "WHERE version=2 AND length(applied_at_utc)>0;",
+            count) && count == 1 &&
+        query_int64(
+            database,
+            "SELECT count(*) FROM schema_migrations "
+            "WHERE version=3 AND length(applied_at_utc)>0;",
             count) && count == 1;
 }
 
@@ -173,6 +257,24 @@ constexpr char kSourceSessionMigrationSql[] =
 
     const bool migrated =
         execute_sql(database, kSourceSessionMigrationSql) == SQLITE_OK;
+    const int commit_status = migrated
+        ? execute_sql(database, "COMMIT;")
+        : SQLITE_ERROR;
+    if (commit_status == SQLITE_OK) {
+        return true;
+    }
+
+    (void)execute_sql(database, "ROLLBACK;");
+    return false;
+}
+
+[[nodiscard]] bool apply_subsystem_status_migration(sqlite3* database) noexcept {
+    if (execute_sql(database, "BEGIN EXCLUSIVE;") != SQLITE_OK) {
+        return false;
+    }
+
+    const bool migrated =
+        execute_sql(database, kSubsystemStatusMigrationSql) == SQLITE_OK;
     const int commit_status = migrated
         ? execute_sql(database, "COMMIT;")
         : SQLITE_ERROR;
@@ -321,6 +423,9 @@ SqliteDatabaseResult SqliteDatabase::open(
         if (stored_version + 1 ==
             static_cast<sqlite3_int64>(kSourceSessionSchemaVersion)) {
             migrated = apply_source_session_migration(database_);
+        } else if (stored_version + 1 ==
+                   static_cast<sqlite3_int64>(kSubsystemStatusSchemaVersion)) {
+            migrated = apply_subsystem_status_migration(database_);
         }
         if (!migrated) {
             last_sqlite_status_ = sqlite3_extended_errcode(database_);

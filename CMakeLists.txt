@@ -96,6 +96,7 @@ if(DOCKSTATION_BUILD_SQLITE_PERSISTENCE)
     add_library(dockstation_persistence_sqlite STATIC
         src/platform/persistence/sqlite_database.cpp
         src/platform/persistence/sqlite_source_session_store.cpp
+        src/platform/persistence/sqlite_subsystem_status_store.cpp
     )
     target_include_directories(dockstation_persistence_sqlite
         PUBLIC "${PROJECT_SOURCE_DIR}/src"
@@ -367,6 +368,16 @@ if(BUILD_TESTING)
         dockstation_apply_compile_policy(test_sqlite_source_session_store)
         add_test(NAME sqlite_source_session_store
             COMMAND test_sqlite_source_session_store)
+
+        add_executable(test_sqlite_subsystem_status_store
+            verification/repka_gateway/test_sqlite_subsystem_status_store.cpp
+        )
+        target_link_libraries(test_sqlite_subsystem_status_store
+            PRIVATE dockstation_persistence_sqlite
+        )
+        dockstation_apply_compile_policy(test_sqlite_subsystem_status_store)
+        add_test(NAME sqlite_subsystem_status_store
+            COMMAND test_sqlite_subsystem_status_store)
     endif()
 
     add_executable(test_controller_psk_credential_store
@@ -575,6 +586,13 @@ if(BUILD_TESTING)
                     -fno-omit-frame-pointer
                 )
                 target_link_options(test_sqlite_source_session_store PRIVATE
+                    -fsanitize=address,undefined
+                )
+                target_compile_options(test_sqlite_subsystem_status_store PRIVATE
+                    -fsanitize=address,undefined
+                    -fno-omit-frame-pointer
+                )
+                target_link_options(test_sqlite_subsystem_status_store PRIVATE
                     -fsanitize=address,undefined
                 )
             endif()

@@ -1062,6 +1062,18 @@ Optional RuntimeConfig keys: controller_uart_device, controller_local_id, contro
 
 Проверка: verification/repka_gateway/test_sqlite_persistence_probe.cpp, CTest sqlite_persistence_probe. Дополнительно verification/repka_gateway/test_sqlite_source_session_store.cpp проверяет registry/session adapters, binary identity, revision/cursor CAS, uint64 sequence, same/new session и migration upgrade v1→v2. Эти host tests не доказывают внезапное отключение питания и не заменяют физическую Repka acceptance.
 
+### src/platform/persistence/sqlite_subsystem_status_store.hpp/.cpp
+
+| Функция / тип | Назначение |
+|---|---|
+| `SqliteSubsystemStatusStore::create_subsystem_registration()` | Provisioning-only insert subsystem_id; разрешает только source, зарегистрированный ACTIVE для того же Station ID. |
+| `SqliteSubsystemStatusStore::change_subsystem_state()` | Меняет состояние по expected revision; REVOKED terminal, повторная активация требует новой revision. |
+| `SqliteSubsystemStatusStore::find_subsystem()` | Реализует SubsystemRegistrationReader и возвращает точную запись station/subsystem/source/revision/state. |
+| `SqliteSubsystemStatusStore::find_by_id()` | Реализует EventRepository; возвращает исходный Event с member-owned строковыми буферами до следующего lookup. |
+| `SqliteSubsystemStatusStore::commit_subsystem_status()` | В одной BEGIN IMMEDIATE транзакции проверяет duplicate event_id/content, ACTIVE/revision subsystem registration, ACTIVE source registration и полный expected SourceCursor; сохраняет original Event, history report, current pointer и продвигает cursor. Любая ошибка откатывает все связанные записи. |
+
+Адаптер не аутентифицирует transport и не создаёт SourceSessionEvidence; вызывается после SourceSessionCoordinator. CTest `sqlite_subsystem_status_store` использует on-disk SQLite и проверяет commit, историю/current pointer, duplicate/conflict, stale cursor, revoked registration, forced rollback и close/reopen. Gateway composition root и F13 route ещё не подключены.
+
 ### src/platform/persistence/sqlite_source_session_store.hpp/.cpp
 
 | Функция / тип | Назначение |

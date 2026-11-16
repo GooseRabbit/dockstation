@@ -180,10 +180,10 @@ SQLite официально описывается как подходящий �
 После утверждения DEC-068/DEC-072 дальнейшие шаги:
 
 1. проверить SQLite version/features и фактические каталоги/права на целевой Repka OS;
-2. базовая schema v2 и `SqliteSourceSessionStore` уже реализуют реестр источников, `SourceRegistrationReader`, `SourceCursorReader` и `SourceSessionRepository`; CTest должен подтвердить миграции, CAS и сохранность после reopen;
-3. отдельно реализовать `SubsystemRegistrationReader` и `SubsystemStatusRepository` с повторной проверкой регистрации, cursor и event_id внутри одной транзакции;
-4. подключить Gateway composition root и только затем добавить SUBSYSTEM_STATUS_UPDATED в F13 router;
-5. добавить реальные on-disk transaction tests, migration tests, concurrent-writer tests, crash recovery и backup/restore; затем провести отдельные power-loss/target-media испытания на оборудовании.
+2. schema v2 реализует source registry/session/cursor; schema v3 и `SqliteSubsystemStatusStore` дополнительно реализуют `SubsystemRegistrationReader`, `EventRepository` и `SubsystemStatusRepository` с одной транзакцией для Event, истории статусов, current pointer и source cursor;
+3. подключить оба адаптера в Gateway composition root с одним сериализованным владельцем SQLite connection, явно определить lifetime/ownership на startup/shutdown и не выдавать записи через read-only HTTP API;
+4. только после интеграции и pipeline end-to-end tests добавить `SUBSYSTEM_STATUS_UPDATED` в F13 router;
+5. расширить миграционные/конкурентные/crash-recovery и backup/restore проверки; затем провести power-loss/target-media acceptance на оборудовании.
 
 До выполнения шагов 3–5 Pipeline продолжает возвращать Unsupported для SUBSYSTEM_STATUS_UPDATED. Это намеренная fail-closed граница, её нельзя ослаблять ради демонстрации.
 

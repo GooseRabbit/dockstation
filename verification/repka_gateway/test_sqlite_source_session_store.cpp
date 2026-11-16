@@ -1,3 +1,4 @@
+// Legacy v1 databases are upgraded through the complete schema v3 migration chain.
 #include "core/source_session_coordinator.hpp"
 #include "core/source_session_verifier.hpp"
 #include "platform/persistence/sqlite_source_session_store.hpp"
@@ -143,8 +144,8 @@ int main() {
 
     SqliteDatabase database{};
     const auto opened = database.open(SqliteDatabaseConfig{database_path, 100});
-    expect(static_cast<bool>(opened) && opened.schema_version == 2,
-           "fresh database applies schema migrations 1 and 2");
+    expect(static_cast<bool>(opened) && opened.schema_version == 3,
+           "fresh database applies schema migrations 1, 2 and 3");
     if (!opened) {
         remove_database_files(database_path);
         (void)::rmdir(directory.c_str());
@@ -154,9 +155,9 @@ int main() {
     sqlite3_int64 schema_version = 0;
     sqlite3_int64 migration_count = 0;
     expect(query_integer(database.native_handle(), "PRAGMA user_version;", schema_version) &&
-               schema_version == 2 &&
+               schema_version == 3 &&
                query_integer(database.native_handle(),
-                   "SELECT count(*) FROM schema_migrations WHERE version IN (1,2);",
+                   "SELECT count(*) FROM schema_migrations WHERE version IN (1,2,3);",
                    migration_count) &&
                migration_count == 2,
            "schema version and migration ledger agree");
@@ -336,14 +337,14 @@ int main() {
     const auto upgrade_result = upgraded.open(SqliteDatabaseConfig{legacy_path, 100});
     sqlite3_int64 upgraded_version = 0;
     sqlite3_int64 cursor_table_count = 0;
-    expect(static_cast<bool>(upgrade_result) && upgrade_result.schema_version == 2 &&
+    expect(static_cast<bool>(upgrade_result) && upgrade_result.schema_version == 3 &&
                query_integer(upgraded.native_handle(), "PRAGMA user_version;", upgraded_version) &&
                upgraded_version == 2 &&
                query_integer(upgraded.native_handle(),
                    "SELECT count(*) FROM sqlite_schema WHERE type='table' "
                    "AND name='source_cursors';", cursor_table_count) &&
                cursor_table_count == 1,
-           "version-one database upgrades transactionally to source-session schema v2");
+           "version-one database upgrades transactionally to subsystem-status schema v3");
 
     const bool upgraded_close = upgraded.close();
     const bool final_close = database.close();
