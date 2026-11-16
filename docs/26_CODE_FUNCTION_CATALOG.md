@@ -1071,7 +1071,7 @@ Host-проверка: `verification/repka_gateway/test_controller_instance_iden
 | `ControllerInstanceIdProvider::value()` | Возвращает пустой view до генерации либо стабильный 36-символьный view на время жизни provider. |
 | `ControllerInstanceIdProvider::is_generated()` | Показывает, сформирован ли instance ID текущего boot. |
 
-Provider должен вызываться в раннем `app_main` до ADC/I²S/Wi-Fi/Bluetooth. В текущем scaffold `app_main` создаёт ID и удерживает provider в static storage, но ещё не передаёт ID в `ControllerLinkFirmwareRuntime`; сам runtime остаётся не запущенным до board GPIO/credential provisioning.
+Provider вызывается в раннем `app_main` до ADC/I²S/Wi-Fi/Bluetooth. `ControllerLinkFirmwareRuntime::start()` принимает provider по const reference, требует `is_generated()==true`, использует его 36-символьный UUIDv4 вместо пустого поля `local_controller_instance_id` и отклоняет конфликтующее caller-значение. Полная peer-session config валидируется до UART open; shared `ControllerLinkPeerSession` копирует ID в bounded storage. `restart_transport()` не получает новый provider и сохраняет тот же ID и replay/sequence history. Сам runtime остаётся не запущенным из `app_main` до board GPIO/credential provisioning.
 
 ### firmware/esp32/components/controller_psk_nvs_credential_store/include/controller_psk_nvs_credential_store.hpp / controller_psk_nvs_credential_store.cpp
 
@@ -1087,9 +1087,9 @@ Provider должен вызываться в раннем `app_main` до ADC/I
 
 | Функция / тип | Назначение |
 |---|---|
-| `ControllerLinkFirmwareRuntime::start()` | Открывает явно настроенный UART, затем передаёт его Mbed TLS callbacks и caller-supplied credentials/session config в `ControllerLinkPeerService`. Если TLS setup не завершился, сохраняет созданный peer-session object для retry и закрывает UART driver. |
+| `ControllerLinkFirmwareRuntime::start()` | Требует сгенерированный `ControllerInstanceIdProvider`; использует его UUIDv4 и валидирует всю peer-session config до открытия UART, inject-ит boot ID в конфигурацию и только затем открывает UART и запускает Mbed TLS/peer service. При ошибке TLS сохраняет уже созданный peer-session object для retry и закрывает UART driver. |
 | `ControllerLinkFirmwareRuntime::poll()` | Сначала проверяет bounded UART event queue; при overflow/frame/parity/BREAK закрывает peer TLS service, затем UART и переводит runtime в Failed. При штатном I/O выполняет один bounded шаг peer service и закрывает UART после TLS при Error/Stopped. |
-| `ControllerLinkFirmwareRuntime::restart_transport()` | Повторно открывает сохранённый UART profile и запускает новый TLS handshake на прежнем peer-session object, сохраняя sequence/replay history текущего boot. |
+| `ControllerLinkFirmwareRuntime::restart_transport()` | Повторно открывает сохранённый UART profile и запускает новый TLS handshake на прежнем peer-session object; boot instance ID, local transmit sequence и peer replay history не меняются. |
 | `ControllerLinkFirmwareRuntime::send_telemetry_snapshot()` | Передаёт только caller-supplied typed measurements после принятого REQUEST_SNAPSHOT; не читает датчики и не создаёт фиктивные значения. |
 | `ControllerLinkFirmwareRuntime::export_authenticated_session_proof()` | Делегирует exporter proof только работающему peer service, который дополнительно требует полного TLS handshake и отправленного HELLO_ACK. |
 | `ControllerLinkFirmwareRuntime::stop()` | Останавливает TLS/peer service до удаления UART driver, на который указывает Mbed TLS BIO context. |

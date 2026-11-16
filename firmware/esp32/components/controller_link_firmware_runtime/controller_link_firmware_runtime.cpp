@@ -9,8 +9,33 @@ ControllerLinkFirmwareRuntime::~ControllerLinkFirmwareRuntime() {
 bool ControllerLinkFirmwareRuntime::start(
     const ControllerUartConfig& uart_config,
     const ControllerMbedTlsPskCredentials& credentials,
+    const ControllerInstanceIdProvider& instance_identity,
     const hardware::interfaces::ControllerLinkPeerSessionConfig& session_config) noexcept {
-    if (peer_session_created_ || running_) {
+    if (peer_session_created_ || running_ || !instance_identity.is_generated()) {
+        return false;
+    }
+
+    const std::string_view generated_instance_id = instance_identity.value();
+    if (generated_instance_id.size() !=
+        hardware::interfaces::kControllerInstanceIdTextSize) {
+        return false;
+    }
+
+    // The generated provider is the single source of truth for this boot. An
+    // explicitly supplied different ID is a stale/static configuration error.
+    if (!session_config.local_controller_instance_id.empty() &&
+        session_config.local_controller_instance_id != generated_instance_id) {
+        return false;
+    }
+
+    auto resolved_session_config = session_config;
+    resolved_session_config.local_controller_instance_id = generated_instance_id;
+
+    // Validate all session identifiers before touching the UART hardware.
+    // ControllerLinkPeerSession copies them into bounded owned storage.
+    hardware::interfaces::ControllerLinkPeerSession config_check{
+        resolved_session_config};
+    if (!config_check.is_configured()) {
         return false;
     }
 
@@ -23,7 +48,7 @@ bool ControllerLinkFirmwareRuntime::start(
 
     const bool peer_started = peer_service_.start(
         credentials,
-        session_config,
+        resolved_session_config,
         &uart_,
         &ControllerUartTransport::send_callback,
         &ControllerUartTransport::receive_callback);

@@ -16,6 +16,9 @@ static_assert(!std::is_move_constructible_v<ControllerLinkPeerSession>);
 static_assert(!std::is_move_assignable_v<ControllerLinkPeerSession>);
 
 namespace {
+constexpr std::string_view kControllerInstanceId =
+    "9b2f3a71-4c8d-4e20-9a53-7c1d6e8b2f40";
+
 int failures = 0;
 int checks = 0;
 
@@ -32,7 +35,7 @@ void expect(bool condition, const char* name) {
 ControllerLinkPeerSessionConfig valid_config() {
     ControllerLinkPeerSessionConfig config{};
     config.local_controller_id = "esp32-01";
-    config.local_controller_instance_id = "esp32-boot-01";
+    config.local_controller_instance_id = kControllerInstanceId;
     config.peer_controller_id = "repka-01";
     config.protocol_version = {1U, 1U};
     return config;
@@ -81,6 +84,12 @@ int main() {
                invalid_session.start().status ==
                    ControllerLinkPeerSessionStatus::InvalidConfiguration,
            "rejects an incomplete peer-session configuration");
+
+    auto missing_instance_config = valid_config();
+    missing_instance_config.local_controller_instance_id = {};
+    ControllerLinkPeerSession missing_instance_session(missing_instance_config);
+    expect(!missing_instance_session.is_configured(),
+           "rejects a missing per-boot local controller instance ID");
 
     auto config = valid_config();
     ControllerLinkPeerSession session(config);
@@ -142,9 +151,9 @@ int main() {
                result.has_outbound_message &&
                result.outbound_message.type == ControllerMessageType::HelloAck &&
                result.outbound_message.controller_id == "esp32-01" &&
-               result.outbound_message.controller_instance_id == "esp32-boot-01" &&
+               result.outbound_message.controller_instance_id == kControllerInstanceId &&
                result.outbound_message.sequence_number == 1U,
-           "accepts HELLO and returns a sequenced HELLO_ACK");
+           "HELLO_ACK carries the configured per-boot UUIDv4 instance ID");
 
     std::array<std::uint8_t, kControllerCodecMaximumFrameSize> round_trip_frame{};
     ControllerCodecDecodeStorage round_trip_storage{};
@@ -266,8 +275,9 @@ int main() {
         make_message(ControllerMessageType::Hello,
                      "repka-01", "repka-boot-01", 5U), "time");
     expect(result.status == ControllerLinkPeerSessionStatus::Success &&
+               result.outbound_message.controller_instance_id == kControllerInstanceId &&
                result.outbound_message.sequence_number == 3U,
-           "continues outbound sequence numbers after same-instance reconnect");
+           "retains the same local boot ID and sequence after same-instance reconnect");
 
     session.stop();
     expect(session.start().status == ControllerLinkPeerSessionStatus::Success,
@@ -277,8 +287,9 @@ int main() {
                      "repka-01", "repka-boot-02", 1U), "time");
     expect(result.status == ControllerLinkPeerSessionStatus::Success &&
                result.outbound_message.type == ControllerMessageType::HelloAck &&
+               result.outbound_message.controller_instance_id == kControllerInstanceId &&
                result.outbound_message.sequence_number == 4U,
-           "accepts a new peer instance while preserving local transmit sequence");
+           "accepts a new peer boot while preserving this controller boot ID and transmit sequence");
 
     std::cout << "Checks: " << checks << ", failures: " << failures << '\n';
     return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;

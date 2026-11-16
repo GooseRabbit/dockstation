@@ -1,12 +1,13 @@
 #include "esp_log.h"
 #include "controller_psk_nvs_credential_store.hpp"
 #include "controller_instance_id_provider.hpp"
+#include "controller_link_firmware_runtime.hpp"
 
 namespace {
 constexpr char kTag[] = "DockStationESP32";
 
-// Kept for the lifetime of this controller boot. The later runtime composition
-// will pass value() into ControllerLinkPeerSessionConfig; it is not persisted.
+// Kept for the lifetime of this controller boot and passed to the runtime
+// when board GPIO and secure credentials are ready. It is not persisted.
 dockstation::firmware::esp32::ControllerInstanceIdProvider
     g_controller_instance_id{};
 }
@@ -37,4 +38,17 @@ extern "C" void dockstation_link_check_psk_nvs_credential_store(void) {
     dockstation::firmware::esp32::ControllerMbedTlsPskCredentials credentials;
     (void)store.initialize();
     (void)store.load(credentials);
+}
+
+// Link-only acceptance hook. It is forced into the ELF to compile and resolve
+// the runtime/provider API. app_main never calls it. The provider is not
+// generated in this isolated hook, so start() must reject before UART open.
+extern "C" void dockstation_link_check_controller_link_firmware_runtime(void) {
+    dockstation::firmware::esp32::ControllerLinkFirmwareRuntime runtime;
+    dockstation::firmware::esp32::ControllerInstanceIdProvider ungenerated_identity{};
+    dockstation::firmware::esp32::ControllerUartConfig uart_config{};
+    dockstation::firmware::esp32::ControllerMbedTlsPskCredentials credentials{};
+    dockstation::hardware::interfaces::ControllerLinkPeerSessionConfig session_config{};
+    (void)runtime.start(
+        uart_config, credentials, ungenerated_identity, session_config);
 }

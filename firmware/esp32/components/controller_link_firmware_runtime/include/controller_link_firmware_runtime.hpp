@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <string_view>
 
+#include "controller_instance_id_provider.hpp"
 #include "controller_link_peer_service.hpp"
 #include "controller_mbedtls_psk_server.hpp"
 #include "controller_uart_transport.hpp"
@@ -38,9 +39,13 @@ public:
     ControllerLinkFirmwareRuntime(ControllerLinkFirmwareRuntime&&) = delete;
     ControllerLinkFirmwareRuntime& operator=(ControllerLinkFirmwareRuntime&&) = delete;
 
+    // Requires the already-generated per-boot identity provider. The runtime
+    // injects its value into the peer-session config; a caller-supplied ID must
+    // be empty or match it exactly.
     [[nodiscard]] bool start(
         const ControllerUartConfig& uart_config,
         const ControllerMbedTlsPskCredentials& credentials,
+        const ControllerInstanceIdProvider& instance_identity,
         const hardware::interfaces::ControllerLinkPeerSessionConfig& session_config) noexcept;
 
     [[nodiscard]] bool restart_transport(

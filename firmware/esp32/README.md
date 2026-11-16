@@ -75,10 +75,17 @@ UART2 is the logical candidate, but neither GPIO is assigned by this project.
 
 The `controller_link_firmware_runtime/` component composes the UART adapter
 and `ControllerLinkPeerService`: it owns startup, bounded polling, restart and
-shutdown order. The runtime accepts credentials and session IDs from its
-caller; it does not read or generate keys and does not acquire sensor data.
+shutdown order. `start()` requires an already-generated
+`ControllerInstanceIdProvider`; it injects that provider's UUIDv4 into
+`ControllerLinkPeerSessionConfig`, rejects an ungenerated provider or a
+conflicting caller-supplied instance ID, and validates the complete session
+configuration before opening UART. The peer-session object copies the ID into
+its own bounded storage. `restart_transport()` reuses that same object and
+does not rotate the ID or reset sequence/replay history. The runtime does not
+read or generate PSK credentials and does not acquire sensor data.
 `app_main` still does not start it until board GPIO and secure credential
-provisioning are defined. The link-only acceptance hook is retained by the linker but never called.
+provisioning are defined. A linker-forced acceptance hook references the
+runtime/provider API but is never called.
 
 The `controller_instance_identity/` component generates a fresh UUIDv4
 `controller_instance_id` once per ESP32 boot. It calls
