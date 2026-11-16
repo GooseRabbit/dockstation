@@ -102,6 +102,11 @@ if(DOCKSTATION_BUILD_MBEDTLS_INTEROP_TESTS)
 
     add_library(dockstation_controller_mbedtls_server STATIC
         firmware/esp32/components/controller_mbedtls_psk_server/controller_mbedtls_psk_server.cpp
+        firmware/esp32/components/controller_mbedtls_psk_server/controller_link_peer_service.cpp
+        src/hardware/interfaces/controller_protocol.cpp
+        src/hardware/interfaces/controller_codec.cpp
+        src/hardware/interfaces/controller_frame_stream_decoder.cpp
+        src/hardware/interfaces/controller_link_peer_session.cpp
     )
     target_include_directories(dockstation_controller_mbedtls_server PUBLIC
         "${CMAKE_CURRENT_SOURCE_DIR}/firmware/esp32/components/controller_mbedtls_psk_server/include"
