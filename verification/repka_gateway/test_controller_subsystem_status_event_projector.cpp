@@ -86,6 +86,18 @@ int main() {
     decoded_event.reason_code = output.reason_code;
     decoded_event.reason_text = output.reason_text;
     const auto decoded_report = projector.decode(decoded_event);
+
+    dockstation::core::Event missing_payload_event = decoded_event;
+    missing_payload_event.payload.reset();
+    expect(projector.decode(missing_payload_event).status ==
+               dockstation::core::SubsystemStatusDecodeStatus::Error,
+           "rejects an event whose optional payload is absent");
+
+    dockstation::core::Event empty_payload_event = decoded_event;
+    empty_payload_event.payload = std::string_view{};
+    expect(projector.decode(empty_payload_event).status ==
+               dockstation::core::SubsystemStatusDecodeStatus::Error,
+           "rejects an event whose payload is present but empty");
     expect(decoded_report.status ==
                dockstation::core::SubsystemStatusDecodeStatus::Decoded &&
                decoded_report.report.subsystem_id == "weather.temperature" &&

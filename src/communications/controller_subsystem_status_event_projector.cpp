@@ -212,8 +212,8 @@ ControllerSubsystemStatusEventProjector::decode(
     if (payload_size_ == 0U ||
         event.quality_status != "VALID" ||
         event.schema_version != "1" ||
-        event.payload.size() != payload_size_ ||
-        !std::equal(event.payload.begin(), event.payload.end(), payload_.begin()) ||
+        !event.payload.has_value() ||
+        *event.payload != std::string_view{payload_.data(), payload_size_} ||
         !core::is_known_reported_subsystem_status(decoded_report_.status) ||
         decoded_report_.subsystem_id.empty()) {
         return {core::SubsystemStatusDecodeStatus::Error, {}};
