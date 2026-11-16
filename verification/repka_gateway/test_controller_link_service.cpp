@@ -436,8 +436,9 @@ int main() {
                *std::get_if<double>(&measurement.value) == 21.5,
            "retains an owned typed telemetry snapshot after the TLS frame buffer is reused");
 
+    const auto established_link_status = e2e_service.status();
     const auto diagnostics = dockstation::communications::serialize_system_diagnostics(
-        &e2e_service.status(), nullptr, &snapshot);
+        &established_link_status, nullptr, &snapshot);
     expect(diagnostics.find(
                "\"controller_telemetry\":{\"status\":\"PASS\"") != std::string::npos &&
                diagnostics.find("\"source_controller_id\":\"esp32-01\"") !=
@@ -459,9 +460,10 @@ int main() {
                e2e_service.telemetry_snapshot().sequence_number() == 2U,
            "rejects the replayed sequence, closes the link and retains the last accepted snapshot");
 
+    const auto disconnected_link_status = e2e_service.status();
     const auto disconnected_diagnostics =
         dockstation::communications::serialize_system_diagnostics(
-            &e2e_service.status(), nullptr, &e2e_service.telemetry_snapshot());
+            &disconnected_link_status, nullptr, &e2e_service.telemetry_snapshot());
     expect(disconnected_diagnostics.find(
                "\"controller_telemetry\":{\"status\":\"WARN\"") !=
                std::string::npos,
