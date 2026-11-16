@@ -1000,6 +1000,34 @@ Host-проверка: `verification/repka_gateway/test_controller_psk_tls_clien
 
 Проверка: CTest controller_psk_credential_provision_help и verification/repka_gateway/test_controller_psk_credential_provision.sh. Acceptance script проверяет первый install, loader read от service user, no-overwrite, отказ replace при неверном mode/ACL, атомарную локальную замену и удаление временных файлов.
 
+### tools/dockstation_registry_provision.cpp
+
+| Функция / тип | Назначение |
+|---|---|
+| `main()` / `parse_options()` | Принимает только `source` или `subsystem`, обязательную revision и для subsystem обязательный ID; `--apply` включает запись, без него выполняется preview. Повторные, неизвестные и небезопасные аргументы отклоняются. |
+| `lookup_service_identity()` | Находит системного пользователя и одноимённую группу `dockstation`; root и другие пользователи отклоняются. |
+| `safe_config_file()` | Проверяет root-owned `/etc/dockstation/gateway.conf`, каталог root:dockstation 0750, файл 0640, regular-file/no-link/no-ACL и ограниченный размер. |
+| `safe_database_file()` | Проверяет приватный StateDirectory dockstation:dockstation 0700 и, если SQLite DB уже существует, regular-file owner/mode 0600/no-link/no-ACL. Отсутствующая DB допускается только внутри уже проверенного private StateDirectory; после open metadata проверяется повторно. |
+| `run()` | Читает и валидирует Station ID/source из gateway.conf, загружает локальную pair PSK identity через `ControllerPskCredentialStore`, открывает `GatewayPersistenceContext` и сериализованно вызывает production SQLite registry adapters. |
+| source registration | Вызывает `SqliteSourceSessionStore::find_by_peer_identity()` и `create_source_registration()`. Уже зарегистрированная identity, ошибка lookup или DB constraint закрывают операцию; secret PSK в registry не сохраняется. |
+| subsystem registration | Требует существующую ACTIVE source registration с тем же Station ID/source, затем точный `find_subsystem()` и `create_subsystem_registration()`. Имплицитное создание source запрещено. |
+
+CLI: `dockstation-registry-provision source --revision r1 [--apply]` и
+`dockstation-registry-provision subsystem --subsystem-id weather.temperature --revision r1 [--apply]`.
+Сначала используется preview без записи; `--apply` создаёт только отсутствующие записи.
+Дубли, конфликт source/identity, несовпадение config/registration и DISABLED/REVOKED
+source не изменяются и отклоняются. Утилита не поддерживает ротацию/отзыв, не включает
+HTTP CRUD и не выполняет регистрацию при TLS подключении.
+
+Проверка: CTest `registry_provision_help`, `registry_provision_rejects_invalid_revision` и
+`registry_provision_rejects_unsafe_subsystem_id`; одноразовый host acceptance
+`verification/repka_gateway/ci_registry_provision_acceptance.sh` проверяет root denial,
+preview без записи, PSK secret non-disclosure, source-before-subsystem, успешную запись,
+duplicate/invalid revision, Station ID mismatch и DB owner/mode. GitHub Actions run
+43872537777 SUCCESS: CTest 34/34 на x86_64 и ARM64, 31/31 C++ host-программ и 158
+Python/Operator/Gateway integration-тестов; ARM64 bundle/staging и Sigstore provenance
+прошли. Это не Mbed TLS или physical Repka acceptance.
+
 ### src/hardware/interfaces/controller_link_session.hpp/.cpp
 
 | Функция / тип | Назначение |
@@ -1222,7 +1250,7 @@ hardwarePlatformInfo публикует выбранный платформен�
 `verification/repka_gateway/test_gateway_persistence_context.cpp` проверяет invalid/missing paths, schema startup, наличие обоих адаптеров, сериализацию конкурентных callback, недоступность адаптеров при закрытой БД и close/reopen. Это host-проверка жизненного цикла; она не заменяет target Repka OS и power-loss acceptance. Authenticated ingress + Pipeline end-to-end integration выполнены: профиль `SUBSYSTEM_STATUS_UPDATED` подключается при наличии production processor/configuration, а без injected processor остаётся незарегистрированным и возвращает `Unsupported`.
 
 
-**Проверка Gateway persistence + authenticated ingress:** GitHub Actions [run 43865838711](https://github.com/GooseRabbit/dockstation/actions/runs/43865838711), exact HEAD `c8c1704064dea564ae94c0706abdf38d0dd89844`, SUCCESS. CTest 31/31 на x86_64 и ARM64; `gateway_persistence_context`, `controller_subsystem_status_event_projector` и `controller_link_service` проходят. TLS 1.3 PSK-DHE/PTY сценарий с production SQLite adapters подтверждает Event/history/current/cursor, второй PASS и replay rejection. Дополнительно: 31/31 C++ host-программ, 158 Python/Operator/Gateway integration-тестов, systemd unit validation, запуск non-root Gateway с владельцем `dockstation:dockstation` и режимом DB файла 0600, ARM64 Gateway-only build без SQLite, Release bundle staging/installer и Sigstore provenance. Это host CI на Ubuntu 24.04 x86_64/ARM64, а не проверка физической Repka OS, настоящего ESP32/Mbed TLS или потери питания.
+**Проверка Gateway persistence + authenticated ingress + local registry provisioning:** GitHub Actions [run 43872537777](https://github.com/GooseRabbit/dockstation/actions/runs/43872537777), exact HEAD `6fa6a2e9eda865b0f97c534f6b815f5ed349c339`, SUCCESS. CTest 34/34 на x86_64 и ARM64; `gateway_persistence_context`, `controller_subsystem_status_event_projector`, `controller_link_service` и три registry CLI CTest проходят. Host acceptance проверяет preview/apply и реальные записи source/subsystem в SQLite от UID `dockstation`, primary DB creation, дубликаты, root denial, config mismatch и PSK non-disclosure. Дополнительно: 31/31 C++ host-программ, 158 Python/Operator/Gateway integration-тестов, systemd/non-root startup, SQLite-enabled ARM64 Gateway/registry bundle, staging installer и Sigstore provenance. Это host CI на Ubuntu 24.04 x86_64/ARM64, а не проверка физической Repka OS, ESP32/Mbed TLS или потери питания.
 
 
 ## Дополнение: authenticated subsystem-event ingress → SQLite

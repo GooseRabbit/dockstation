@@ -89,20 +89,23 @@ cmake -S . -B build \
   -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_TESTING=OFF \
   -DDOCKSTATION_ENABLE_SANITIZERS=OFF \
-  -DDOCKSTATION_BUILD_SQLITE_PERSISTENCE=OFF \
+  -DDOCKSTATION_BUILD_SQLITE_PERSISTENCE=ON \
   -DCMAKE_INSTALL_PREFIX=/usr/local
 cmake --build build --parallel
 # Подготовить relink-артефакт, используемый CMake install для этой цели
 cmake --build build --target preinstall --parallel
 ```
 
-SQLite persistence foundation пока остаётся отдельным экспериментальным модулем:
-Gateway runtime его не использует. Для целевой сборки Gateway параметр
-`DOCKSTATION_BUILD_SQLITE_PERSISTENCE=OFF` исключает сам target и проверку
-`find_package(SQLite3)`, поэтому Repka не требуется устанавливать SQLite
-development headers только ради сборки read-only Gateway. Полный CI и отдельные
-проверки кандидата SQLite собираются с параметром `ON` и продолжают проверять
-SQLite. Отключение модуля не означает отказ от будущего постоянного хранения.
+SQLite persistence используется production Gateway для локального реестра
+источников/подсистем и сохранения принятых subsystem status events. Полная сборка
+для authenticated ingress и локальной регистрации требует SQLite development
+package версии не ниже 3.31 (на Ubuntu обычно `libsqlite3-dev`) и
+`DOCKSTATION_BUILD_SQLITE_PERSISTENCE=ON`.
+
+Gateway-only вариант с `DOCKSTATION_BUILD_SQLITE_PERSISTENCE=OFF` остаётся
+отдельной облегчённой сборкой для read-only diagnostics API. В ней нет
+SQLite-backed event persistence и нет `dockstation-registry-provision`; такой
+вариант не подходит для включения subsystem-event ingress.
 
 Создайте отдельную системную группу и непривилегированную учётную запись без
 возможности интерактивного входа. Команды безопасно пропускают создание,
@@ -111,6 +114,7 @@ SQLite. Отключение модуля не означает отказ от 
 ```sh
 getent group dockstation >/dev/null || sudo groupadd --system dockstation
 getent passwd dockstation >/dev/null || sudo useradd --system --gid dockstation --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin dockstation
+sudo install -d -o dockstation -g dockstation -m 0700 /var/lib/dockstation
 ```
 
 Установите бинарный файл, unit и пример конфигурации:
@@ -123,7 +127,6 @@ sudo install -o root -g dockstation -m 0640 \
   /etc/dockstation/gateway.conf
 sudo systemd-analyze verify /usr/local/lib/systemd/system/dockstation-gateway.service
 sudo systemctl daemon-reload
-sudo systemctl enable --now dockstation-gateway.service
 ```
 
 Конфигурация остаётся доступной службе только для чтения: владелец — root,
@@ -189,10 +192,18 @@ CI не заменяет ручное испытание systemd manager. Про
 
 После успешного ARM64 CI run workflow публикует готовый архив
 `dockstation-repka-pi5-arm64.tar.gz` и файл его контрольной суммы. Архив собирается
-на нативном ARM64 runner из Release Gateway-only build без SQLite, содержит два
-исполняемых файла, два systemd unit-файла, пример конфигурации, manifest и список
-фактических динамических зависимостей. Перед публикацией CI проверяет AArch64 ELF,
-SHA-256 файлов и разрешение runtime-зависимостей на ARM64 runner.
+на нативном ARM64 runner из SQLite-enabled Release build, содержит три исполняемых
+файла (Gateway, credential provisioner и local registry provisioner), два systemd
+unit-файла, пример конфигурации, manifest и список фактических динамических
+зависимостей. CI проверяет AArch64 ELF, SHA-256 файлов и разрешение runtime-
+зависимостей, включая `libsqlite3.so.0`, на ARM64 runner.
+
+Проверенный SQLite-enabled ARM64 bundle и local registry provisioner прошли полный
+GitHub Actions [run 43872537777](https://github.com/GooseRabbit/dockstation/actions/runs/43872537777):
+CTest 34/34 на x86_64 и ARM64, registry provisioning acceptance, 31/31 C++ host-
+программ, 158 Python/Operator/Gateway integration-тестов, staging-установка и
+Sigstore provenance verification. Это host CI на Ubuntu 24.04, не аппаратная
+приёмка Repka OS или Mbed TLS на ESP32.
 
 Артефакт доступен на странице соответствующего GitHub Actions run в разделе
 Artifacts (ссылка также попадает в Summary). Срок хранения CI artifact — 30 дней;
@@ -257,21 +268,70 @@ pinmux или права устройств. Если отсутствует, н
 можно выполнить так:
 
 \`\`\`sh
+
+Перед регистрацией источника заполните в `gateway.conf` полный ControllerLink
+профиль и пару дополнительных полей `station_id` + `controller_source`.
+Заранее должен существовать локальный credential-файл Repka с PSK/identity,
+согласованными с парным ESP32. Утилита `dockstation-credential-provision`
+создаёт только локальные Repka credentials и сама не передаёт их в ESP32.
+
+### Локальная регистрация источника и подсистем
+
+Команды выполняются **от имени служебного пользователя `dockstation`**, не от root.
+Первая команда показывает preview и ничего не записывает; только `--apply`
+создаёт новую запись:
+
+```sh
+sudo -u dockstation -- /usr/local/bin/dockstation-registry-provision source --revision r1
+sudo -u dockstation -- /usr/local/bin/dockstation-registry-provision source --revision r1 --apply
+
+sudo -u dockstation -- /usr/local/bin/dockstation-registry-provision subsystem \
+  --subsystem-id weather.temperature --revision r1
+sudo -u dockstation -- /usr/local/bin/dockstation-registry-provision subsystem \
+  --subsystem-id weather.temperature --revision r1 --apply
+```
+
+Для каждого нового subsystem ID повторяется preview/`--apply`. Station ID и source
+утилита читает из `gateway.conf`, 16-байтовую PSK identity — из защищённого файла
+credentials; сам 32-байтовый PSK в SQLite не попадает и в консоль не выводится.
+Подсистема добавляется только после ACTIVE source registration с той же парой
+Station ID/source.
+
+Утилита create-only: существующие identity/subsystem IDs не перезаписываются,
+DISABLED/REVOKED записи автоматически не реактивируются, HTTP/API маршрута
+регистрации нет. Утилита не выполняет регистрацию при TLS-подключении. После
+успешной регистрации можно включать штатный ControllerLink ingress; без точных
+registrations он остаётся fail-closed.
+
+Когда конфигурация и нужные регистрации готовы, включайте выбранный профиль.
+Для конфигурации без UART:
+
+```sh
+sudo systemctl enable --now dockstation-gateway.service
+```
+
+Если в конфигурации задан `controller_uart_device`, базовый unit не запускается
+самостоятельно: сначала требуется выбрать и проверить физический UART node, затем
+включить соответствующий `dockstation-gateway-uart@.service`. Provisioning можно
+выполнить до активации UART профиля — utility использует тот же SQLite schema и
+может создать DB file внутри заранее созданного private StateDirectory.
 sudo bash repka/install_gateway.sh
 \`\`\`
 
-Сценарий собирает Release Gateway без SQLite development dependency, устанавливает
-бинарные файлы и оба systemd unit-файла, создаёт системную группу и непривилегированного
-пользователя \`dockstation\`, сохраняет существующую конфигурацию, проверяет unit-файлы
-и запускает только loopback read-only Gateway. Если уже работает UART instance, он
+Сценарий собирает Release Gateway с SQLite persistence и local registry provisioner,
+устанавливает три бинарных файла и оба systemd unit-файла, создаёт системную группу,
+непривилегированного пользователя `dockstation` и приватный
+`/var/lib/dockstation` (владелец dockstation, режим 0700), сохраняет существующую
+конфигурацию и проверяет unit-файлы. По умолчанию запускается только loopback
+read-only Gateway. Если уже работает UART instance, он
 обновляется и перезапускается без смены аппаратного режима. Если в конфигурации задан
-\`controller_uart_device\`, а UART unit не активен, базовый профиль не запускается.
+`controller_uart_device`, а UART unit не активен, базовый профиль не запускается.
 
-Установщик не вызывает \`apt\`, не скачивает или обновляет пакеты, не меняет загрузочную
-конфигурацию, Device Tree, pinmux, права UART и не создаёт PSK. CMake, C++17 и OpenSSL 3
-development headers должны быть доступны заранее. При их отсутствии сценарий
-остановится на preflight/build, не меняя пакетную конфигурацию ОС. GPIO, камера и UART
-не включаются автоматически.
+Установщик не вызывает `apt`, не скачивает или обновляет пакеты, не меняет загрузочную
+конфигурацию, Device Tree, pinmux, права UART и не создаёт PSK. Для native build заранее
+должны быть доступны CMake, C++17, OpenSSL 3 и SQLite development headers версии >=3.31.
+При их отсутствии сценарий остановится на preflight/build, не меняя пакетную
+конфигурацию ОС. GPIO, камера и UART не включаются автоматически.
 
 Для CI/package staging предусмотрен \`DOCKSTATION_INSTALL_ROOT=/путь\`. В этом режиме
 файлы устанавливаются в staging-каталог, а системные учётные записи и systemd manager
@@ -307,7 +367,7 @@ shell test loop текущего Linux CI workflow; новые `test_*.sh` в э
 
 Release job проверяет, что checkout HEAD точно совпадает с `github.sha`, и записывает
 40-символьный source commit и его commit timestamp в manifest. Manifest также
-фиксирует Release-only профиль, отключённую SQLite persistence и ABI ceilings
+фиксирует Release-only профиль, включённую SQLite persistence и ABI ceilings
 (`GLIBC_2.34`, `GLIBCXX_3.4.32`, `CXXABI_1.3.9`, `OPENSSL_3.0.0`).
 
 `RUNTIME-DEPENDENCIES.txt` содержит отсортированный SONAME inventory для каждого
