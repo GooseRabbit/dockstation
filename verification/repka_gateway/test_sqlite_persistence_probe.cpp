@@ -239,6 +239,8 @@ int main() {
     sqlite3_int64 application_id = 0;
     sqlite3_int64 user_version = 0;
     sqlite3_int64 migration_count = 0;
+    sqlite3_int64 migration_v2_count = 0;
+    sqlite3_int64 source_registry_tables = 0;
     const bool settings_verified =
         query_text(database, "PRAGMA journal_mode;", journal_mode) &&
         query_integer(database, "PRAGMA synchronous;", synchronous) &&
@@ -248,12 +250,20 @@ int main() {
         query_integer(database, "PRAGMA user_version;", user_version) &&
         query_integer(database,
             "SELECT count(*) FROM schema_migrations WHERE version=1;",
-            migration_count);
+            migration_count) &&
+        query_integer(database,
+            "SELECT count(*) FROM schema_migrations WHERE version=2;",
+            migration_v2_count) &&
+        query_integer(database,
+            "SELECT count(*) FROM sqlite_schema WHERE type='table' "
+            "AND name IN ('source_registrations','source_cursors');",
+            source_registry_tables);
     expect(settings_verified && journal_mode == "delete" &&
                synchronous == 3 && foreign_keys == 1 && trusted_schema == 0 &&
-               application_id == 0x4453544E && user_version == 1 &&
-               migration_count == 1,
-           "verifies DELETE/EXTRA, foreign keys, trusted schema and database identity/version");
+               application_id == 0x4453544E && user_version == 2 &&
+               migration_count == 1 && migration_v2_count == 1 &&
+               source_registry_tables == 2,
+           "verifies DELETE/EXTRA, schema v2, registry tables and database identity");
 
     const std::string symlink_path = directory + "/station-link.sqlite3";
     const bool symlink_created = ::symlink(path.c_str(), symlink_path.c_str()) == 0;

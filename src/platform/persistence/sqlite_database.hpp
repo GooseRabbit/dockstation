@@ -41,7 +41,7 @@ struct SqliteDatabaseResult final {
 // transaction boundaries or the single-writer policy.
 class SqliteDatabase final {
 public:
-    static constexpr int kCurrentSchemaVersion = 1;
+    static constexpr int kCurrentSchemaVersion = 2;
 
     SqliteDatabase() noexcept = default;
     ~SqliteDatabase();

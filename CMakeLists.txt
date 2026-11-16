@@ -12,10 +12,10 @@ include(GNUInstallDirs)
 find_package(Threads REQUIRED)
 find_package(OpenSSL 3.0 REQUIRED COMPONENTS SSL Crypto)
 
-# SQLite remains an isolated candidate until its persistence adapters are integrated.
+# Approved local SQLite persistence backend (DEC-068).
 # Gateway-only Repka builds can omit the SQLite development package entirely.
 option(DOCKSTATION_BUILD_SQLITE_PERSISTENCE
-       "Build the experimental SQLite persistence foundation" ON)
+       "Build local SQLite persistence adapters" ON)
 if(DOCKSTATION_BUILD_SQLITE_PERSISTENCE)
     find_package(SQLite3 3.31 REQUIRED)
 endif()
@@ -95,6 +95,7 @@ if(DOCKSTATION_BUILD_SQLITE_PERSISTENCE)
     # Initial SQLite foundation is isolated from station business logic.
     add_library(dockstation_persistence_sqlite STATIC
         src/platform/persistence/sqlite_database.cpp
+        src/platform/persistence/sqlite_source_session_store.cpp
     )
     target_include_directories(dockstation_persistence_sqlite
         PUBLIC "${PROJECT_SOURCE_DIR}/src"
@@ -127,6 +128,13 @@ target_include_directories(dockstation_station_events
     PUBLIC "${PROJECT_SOURCE_DIR}/src"
 )
 dockstation_apply_compile_policy(dockstation_station_events)
+
+# SQLite adapters implement storage-neutral source-session ports.
+if(DOCKSTATION_BUILD_SQLITE_PERSISTENCE)
+    target_link_libraries(dockstation_persistence_sqlite
+        PUBLIC dockstation_station_events
+    )
+endif()
 
 # The authenticated ingress adapter bridges accepted ControllerLink messages
 # to the session-gated SSM pipeline without coupling core to Linux/OpenSSL.
@@ -349,6 +357,16 @@ if(BUILD_TESTING)
         )
         dockstation_apply_compile_policy(test_sqlite_persistence_probe)
         add_test(NAME sqlite_persistence_probe COMMAND test_sqlite_persistence_probe)
+
+        add_executable(test_sqlite_source_session_store
+            verification/repka_gateway/test_sqlite_source_session_store.cpp
+        )
+        target_link_libraries(test_sqlite_source_session_store
+            PRIVATE dockstation_persistence_sqlite
+        )
+        dockstation_apply_compile_policy(test_sqlite_source_session_store)
+        add_test(NAME sqlite_source_session_store
+            COMMAND test_sqlite_source_session_store)
     endif()
 
     add_executable(test_controller_psk_credential_store
@@ -541,11 +559,22 @@ if(BUILD_TESTING)
                 -fsanitize=address,undefined
             )
             if(DOCKSTATION_BUILD_SQLITE_PERSISTENCE)
+                target_compile_options(dockstation_persistence_sqlite PRIVATE
+                    -fsanitize=address,undefined
+                    -fno-omit-frame-pointer
+                )
                 target_compile_options(test_sqlite_persistence_probe PRIVATE
                     -fsanitize=address,undefined
                     -fno-omit-frame-pointer
                 )
                 target_link_options(test_sqlite_persistence_probe PRIVATE
+                    -fsanitize=address,undefined
+                )
+                target_compile_options(test_sqlite_source_session_store PRIVATE
+                    -fsanitize=address,undefined
+                    -fno-omit-frame-pointer
+                )
+                target_link_options(test_sqlite_source_session_store PRIVATE
                     -fsanitize=address,undefined
                 )
             endif()

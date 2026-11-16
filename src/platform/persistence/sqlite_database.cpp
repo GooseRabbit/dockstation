@@ -14,6 +14,7 @@ namespace {
 constexpr std::size_t kMaximumDatabasePathBytes = 4095U;
 constexpr int kDockStationApplicationId = 0x4453544E;  // "DSTN"
 constexpr int kInitialSchemaVersion = 1;
+constexpr int kSourceSessionSchemaVersion = 2;
 constexpr char kMigrationSql[] =
     "CREATE TABLE schema_migrations ("
     " version INTEGER PRIMARY KEY NOT NULL CHECK(version > 0),"
@@ -23,6 +24,29 @@ constexpr char kMigrationSql[] =
     "VALUES (1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));"
     "PRAGMA application_id=0x4453544E;"
     "PRAGMA user_version=1;";
+
+constexpr char kSourceSessionMigrationSql[] =
+    "CREATE TABLE source_registrations ("
+    " peer_identity BLOB NOT NULL PRIMARY KEY"
+    "   CHECK(length(peer_identity) BETWEEN 1 AND 128),"
+    " station_id TEXT NOT NULL CHECK(length(station_id) BETWEEN 1 AND 128),"
+    " source TEXT NOT NULL UNIQUE CHECK(length(source) BETWEEN 1 AND 128),"
+    " registration_revision TEXT NOT NULL"
+    "   CHECK(length(registration_revision) BETWEEN 1 AND 128),"
+    " state INTEGER NOT NULL CHECK(state IN (1, 2, 3))"
+    ") WITHOUT ROWID;"
+    "CREATE TABLE source_cursors ("
+    " source TEXT PRIMARY KEY NOT NULL"
+    "   REFERENCES source_registrations(source)"
+    "   ON UPDATE RESTRICT ON DELETE RESTRICT,"
+    " source_instance TEXT NOT NULL CHECK(length(source_instance) BETWEEN 1 AND 128),"
+    " last_sequence TEXT NULL"
+    "   CHECK(last_sequence IS NULL OR length(last_sequence) BETWEEN 1 AND 20),"
+    " updated_at_utc TEXT NOT NULL CHECK(length(updated_at_utc) > 0)"
+    ") WITHOUT ROWID;"
+    "INSERT INTO schema_migrations(version, applied_at_utc) "
+    "VALUES (2, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));"
+    "PRAGMA user_version=2;";
 
 [[nodiscard]] bool valid_database_path(std::string_view path) noexcept {
     if (path.size() < 2U || path.size() > kMaximumDatabasePathBytes ||
@@ -126,6 +150,38 @@ constexpr char kMigrationSql[] =
         "SELECT count(*) FROM schema_migrations "
         "WHERE version=1 AND length(applied_at_utc)>0;",
         count) && count == 1;
+}
+
+[[nodiscard]] bool has_current_migrations(sqlite3* database) noexcept {
+    sqlite3_int64 count = 0;
+    return query_int64(
+        database,
+        "SELECT count(*) FROM schema_migrations;",
+        count) && count == kSourceSessionSchemaVersion &&
+        has_initial_migration(database) &&
+        query_int64(
+            database,
+            "SELECT count(*) FROM schema_migrations "
+            "WHERE version=2 AND length(applied_at_utc)>0;",
+            count) && count == 1;
+}
+
+[[nodiscard]] bool apply_source_session_migration(sqlite3* database) noexcept {
+    if (execute_sql(database, "BEGIN EXCLUSIVE;") != SQLITE_OK) {
+        return false;
+    }
+
+    const bool migrated =
+        execute_sql(database, kSourceSessionMigrationSql) == SQLITE_OK;
+    const int commit_status = migrated
+        ? execute_sql(database, "COMMIT;")
+        : SQLITE_ERROR;
+    if (commit_status == SQLITE_OK) {
+        return true;
+    }
+
+    (void)execute_sql(database, "ROLLBACK;");
+    return false;
 }
 
 [[nodiscard]] bool initialize_schema(sqlite3* database) noexcept {
@@ -253,9 +309,31 @@ SqliteDatabaseResult SqliteDatabase::open(
         stored_version = kInitialSchemaVersion;
     }
 
-    if (application_id != kDockStationApplicationId ||
-        stored_version != kInitialSchemaVersion ||
+    if (stored_version == kInitialSchemaVersion &&
         !has_initial_migration(database_)) {
+        last_sqlite_status_ = SQLITE_SCHEMA;
+        (void)close();
+        return {SqliteDatabaseStatus::SchemaInvalid, last_sqlite_status_, 0};
+    }
+
+    while (stored_version < kCurrentSchemaVersion) {
+        bool migrated = false;
+        if (stored_version + 1 ==
+            static_cast<sqlite3_int64>(kSourceSessionSchemaVersion)) {
+            migrated = apply_source_session_migration(database_);
+        }
+        if (!migrated) {
+            last_sqlite_status_ = sqlite3_extended_errcode(database_);
+            (void)close();
+            return {SqliteDatabaseStatus::SchemaMigrationFailed,
+                    last_sqlite_status_, 0};
+        }
+        ++stored_version;
+    }
+
+    if (application_id != kDockStationApplicationId ||
+        stored_version != kCurrentSchemaVersion ||
+        !has_current_migrations(database_)) {
         last_sqlite_status_ = SQLITE_SCHEMA;
         (void)close();
         return {SqliteDatabaseStatus::SchemaInvalid, last_sqlite_status_, 0};
