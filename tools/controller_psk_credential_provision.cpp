@@ -18,7 +18,9 @@
 #include <sys/types.h>
 #include <sys/xattr.h>
 #include <unistd.h>
+#include <string_view>
 
+#include "hardware/interfaces/controller_stable_identity.hpp"
 #include "platform/linux/controller_psk_credential_store.hpp"
 
 namespace {
@@ -268,14 +270,66 @@ public:
 
 void print_usage() noexcept {
     (void)std::puts(
-        "Usage: dockstation-credential-provision [--replace]\n"
+        "Usage:\n"
+        "  dockstation-credential-provision [--replace]\n"
+        "  dockstation-credential-provision --check --local-controller-id ID --peer-controller-id ID\n"
+        "\n"
         "Generate a unique TLS 1.3 PSK and identity for the local Repka side.\n"
         "The 48-byte binary file is installed at the fixed credentials path.\n"
-        "By default an existing file is never overwritten. --replace first\n"
-        "validates the existing file, then atomically installs new credentials.\n"
-        "The secret is never printed. This tool does not provision the ESP32.\n"
-        "--replace changes the local Repka file only; the ESP32 must receive\n"
-        "the matching new credentials through a separate controlled procedure.");
+        "By default an existing file is never overwritten. --replace explicitly\n"
+        "installs a new local credential pair after validating the existing file.\n"
+        "--check validates the existing Repka credential file and both stable\n"
+        "controller IDs. It is read-only: no files, ESP32 NVS or eFuses are changed.\n"
+        "Secrets are never printed. ESP32 provisioning is a separate procedure.");
+}
+
+[[nodiscard]] int check_preflight(
+    const char* local_controller_id,
+    const char* peer_controller_id) noexcept {
+    using dockstation::hardware::interfaces::is_valid_controller_stable_id;
+
+    if (local_controller_id == nullptr || peer_controller_id == nullptr) {
+        (void)std::fputs("ERROR: both controller IDs are required.\\n", stderr);
+        return 2;
+    }
+
+    const std::string_view local_id{local_controller_id};
+    const std::string_view peer_id{peer_controller_id};
+    if (!is_valid_controller_stable_id(local_id) ||
+        !is_valid_controller_stable_id(peer_id)) {
+        (void)std::fputs(
+            "ERROR: controller IDs must be 1-128 ASCII characters using letters, digits, '_', '-', '.' or ':'.\\n",
+            stderr);
+        return 2;
+    }
+    if (local_id == peer_id) {
+        (void)std::fputs(
+            "ERROR: local and peer controller IDs must be different.\\n",
+            stderr);
+        return 2;
+    }
+
+    if (geteuid() != 0U) {
+        (void)std::fputs(
+            "ERROR: run this read-only check as root to inspect the protected Repka credential file.\\n",
+            stderr);
+        return 1;
+    }
+
+    ControllerPskCredentials credentials{};
+    const ControllerPskCredentialFileStatus status =
+        load_controller_psk_credentials(&credentials);
+    credentials.clear();
+    if (status != ControllerPskCredentialFileStatus::Success) {
+        (void)std::fputs(
+            "ERROR: the existing Repka credential file is missing or failed its security/format checks.\\n",
+            stderr);
+        return 1;
+    }
+
+    (void)std::puts(
+        "Preflight passed: the Repka credential file is valid and both controller IDs satisfy the shared format. No files were changed; ESP32 remains unprovisioned.");
+    return 0;
 }
 
 [[nodiscard]] int provision(bool replace_existing) noexcept {
@@ -373,6 +427,16 @@ int main(int argc, char* argv[]) {
          std::strcmp(argv[1], "-h") == 0)) {
         print_usage();
         return 0;
+    }
+    if (argc == 6 && argv[1] != nullptr &&
+        std::strcmp(argv[1], "--check") == 0 &&
+        argv[2] != nullptr &&
+        std::strcmp(argv[2], "--local-controller-id") == 0 &&
+        argv[3] != nullptr &&
+        argv[4] != nullptr &&
+        std::strcmp(argv[4], "--peer-controller-id") == 0 &&
+        argv[5] != nullptr) {
+        return check_preflight(argv[3], argv[5]);
     }
     if (argc == 1) {
         return provision(false);
