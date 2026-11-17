@@ -347,9 +347,17 @@ LocalApiServeResult LocalApiServer::serve_once(int timeout_milliseconds) {
             0});
     }
 
+    int poll_timeout = std::max(0, timeout_milliseconds);
+    const auto poll_started_at = std::chrono::steady_clock::now();
+    for (const Client& client : clients_) {
+        const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+            client.deadline - poll_started_at).count();
+        poll_timeout = std::min(
+            poll_timeout,
+            static_cast<int>(std::max<std::int64_t>(0, remaining)));
+    }
     const int poll_result = ::poll(
-        descriptors.data(), static_cast<nfds_t>(descriptors.size()),
-        std::max(0, timeout_milliseconds));
+        descriptors.data(), static_cast<nfds_t>(descriptors.size()), poll_timeout);
     if (poll_result < 0 && errno != EINTR) {
         error_ = std::string{"API event poll failed: "} + std::strerror(errno);
         return LocalApiServeResult::Error;
