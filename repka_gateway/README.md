@@ -9,25 +9,34 @@ runtime dependencies.
 From the repository root on the Linux VM:
 
 ```sh
-python3 -m repka_gateway.dockstation_gateway.main --port 8080
+python3 -m repka_gateway.dockstation_gateway.main
 ```
 
 Optionally enable a system-name-resolution check:
 
 ```sh
 DOCKSTATION_DNS_CHECK_NAME=example.com \
-  python3 -m repka_gateway.dockstation_gateway.main --port 8080
+  python3 -m repka_gateway.dockstation_gateway.main
 ```
 
-The service binds **only** to `127.0.0.1`. It does not listen on the VM's
-Ethernet address, alter firewall/network configuration, enable SSH, or perform
-physical station actions. The intended Windows path is an SSH local-forward
-from the Windows host to `127.0.0.1:8080` inside the VM.
+The temporary Python prototype binds **only** to `127.0.0.1:8081` by default.
+The production C++ Gateway owns `127.0.0.1:8080`. An explicit `--port` override
+is available for isolated tests, but the two processes must not be configured
+for the same port. The Python health response identifies itself as
+`dockstation-python-gateway` / `implementation=python`; the C++ health response
+identifies itself as `dockstation-cpp-gateway` / `implementation=cpp`.
+The Python prototype does not listen on the VM Ethernet address, alter
+firewall/network configuration, enable SSH, or perform physical station
+actions. The Windows Operator accepts only the C++ identity.
 
 ## API
 
-- `GET http://127.0.0.1:8080/api/v1/health`
-- `GET http://127.0.0.1:8080/api/v1/system/diagnostics`
+- `GET http://127.0.0.1:8081/api/v1/health` (temporary Python prototype)
+- `GET http://127.0.0.1:8081/api/v1/system/diagnostics`
+
+The Python prototype health payload uses `service=dockstation-python-gateway`
+and `implementation=python`; it is deliberately incompatible with the
+Operator's required C++ Gateway identity.
 
 By default, all other routes return 404 and non-GET methods return 405. Responses are JSON
 with `Cache-Control: no-store`. The diagnostics object includes a UTC collection
@@ -43,7 +52,7 @@ zone type.
 A separate test-only route can be enabled for VM integration checks:
 
 ```sh
-python3 -m repka_gateway.dockstation_gateway.main --port 8080 --enable-test-adapter
+python3 -m repka_gateway.dockstation_gateway.main --enable-test-adapter
 ```
 
 When explicitly enabled, `POST /api/v1/test/adapter/request` accepts only a schema-1.0 `PING` request and passes it through TestRequestService to TestRequestAdapter. The receipt is marked `TEST_ADAPTER_ACCEPTED`, `source=TEST_ADAPTER`, and `physical_action_performed=false`. The body is limited to 4096 bytes. Unknown fields, duplicate JSON keys and any operation other than PING are rejected. The route is disabled by default; it is not a production command API and performs no physical action.

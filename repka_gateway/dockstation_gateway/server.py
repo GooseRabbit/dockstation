@@ -131,7 +131,8 @@ class _GatewayRequestHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/v1/health":
             self._send_json(HTTPStatus.OK, {
                 "api_version": "1",
-                "service": "dockstation-gateway",
+                "service": "dockstation-python-gateway",
+                "implementation": "python",
                 "status": "PASS",
                 "read_only": True,
             })

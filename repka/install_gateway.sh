@@ -324,8 +324,10 @@ if command -v curl >/dev/null 2>&1; then
     health_response="$(curl --fail --silent --show-error --max-time 5 \
         http://127.0.0.1:8080/api/v1/health)" ||
         fail "Gateway запущен, но локальный health endpoint не ответил."
-    [[ "$health_response" == *'"status":"PASS"'* ]] ||
-        fail "Health endpoint вернул неожиданный ответ."
+    [[ "$health_response" == *'"service":"dockstation-cpp-gateway"'* &&
+       "$health_response" == *'"implementation":"cpp"'* &&
+       "$health_response" == *'"status":"PASS"'* ]] ||
+        fail "Health endpoint ответил не от основного C++ Gateway или вернул неожиданный статус."
     info "Локальный Gateway health endpoint: PASS."
 else
     warn "curl отсутствует; проверен только systemd active-state."

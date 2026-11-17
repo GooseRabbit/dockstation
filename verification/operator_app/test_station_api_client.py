@@ -176,10 +176,18 @@ def valid_diagnostics():
 
 def test_validate_health_response_requires_expected_gateway():
     StationApiClient.validate_health_response({
-        "api_version": "1", "service": "dockstation-gateway", "status": "PASS", "read_only": True
+        "api_version": "1", "service": "dockstation-cpp-gateway", "implementation": "cpp", "status": "PASS", "read_only": True
     })
     with pytest.raises(ApiClientError):
-        StationApiClient.validate_health_response({"api_version": "2", "service": "other", "status": "PASS", "read_only": True})
+        StationApiClient.validate_health_response({"api_version": "2", "service": "other", "implementation": "cpp", "status": "PASS", "read_only": True})
+    with pytest.raises(ApiClientError, match="C++ Gateway"):
+        StationApiClient.validate_health_response({
+            "api_version": "1", "service": "dockstation-python-gateway", "implementation": "python", "status": "PASS", "read_only": True
+        })
+    with pytest.raises(ApiClientError, match="C++ Gateway"):
+        StationApiClient.validate_health_response({
+            "api_version": "1", "service": "dockstation-cpp-gateway", "status": "PASS", "read_only": True
+        })
 
 
 def test_validate_diagnostics_response_accepts_controller_telemetry():
@@ -493,7 +501,8 @@ def test_health_request_keeps_short_timeout_when_diagnostics_timeout_is_extended
     )
     health = {
         "api_version": "1",
-        "service": "dockstation-gateway",
+        "service": "dockstation-cpp-gateway",
+        "implementation": "cpp",
         "status": "PASS",
         "read_only": True,
     }

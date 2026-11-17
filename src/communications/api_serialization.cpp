@@ -506,8 +506,9 @@ std::string json_escape(const std::string& value) {
 }
 
 std::string serialize_health_response() {
-    return "{\"api_version\":\"1\",\"service\":\"dockstation-gateway\","
-           "\"status\":\"PASS\",\"read_only\":true}";
+    // Keep the production C++ API distinguishable from the temporary Python prototype.
+    return "{\"api_version\":\"1\",\"service\":\"dockstation-cpp-gateway\","
+           "\"implementation\":\"cpp\",\"status\":\"PASS\",\"read_only\":true}";
 }
 
 std::string serialize_system_diagnostics(

@@ -39,7 +39,8 @@ def test_health_route_returns_gateway_health_only(running_server):
     assert headers.get("Cache-Control") == "no-store"
     assert payload == {
         "api_version": "1",
-        "service": "dockstation-gateway",
+        "service": "dockstation-python-gateway",
+        "implementation": "python",
         "status": "PASS",
         "read_only": True,
     }

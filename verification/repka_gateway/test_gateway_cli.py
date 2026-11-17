@@ -43,7 +43,8 @@ def test_gateway_cli_starts_serves_api_and_stops():
                 last_error = exc
                 time.sleep(0.1)
         assert payload is not None, f"Gateway did not start: {last_error}"
-        assert payload["service"] == "dockstation-gateway"
+        assert payload["service"] == "dockstation-python-gateway"
+        assert payload["implementation"] == "python"
 
         with urllib.request.urlopen(base_url + "/api/v1/system/diagnostics", timeout=5) as response:
             diagnostics = json.loads(response.read().decode("utf-8"))
@@ -74,5 +75,6 @@ def test_gateway_cli_starts_serves_api_and_stops():
 def test_gateway_cli_test_adapter_is_disabled_unless_explicitly_enabled():
     from repka_gateway.dockstation_gateway.main import parse_arguments
 
+    assert parse_arguments([]).port == 8081
     assert parse_arguments(["--port", "8080"]).enable_test_adapter is False
     assert parse_arguments(["--port", "8080", "--enable-test-adapter"]).enable_test_adapter is True

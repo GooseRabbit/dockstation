@@ -358,8 +358,12 @@ class StationApiClient:
 
     @staticmethod
     def validate_health_response(payload: dict[str, Any]) -> None:
-        if payload.get("api_version") != "1" or payload.get("service") != "dockstation-gateway":
-            raise ApiClientError("Неизвестный сервис или версия API.")
+        if (
+            payload.get("api_version") != "1"
+            or payload.get("service") != "dockstation-cpp-gateway"
+            or payload.get("implementation") != "cpp"
+        ):
+            raise ApiClientError("Ответ получен не от основного C++ Gateway или версия API неизвестна.")
         if payload.get("status") != "PASS" or payload.get("read_only") is not True:
             raise ApiClientError("Gateway не подтвердил готовность read-only API.")
 

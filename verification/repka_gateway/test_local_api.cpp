@@ -24,7 +24,8 @@ void test_health_serialization() {
     const std::string payload =
         dockstation::communications::serialize_health_response();
     assert(payload.find("\"api_version\":\"1\"") != std::string::npos);
-    assert(payload.find("\"service\":\"dockstation-gateway\"") != std::string::npos);
+    assert(payload.find("\"service\":\"dockstation-cpp-gateway\"") != std::string::npos);
+    assert(payload.find("\"implementation\":\"cpp\"") != std::string::npos);
     assert(payload.find("\"status\":\"PASS\"") != std::string::npos);
     assert(payload.find("\"read_only\":true") != std::string::npos);
 }
@@ -286,7 +287,9 @@ void test_loopback_server() {
     assert(response.find("HTTP/1.1 200 OK") != std::string::npos);
     assert(response.find("Content-Type: application/json; charset=utf-8") !=
            std::string::npos);
-    assert(response.find("\"service\":\"dockstation-gateway\"") !=
+    assert(response.find("\"service\":\"dockstation-cpp-gateway\"") !=
+           std::string::npos);
+    assert(response.find("\"implementation\":\"cpp\"") !=
            std::string::npos);
 
     server.stop();

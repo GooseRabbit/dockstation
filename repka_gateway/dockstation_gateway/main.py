@@ -15,7 +15,7 @@ from .server import create_server
 
 def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the temporary DockStation diagnostic API on loopback.")
-    parser.add_argument("--port", type=int, default=8080, help="HTTP port on 127.0.0.1 (default: 8080)")
+    parser.add_argument("--port", type=int, default=8081, help="HTTP port on 127.0.0.1 (default: 8081; C++ Gateway uses 8080)")
     parser.add_argument(
         "--dns-name",
         default=os.environ.get("DOCKSTATION_DNS_CHECK_NAME", ""),

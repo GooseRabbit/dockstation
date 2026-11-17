@@ -1428,3 +1428,12 @@ SqliteDatabase размещается в src/platform/persistence/ и не пе�
 `session_proof` — 32-байтовый TLS exporter текущего канала. Данный verifier проверяет только длину значения, но не может проверить exporter bytes, их свежесть или channel binding. Реестр не может пересчитать exporter и не хранит его: доказательство должно быть получено только доверенным `AuthenticatedEventTransportAdapter` непосредственно из живого `ControllerLinkService` после TLS handshake и HELLO_ACK. Именно адаптер будет обязан строить Event и evidence из одного принятого сообщения и не принимать эти значения независимыми пользовательскими аргументами. Закрытый конструктор `SourceSessionEvidence` остаётся границей от случайной передачи произвольных данных; он не является sandbox против вредоносного native-кода в процессе.
 
 Проверки `source_session_verifier` — host contract tests с fake registry. Они подтверждают policy и fail-closed обработку ответов порта, но не являются реализацией registry storage, provisioning, Mbed TLS interop или аппаратной проверкой. Реальный reader, `SourceSessionRepository`, event mapping для телеметрии и composition-root wiring пока отсутствуют; DEC-068 не требуется и не подразумевается этой реализацией.
+
+## 30. Идентификация реализаций Gateway
+
+Health endpoint `GET /api/v1/health` идентифицирует реализацию, а не только общий продукт:
+
+- основной C++ Gateway обязан возвращать `service=dockstation-cpp-gateway` и `implementation=cpp`;
+- временный Python VM-прототип возвращает `service=dockstation-python-gateway` и `implementation=python`.
+
+Windows Operator и установщик основного Gateway принимают только точную пару C++-идентификаторов вместе с `api_version=1`, `status=PASS` и `read_only=true`. Совпадение одного лишь `status=PASS` не подтверждает, что отвечает нужная реализация. Python-прототип по умолчанию использует loopback-порт 8081; основной C++ Gateway использует 8080. Явное переопределение порта Python допускается для изолированных тестов, но не должно направлять Operator на Python API. При смене идентификаторов необходимо синхронно обновить сериализаторы, клиент, установщик и проверки.
