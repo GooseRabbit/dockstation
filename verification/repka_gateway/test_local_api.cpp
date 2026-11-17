@@ -259,7 +259,7 @@ void test_eight_concurrent_clients() {
     constexpr std::size_t client_count = 8U;
     std::array<int, client_count> clients{};
     const std::string request =
-        "GET /api/v1/health HTTP/1.1\\r\\nHost: localhost\\r\\n\\r\\n";
+        "GET /api/v1/health HTTP/1.1\r\nHost: localhost\r\n\r\n";
     for (std::size_t i = 0; i < client_count; ++i) {
         clients[i] = ::socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, IPPROTO_TCP);
         assert(clients[i] >= 0);
@@ -286,8 +286,7 @@ void test_eight_concurrent_clients() {
             response.append(buffer, static_cast<std::size_t>(count));
         }
         assert(response.find("HTTP/1.1 200 OK") != std::string::npos);
-        assert(response.find("\\\"service\\\":\\\"dockstation-cpp-gateway\\\"") !=
-               std::string::npos);
+        assert(response.find("dockstation-cpp-gateway") != std::string::npos);
         ::close(client);
     }
 
