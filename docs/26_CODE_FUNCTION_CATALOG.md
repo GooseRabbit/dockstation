@@ -1400,3 +1400,8 @@ Repka использует `controller_local_id` и `controller_peer_id` из с
 Реализация находится в `firmware/esp32/components/controller_dht22_sensor/`; та же функция входит в ESP-IDF target build и host CTest `dht22_frame_decoder`. Тайминги single-bus, GPIO pin map, питание, минимальный интервал опроса, состояние/качество канала и интеграция двух физических датчиков остаются отдельной работой после подтверждения аппаратного профиля. Host-тесты проверяют только декодер кадра, не датчик и не электрическую линию.
 
 Источник формата и ограничений: [Aosong AM2302 Technical Manual](https://aosong.com/uploadfiles/2025/04/20250417105409216.pdf), таблица 6 и разделы 5.2–5.3.
+
+
+## Дополнение: ESP32 TLS DRBG entropy
+
+`ControllerMbedTlsPskServer::initialize()` temporarily enables the ESP32 SAR-ADC entropy source before `mbedtls_ctr_drbg_seed()` and disables it immediately afterward. This ensures the Mbed TLS entropy callback runs while the ESP32 RNG has an active true-entropy source; calling the RNG after app startup with neither RF nor SAR-ADC entropy enabled provides pseudo-random output. Initialization/reconnect must not race with ADC, I²S or RF users. See `firmware/esp32/README.md` and [ESP-IDF v5.5 RNG documentation](https://docs.espressif.com/projects/esp-idf/en/v5.5-rc1/esp32/api-reference/system/random.html).
