@@ -1637,7 +1637,7 @@ TLS-аутентификации и планирует повторную поп
 PSK-DHE handshake, HELLO и HELLO_ACK. После подтверждения сессии снова
 отправляется REQUEST_SNAPSHOT.
 
-Последний корректный telemetry snapshot сохраняется как устаревший
+Проверка session deadlines выполняется до планирования очередного REQUEST_SNAPSHOT, чтобы периодический запрос не мог отложить обнаружение heartbeat/handshake timeout. Последний корректный telemetry snapshot сохраняется как устаревший
 диагностический снимок до получения нового; authenticated pair identity,
 TLS exporter proof и признак protocol-established во время потери канала
 недоступны. Повторное подключение не сбрасывает sequence/replay history
