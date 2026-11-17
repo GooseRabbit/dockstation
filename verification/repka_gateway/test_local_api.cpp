@@ -243,6 +243,15 @@ void test_request_parser() {
     parsed = dockstation::communications::parse_http_request(
         "GET /api/v1/health HTTP/1.1\r\nHost: localhost\r\n\r\nbody");
     assert(!parsed.valid);
+
+    parsed = dockstation::communications::parse_http_request(
+        "GET /api/v1/health HTTP/1.1\r\nMalformed Header: x\r\n\r\n");
+    assert(!parsed.valid);
+
+    const std::string oversized_request(8193U, 'A');
+    parsed = dockstation::communications::parse_http_request(oversized_request);
+    assert(!parsed.valid);
+    assert(parsed.too_large);
 }
 
 void test_eight_concurrent_clients() {
