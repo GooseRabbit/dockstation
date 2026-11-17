@@ -102,6 +102,7 @@ private:
     [[nodiscard]] bool flush_outbound_message() noexcept;
     void fail() noexcept;
     void clear_connection_buffers() noexcept;
+    void begin_tls_handshake() noexcept;
 
     ControllerMbedTlsPskServer tls_server_{};
     std::optional<hardware::interfaces::ControllerLinkPeerSession> session_{};
