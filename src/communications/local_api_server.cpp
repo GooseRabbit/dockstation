@@ -340,7 +340,10 @@ LocalApiServeResult LocalApiServer::serve_once(int timeout_milliseconds) {
     // again on the next event-loop iteration.
     std::vector<struct pollfd> descriptors;
     descriptors.reserve(clients_.size() + 1U);
-    descriptors.push_back({listen_descriptor_, POLLIN, 0});
+    // Stop polling the accept queue while all slots are occupied; otherwise
+    // a queued ninth connection would keep poll() returning immediately.
+    const short listener_events = clients_.size() < kMaximumHttpClients ? POLLIN : 0;
+    descriptors.push_back({listen_descriptor_, listener_events, 0});
     for (const Client& client : clients_) {
         descriptors.push_back({
             client.descriptor,
