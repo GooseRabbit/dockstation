@@ -1,8 +1,10 @@
 #pragma once
 
 #include <csignal>
+#include <chrono>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "communications/network_types.hpp"
 #include "platform/linux/controller_link_service.hpp"
@@ -30,10 +32,20 @@ public:
     [[nodiscard]] LocalApiServerStatus status() const;
 
 private:
+    struct Client {
+        int descriptor{-1};
+        std::string request{};
+        std::string response{};
+        std::size_t response_offset{0U};
+        std::chrono::steady_clock::time_point deadline{};
+        bool responding{false};
+    };
+
     int listen_descriptor_{-1};
     std::uint16_t bound_port_{0U};
     std::string error_{};
     platform::linux_platform::ControllerLinkService* controller_link_{nullptr};
+    std::vector<Client> clients_{};
 };
 
 [[nodiscard]] int run_local_api_server(
