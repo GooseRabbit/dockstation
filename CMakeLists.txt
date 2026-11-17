@@ -689,6 +689,7 @@ if(BUILD_TESTING)
                     test_controller_subsystem_status_event_projector
                     test_controller_link_service
                     test_controller_telemetry_snapshot
+                    test_dht22_frame_decoder
                     test_controller_psk_credential_store
                     test_local_api
                     test_source_cursor_reader
