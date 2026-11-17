@@ -45,12 +45,7 @@ bool ControllerLinkPeerService::start(
         return false;
     }
 
-    last_mbedtls_error_ = 0;
-    clear_connection_buffers();
-    logical_session_established_ = false;
-    logical_handshake_ack_pending_ = false;
-    snapshot_request_pending_ = false;
-    state_ = ControllerLinkPeerServiceState::TlsHandshake;
+    begin_tls_handshake();
     return true;
 }
 
@@ -73,12 +68,7 @@ bool ControllerLinkPeerService::restart_transport(
         return false;
     }
 
-    last_mbedtls_error_ = 0;
-    clear_connection_buffers();
-    logical_session_established_ = false;
-    logical_handshake_ack_pending_ = false;
-    snapshot_request_pending_ = false;
-    state_ = ControllerLinkPeerServiceState::TlsHandshake;
+    begin_tls_handshake();
     return true;
 }
 
@@ -387,6 +377,15 @@ void ControllerLinkPeerService::fail() noexcept {
     logical_session_established_ = false;
     snapshot_request_pending_ = false;
     state_ = ControllerLinkPeerServiceState::Error;
+}
+
+void ControllerLinkPeerService::begin_tls_handshake() noexcept {
+    last_mbedtls_error_ = 0;
+    clear_connection_buffers();
+    logical_session_established_ = false;
+    logical_handshake_ack_pending_ = false;
+    snapshot_request_pending_ = false;
+    state_ = ControllerLinkPeerServiceState::TlsHandshake;
 }
 
 void ControllerLinkPeerService::clear_connection_buffers() noexcept {
