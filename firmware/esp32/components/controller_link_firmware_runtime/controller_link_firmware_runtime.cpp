@@ -217,7 +217,11 @@ void ControllerLinkFirmwareRuntime::stop() noexcept {
     uart_.close();
     last_uart_error_ = uart_.last_error();
     running_ = false;
-    state_ = ControllerLinkFirmwareRuntimeState::Stopped;
+    // Do not report a clean stop while the UART driver is still owned after
+    // uart_driver_delete() failed. A later stop()/restart may retry the close.
+    state_ = uart_.is_open()
+        ? ControllerLinkFirmwareRuntimeState::Failed
+        : ControllerLinkFirmwareRuntimeState::Stopped;
 }
 
 }  // namespace dockstation::firmware::esp32
