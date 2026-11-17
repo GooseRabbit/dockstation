@@ -863,9 +863,52 @@ int main() {
                diagnostics.find("\"value\":21.5") != std::string::npos,
            "publishes the accepted peer snapshot through the real diagnostics serializer");
 
+    // Stop sending peer traffic long enough to exercise the service-level
+    // heartbeat deadline. Recovery must create a new TLS transport and repeat
+    // HELLO/HELLO_ACK rather than reusing the stale authenticated stream.
+    std::this_thread::sleep_for(std::chrono::milliseconds{5100U});
+    e2e_service.poll();
+    expect(e2e_service.status().state == ControllerLinkServiceState::LinkLost &&
+               !e2e_service.status().tls_authenticated &&
+               !e2e_service.status().protocol_established &&
+               e2e_service.authenticated_pair_identity().empty(),
+           "heartbeat timeout closes the stale TLS session and clears authenticated state");
+
+    std::this_thread::sleep_for(std::chrono::milliseconds{2100U});
+    e2e_service.poll();
+    expect(e2e_service.status().state == ControllerLinkServiceState::TlsHandshake &&
+               !e2e_service.status().tls_authenticated,
+           "heartbeat timeout schedules a fresh UART/TLS connection attempt");
+
+    TlsPeer recovery_peer;
+    expect(recovery_peer.initialize(credentials),
+           "initializes a new TLS peer for the reconnect acceptance path");
+    expect(complete_tls_handshake(e2e_service, recovery_peer, pty.master) &&
+               e2e_service.status().tls_authenticated,
+           "reconnect completes a new TLS 1.3 PSK-DHE handshake");
+    peer_storage = {};
+    peer_message = {};
+    expect(read_service_message(e2e_service, recovery_peer, pty.master,
+                                peer_frame, peer_storage, peer_message) &&
+               peer_message.envelope.type == ControllerMessageType::Hello,
+           "reconnect starts a fresh ControllerLink HELLO exchange");
+    const auto reconnect_hello_ack =
+        peer_envelope(ControllerMessageType::HelloAck, 6U);
+    expect(send_peer_message(
+               recovery_peer, pty.master, reconnect_hello_ack,
+               ControllerMessagePayload{EmptyControllerMessagePayload{}}),
+           "the peer acknowledges the new logical session with its next sequence");
+    peer_storage = {};
+    peer_message = {};
+    expect(read_service_message(e2e_service, recovery_peer, pty.master,
+                                peer_frame, peer_storage, peer_message) &&
+               peer_message.envelope.type == ControllerMessageType::RequestSnapshot &&
+               e2e_service.status().state == ControllerLinkServiceState::Established,
+           "reconnect reaches ESTABLISHED and requests a fresh telemetry snapshot");
+
     // A duplicate peer sequence is rejected by ControllerLinkSession before
     // replacing the last known good telemetry snapshot.
-    expect(send_peer_message(peer, pty.master, telemetry_envelope,
+    expect(send_peer_message(recovery_peer, pty.master, telemetry_envelope,
                              ControllerMessagePayload{telemetry_payload}),
            "sends a deliberately duplicated telemetry sequence as a negative fixture");
     e2e_service.poll();
