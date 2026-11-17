@@ -45,6 +45,9 @@ public:
     ControllerMbedTlsPskServer(ControllerMbedTlsPskServer&&) = delete;
     ControllerMbedTlsPskServer& operator=(ControllerMbedTlsPskServer&&) = delete;
 
+    // Seeds the per-connection CTR-DRBG from the ESP32 hardware entropy
+    // source. Call while no ADC, I2S or RF user is active; the SAR-ADC entropy
+    // source is enabled only for the seed operation and disabled immediately.
     [[nodiscard]] bool initialize(
         const ControllerMbedTlsPskCredentials& credentials,
         void* transport_context,
