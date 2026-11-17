@@ -275,6 +275,11 @@ void test_eight_concurrent_clients() {
     }
 
     for (int client : clients) {
+        struct timeval timeout {};
+        timeout.tv_sec = 3;
+        timeout.tv_usec = 0;
+        assert(::setsockopt(client, SOL_SOCKET, SO_RCVTIMEO,
+                            &timeout, sizeof(timeout)) == 0);
         std::string response;
         char buffer[512];
         for (;;) {
