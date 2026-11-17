@@ -390,6 +390,28 @@ class QmlOperatorBridge(QObject):
             f"получен: {received} · {link}"
         )
 
+    @Property(str, notify=viewChanged)
+    def controllerLinkSummary(self) -> str:
+        snapshot = self.model.snapshot
+        link = snapshot.get("controller_link", {}) if isinstance(snapshot, dict) else {}
+        if not isinstance(link, dict):
+            return "Gateway не передал состояние канала Repka–ESP32."
+        status = link.get("status", "NOT_CONFIGURED")
+        error_code = link.get("error_code", "")
+        if status == "OK":
+            return "Канал Repka–ESP32 установлен: TLS и протокол подтверждены."
+        if status == "CONNECTING":
+            return "Выполняется установка защищённого соединения с ESP32."
+        if error_code == "CONTROLLER_UART_DEVICE_BUSY":
+            return "UART занят другим процессом. Gateway будет повторять подключение автоматически."
+        if status == "NOT_CONFIGURED":
+            return "Подключение ESP32 ещё не настроено."
+        if status == "LINK_LOST":
+            return f"Связь с ESP32 потеряна. Код: {error_code or 'не указан'}."
+        if status == "ERROR":
+            return f"Ошибка ControllerLink. Код: {error_code or 'не указан'}."
+        return f"Состояние ControllerLink: {status}."
+
     @Property("QVariantList", notify=viewChanged)
     def controllerTelemetry(self) -> list[dict[str, str]]:
         snapshot = self.model.snapshot
