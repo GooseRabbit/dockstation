@@ -150,10 +150,22 @@ decodes humidity and temperature in tenths, handles the temperature sign bit,
 and rejects values outside 0–99.9 %RH and −40.0…+80.0 °C. The output is
 cleared on every failure. Keeping integer tenths avoids premature rounding.
 
-This component does **not** read GPIO, generate sensor timing, power a sensor,
-schedule measurements or publish telemetry. No sensor pin is assigned and
-no test value is sent to ControllerLink. The same decoder source is built by
-ESP-IDF and by the host CTest target `dht22_frame_decoder`.
+The component also contains a pure `Dht22TelemetryAdapter`. It maps one
+decoded reading to two `ControllerTelemetryMeasurement` values: temperature
+in `°C` and relative humidity in `%RH`. The caller supplies both stable
+sensor IDs, the non-empty `measured_at` string and the quality status. The
+adapter validates the IDs, quality enum and decoded value ranges, clears both
+output entries on failure, and does not choose identifiers, invent timestamps
+or infer freshness. The timestamp format remains the existing open protocol
+decision. Returned string views refer to caller-owned storage, which must stay
+valid while the measurements are used.
+
+This component does **not** read GPIO, generate sensor timing, power a sensor
+or schedule measurements. No sensor pin is assigned and no test value is sent
+to ControllerLink. The decoder and adapter are built by ESP-IDF and checked
+by the host CTest targets `dht22_frame_decoder` and
+`dht22_telemetry_adapter`; host tests do not prove physical sensor operation
+or acquisition timing.
 
 The [Aosong AM2302 technical manual](https://aosong.com/uploadfiles/2025/04/20250417105409216.pdf)
 defines the 40-bit frame, field order, scale, sign bit and checksum, and lists

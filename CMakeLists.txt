@@ -469,7 +469,7 @@ if(BUILD_TESTING)
     add_test(NAME controller_telemetry_snapshot
         COMMAND test_controller_telemetry_snapshot)
 
-    # The decoder is shared by the ESP-IDF component and host verification.
+    # DHT22 decoder and telemetry adapter are shared with the ESP-IDF component.
     add_executable(test_dht22_frame_decoder
         firmware/esp32/components/controller_dht22_sensor/dht22_frame_decoder.cpp
         verification/repka_gateway/test_dht22_frame_decoder.cpp
@@ -479,6 +479,18 @@ if(BUILD_TESTING)
     )
     dockstation_apply_compile_policy(test_dht22_frame_decoder)
     add_test(NAME dht22_frame_decoder COMMAND test_dht22_frame_decoder)
+
+    add_executable(test_dht22_telemetry_adapter
+        firmware/esp32/components/controller_dht22_sensor/dht22_frame_decoder.cpp
+        firmware/esp32/components/controller_dht22_sensor/dht22_telemetry_adapter.cpp
+        verification/repka_gateway/test_dht22_telemetry_adapter.cpp
+    )
+    target_include_directories(test_dht22_telemetry_adapter PRIVATE
+        firmware/esp32/components/controller_dht22_sensor/include
+        "${PROJECT_SOURCE_DIR}/src"
+    )
+    dockstation_apply_compile_policy(test_dht22_telemetry_adapter)
+    add_test(NAME dht22_telemetry_adapter COMMAND test_dht22_telemetry_adapter)
 
     add_executable(test_controller_subsystem_status_event_projector
         verification/repka_gateway/test_controller_subsystem_status_event_projector.cpp
