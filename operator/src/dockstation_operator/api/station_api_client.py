@@ -120,9 +120,9 @@ def _validate_controller_link(value: object) -> None:
     section = _require_object(value, "controller_link")
     status = section.get("status")
     state = section.get("state")
-    if status not in _CONTROLLER_LINK_STATUSES:
+    if not isinstance(status, str) or status not in _CONTROLLER_LINK_STATUSES:
         raise ApiClientError("Поле controller_link.status содержит неизвестный статус.")
-    if state not in _CONTROLLER_LINK_STATES:
+    if not isinstance(state, str) or state not in _CONTROLLER_LINK_STATES:
         raise ApiClientError("Поле controller_link.state содержит неизвестное состояние.")
     for field in ("tls_authenticated", "protocol_established"):
         if not isinstance(section.get(field), bool):
