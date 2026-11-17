@@ -126,6 +126,11 @@ private:
     [[nodiscard]] bool begin_protocol_session(
         std::uint64_t now_ms, std::string_view sent_at) noexcept;
     void update_protocol_state() noexcept;
+    void set_state(ControllerLinkServiceState state,
+                   const char* error_code) noexcept;
+    void log_controller_error(
+        const hardware::interfaces::ControllerErrorPayload& error,
+        std::uint64_t sequence_number) noexcept;
 
     ControllerTransportManager transport_{};
     hardware::interfaces::ControllerFrameStreamDecoder decoder_{};
@@ -157,6 +162,10 @@ private:
     std::array<std::uint8_t, kControllerPskIdentitySize>
         authenticated_pair_identity_{};
     bool authenticated_pair_identity_available_{false};
+    // The wire frame bounds the maximum peer error-code size. Repeated reports
+    // with the same code are logged once per authenticated session.
+    std::array<char, 2048U> last_reported_controller_error_code_{};
+    std::size_t last_reported_controller_error_code_size_{0U};
 };
 
 }  // namespace dockstation::platform::linux_platform

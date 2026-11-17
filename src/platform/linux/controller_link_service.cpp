@@ -12,6 +12,7 @@
 
 #include "hardware/interfaces/controller_codec.hpp"
 #include "platform/linux/controller_psk_credential_store.hpp"
+#include "platform/logging/logger.hpp"
 
 namespace dockstation::platform::linux_platform {
 namespace {
@@ -151,7 +152,46 @@ constexpr char kHexDigits[] = "0123456789abcdef";
            status == ControllerTransportStatus::InvalidArgument;
 }
 
-[[nodiscard]] const char* credential_error_code(
+[[nodiscard]] const char* controller_link_state_name(
+    ControllerLinkServiceState state) noexcept {
+    switch (state) {
+        case ControllerLinkServiceState::NotConfigured: return "NOT_CONFIGURED";
+        case ControllerLinkServiceState::TlsHandshake: return "TLS_HANDSHAKE";
+        case ControllerLinkServiceState::ProtocolHandshake: return "PROTOCOL_HANDSHAKE";
+        case ControllerLinkServiceState::Established: return "ESTABLISHED";
+        case ControllerLinkServiceState::LinkLost: return "LINK_LOST";
+        case ControllerLinkServiceState::Error: return "ERROR";
+        case ControllerLinkServiceState::Stopped: return "STOPPED";
+    }
+    return "UNKNOWN";
+}
+
+const char* controller_error_severity_name(
+    hardware::interfaces::ControllerErrorSeverity severity) noexcept {
+    using hardware::interfaces::ControllerErrorSeverity;
+    switch (severity) {
+        case ControllerErrorSeverity::Info: return "INFO";
+        case ControllerErrorSeverity::Warning: return "WARNING";
+        case ControllerErrorSeverity::Error: return "ERROR";
+        case ControllerErrorSeverity::Critical: return "CRITICAL";
+        case ControllerErrorSeverity::Unknown: return "UNKNOWN";
+    }
+    return "UNKNOWN";
+}
+
+const char* controller_subsystem_status_name(
+    hardware::interfaces::ControllerSubsystemStatus status) noexcept {
+    using hardware::interfaces::ControllerSubsystemStatus;
+    switch (status) {
+        case ControllerSubsystemStatus::Unknown: return "UNKNOWN";
+        case ControllerSubsystemStatus::Pass: return "PASS";
+        case ControllerSubsystemStatus::Degraded: return "DEGRADED";
+        case ControllerSubsystemStatus::Fail: return "FAIL";
+    }
+    return "UNKNOWN";
+}
+
+const char* credential_error_code(
     ControllerPskCredentialFileStatus status) noexcept {
     switch (status) {
         case ControllerPskCredentialFileStatus::Success:
@@ -178,39 +218,139 @@ ControllerLinkService::~ControllerLinkService() {
     stop();
 }
 
+void ControllerLinkService::set_state(
+    ControllerLinkServiceState next_state,
+    const char* next_error_code) noexcept {
+    const char* safe_error_code = next_error_code == nullptr ? "" : next_error_code;
+    const char* current_error_code = error_code_ == nullptr ? "" : error_code_;
+    if (state_ == next_state &&
+        std::strcmp(current_error_code, safe_error_code) == 0) {
+        return;
+    }
+
+    const ControllerLinkServiceState previous_state = state_;
+    state_ = next_state;
+    error_code_ = next_error_code == nullptr ? "" : next_error_code;
+
+    // A newly established session starts a fresh error-deduplication window.
+    if (next_state == ControllerLinkServiceState::Established &&
+        previous_state != ControllerLinkServiceState::Established) {
+        last_reported_controller_error_code_size_ = 0U;
+        last_reported_controller_error_code_.fill('\0');
+    }
+
+    // Logging is best-effort: an allocation or sink failure must never break
+    // the ControllerLink state machine or its noexcept polling path.
+    try {
+        using platform::logging::LogLevel;
+        const LogLevel level = next_state == ControllerLinkServiceState::Error
+            ? LogLevel::Error
+            : (next_state == ControllerLinkServiceState::LinkLost ||
+               safe_error_code[0] != '\0')
+                ? LogLevel::Warning
+                : LogLevel::Info;
+        (void)platform::logging::write_log_record(
+            level, "ControllerLink", "ControllerLink state transition",
+            {{"from_state", controller_link_state_name(previous_state)},
+             {"to_state", controller_link_state_name(next_state)},
+             {"error_code", safe_error_code}});
+    } catch (...) {
+        // State tracking remains authoritative if the optional journal is unavailable.
+    }
+}
+
+void ControllerLinkService::log_controller_error(
+    const hardware::interfaces::ControllerErrorPayload& error,
+    std::uint64_t sequence_number) noexcept {
+    const std::string_view code = error.error_code;
+    if (code.empty() || code.size() > last_reported_controller_error_code_.size()) {
+        return;
+    }
+    if (code.size() == last_reported_controller_error_code_size_ &&
+        std::equal(code.begin(), code.end(),
+                   last_reported_controller_error_code_.begin())) {
+        return;
+    }
+
+    std::copy(code.begin(), code.end(),
+              last_reported_controller_error_code_.begin());
+    last_reported_controller_error_code_size_ = code.size();
+
+    using hardware::interfaces::ControllerErrorSeverity;
+    using platform::logging::LogLevel;
+    LogLevel level = LogLevel::Warning;
+    switch (error.severity) {
+        case ControllerErrorSeverity::Info:
+            level = LogLevel::Info;
+            break;
+        case ControllerErrorSeverity::Warning:
+        case ControllerErrorSeverity::Unknown:
+            level = LogLevel::Warning;
+            break;
+        case ControllerErrorSeverity::Error:
+        case ControllerErrorSeverity::Critical:
+            level = LogLevel::Error;
+            break;
+    }
+
+    try {
+        std::vector<platform::logging::LogField> fields{
+            {"controller_error_code", std::string{code}},
+            {"severity", controller_error_severity_name(error.severity)},
+            {"sequence_number", std::to_string(sequence_number)}};
+        if (error.subsystem_id.has_value()) {
+            fields.push_back({"subsystem_id", std::string{*error.subsystem_id}});
+        }
+        if (error.subsystem_status.has_value()) {
+            fields.push_back({"subsystem_status",
+                              controller_subsystem_status_name(*error.subsystem_status)});
+        }
+
+        // Do not log free-form description/reason text: structured codes are enough
+        // for diagnosis and avoid accidentally copying sensitive peer-provided text.
+        (void)platform::logging::write_log_record(
+            level, "ControllerLink", "Authenticated controller reported an error",
+            fields);
+    } catch (...) {
+        // Peer diagnostics are optional; never let journal allocation affect ingress.
+    }
+}
+
 ControllerLinkServiceStatus ControllerLinkService::start(
     const ControllerLinkServiceConfig& config) noexcept {
-    stop();
+    if (configured_ || state_ != ControllerLinkServiceState::NotConfigured ||
+        (error_code_ != nullptr && error_code_[0] != '\0')) {
+        stop();
+    }
 
     const bool all_empty = config.uart_device_path.empty() &&
                            config.local_controller_id.empty() &&
                            config.peer_controller_id.empty();
     if (all_empty) {
-        state_ = ControllerLinkServiceState::NotConfigured;
-        error_code_ = "";
+        set_state(ControllerLinkServiceState::NotConfigured, "");
         return status();
     }
 
     if (!copy_configuration(config)) {
-        state_ = ControllerLinkServiceState::Error;
-        error_code_ = "CONTROLLER_CONFIGURATION_INVALID";
+        set_state(ControllerLinkServiceState::Error,
+                  "CONTROLLER_CONFIGURATION_INVALID");
         return status();
     }
 
     if (!generate_instance_id(local_instance_id_)) {
-        state_ = ControllerLinkServiceState::Error;
-        error_code_ = "INSTANCE_ID_GENERATION_FAILED";
+        set_state(ControllerLinkServiceState::Error,
+                  "INSTANCE_ID_GENERATION_FAILED");
         return status();
     }
 
     if (!create_session()) {
-        state_ = ControllerLinkServiceState::Error;
-        error_code_ = "SESSION_CONFIGURATION_INVALID";
+        set_state(ControllerLinkServiceState::Error,
+                  "SESSION_CONFIGURATION_INVALID");
         return status();
     }
 
     configured_ = true;
-    state_ = ControllerLinkServiceState::NotConfigured;
+    set_state(ControllerLinkServiceState::NotConfigured, "");
     attempt_transport_start(monotonic_milliseconds());
     return status();
 }
@@ -301,7 +441,7 @@ void ControllerLinkService::poll() noexcept {
                 hardware::interfaces::ControllerLinkSessionStatus::HandshakeTimeout ||
             tick.status ==
                 hardware::interfaces::ControllerLinkSessionStatus::HeartbeatTimeout) {
-            state_ = ControllerLinkServiceState::LinkLost;
+            set_state(ControllerLinkServiceState::LinkLost, error_code_);
         } else if (tick.status ==
                    hardware::interfaces::ControllerLinkSessionStatus::Success &&
                    tick.has_outbound_message) {
@@ -329,6 +469,9 @@ void ControllerLinkService::poll() noexcept {
 }
 
 void ControllerLinkService::stop() noexcept {
+    const bool had_runtime_state =
+        configured_ || state_ != ControllerLinkServiceState::NotConfigured ||
+        (error_code_ != nullptr && error_code_[0] != '\0');
     transport_.close();
     if (session_.has_value()) {
         session_->stop();
@@ -356,8 +499,13 @@ void ControllerLinkService::stop() noexcept {
     uart_device_path_.fill('\0');
     local_controller_id_.fill('\0');
     peer_controller_id_.fill('\0');
-    state_ = ControllerLinkServiceState::Stopped;
-    error_code_ = "";
+    if (had_runtime_state) {
+        set_state(ControllerLinkServiceState::Stopped, "");
+    } else {
+        // Destruction of a never-started optional service is not a runtime event.
+        state_ = ControllerLinkServiceState::Stopped;
+        error_code_ = "";
+    }
 }
 
 bool ControllerLinkService::export_authenticated_session_proof(
@@ -473,15 +621,15 @@ void ControllerLinkService::attempt_transport_start(
     authenticated_pair_identity_available_ = false;
     if (credential_status != ControllerPskCredentialFileStatus::Success) {
         credentials.clear();
-        error_code_ = credential_error_code(credential_status);
+        const char* credential_code = credential_error_code(credential_status);
         if (credential_status ==
                 ControllerPskCredentialFileStatus::DirectoryUnavailable ||
             credential_status ==
                 ControllerPskCredentialFileStatus::CredentialFileUnavailable) {
-            state_ = ControllerLinkServiceState::NotConfigured;
+            set_state(ControllerLinkServiceState::NotConfigured, credential_code);
             next_retry_ms_ = now_ms + kReconnectDelayMilliseconds;
         } else {
-            state_ = ControllerLinkServiceState::Error;
+            set_state(ControllerLinkServiceState::Error, credential_code);
         }
         return;
     }
@@ -490,10 +638,11 @@ void ControllerLinkService::attempt_transport_start(
         transport_.start(uart_device_path_.data(), credentials);
     if (result.status != ControllerTransportStatus::Started) {
         credentials.clear();
-        state_ = ControllerLinkServiceState::LinkLost;
-        error_code_ = result.status == ControllerTransportStatus::DeviceBusy
-                          ? "CONTROLLER_UART_DEVICE_BUSY"
-                          : "CONTROLLER_UART_OPEN_FAILED";
+        set_state(
+            ControllerLinkServiceState::LinkLost,
+            result.status == ControllerTransportStatus::DeviceBusy
+                ? "CONTROLLER_UART_DEVICE_BUSY"
+                : "CONTROLLER_UART_OPEN_FAILED");
         next_retry_ms_ = now_ms + kReconnectDelayMilliseconds;
         tls_authenticated_ = false;
         snapshot_request_sent_this_session_ = false;
@@ -510,8 +659,7 @@ void ControllerLinkService::attempt_transport_start(
     authenticated_pair_identity_available_ = true;
     credentials.clear();
 
-    state_ = ControllerLinkServiceState::TlsHandshake;
-    error_code_ = "";
+    set_state(ControllerLinkServiceState::TlsHandshake, "");
     tls_authenticated_ = false;
     snapshot_request_sent_this_session_ = false;
     last_snapshot_request_ms_ = 0U;
@@ -536,8 +684,7 @@ void ControllerLinkService::fail_transport(
     snapshot_request_sent_this_session_ = false;
     last_snapshot_request_ms_ = 0U;
     tls_authenticated_ = false;
-    state_ = ControllerLinkServiceState::LinkLost;
-    error_code_ = error_code;
+    set_state(ControllerLinkServiceState::LinkLost, error_code);
     next_retry_ms_ = now_ms + kReconnectDelayMilliseconds;
 }
 
@@ -662,6 +809,11 @@ bool ControllerLinkService::process_ready_frame(std::uint64_t now_ms) noexcept {
         ++telemetry_snapshots_received_;
     } else if (decoded.envelope.type == ControllerMessageType::Error) {
         ++error_messages_received_;
+        const auto* error =
+            std::get_if<hardware::interfaces::ControllerErrorPayload>(&decoded.payload);
+        if (error != nullptr && decoded.envelope.sequence_number.has_value()) {
+            log_controller_error(*error, *decoded.envelope.sequence_number);
+        }
     }
     if ((decoded.envelope.type == ControllerMessageType::TelemetrySnapshot ||
          decoded.envelope.type == ControllerMessageType::Error) &&
@@ -673,7 +825,7 @@ bool ControllerLinkService::process_ready_frame(std::uint64_t now_ms) noexcept {
     if (accepted.event == ControllerLinkSessionEvent::SessionEstablished) {
         snapshot_request_sent_this_session_ = false;
         last_snapshot_request_ms_ = 0U;
-        state_ = ControllerLinkServiceState::Established;
+        set_state(ControllerLinkServiceState::Established, "");
     }
 
     if (!decoder_.consume_frame()) {
@@ -697,8 +849,7 @@ bool ControllerLinkService::begin_protocol_session(
         return false;
     }
     tls_authenticated_ = true;
-    state_ = ControllerLinkServiceState::ProtocolHandshake;
-    error_code_ = "";
+    set_state(ControllerLinkServiceState::ProtocolHandshake, "");
     return true;
 }
 
@@ -708,16 +859,16 @@ void ControllerLinkService::update_protocol_state() noexcept {
     }
     switch (session_->state()) {
         case ControllerLinkSessionState::Stopped:
-            state_ = ControllerLinkServiceState::TlsHandshake;
+            set_state(ControllerLinkServiceState::TlsHandshake, error_code_);
             break;
         case ControllerLinkSessionState::AwaitingHelloAck:
-            state_ = ControllerLinkServiceState::ProtocolHandshake;
+            set_state(ControllerLinkServiceState::ProtocolHandshake, error_code_);
             break;
         case ControllerLinkSessionState::Established:
-            state_ = ControllerLinkServiceState::Established;
+            set_state(ControllerLinkServiceState::Established, "");
             break;
         case ControllerLinkSessionState::LinkLost:
-            state_ = ControllerLinkServiceState::LinkLost;
+            set_state(ControllerLinkServiceState::LinkLost, error_code_);
             break;
     }
 }

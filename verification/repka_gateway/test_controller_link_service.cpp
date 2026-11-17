@@ -7,6 +7,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <fstream>
+#include <iterator>
 #include <optional>
 #include <string_view>
 #include <string>
@@ -33,6 +35,7 @@
 #include "core/station_event_pipeline.hpp"
 #include "hardware/interfaces/controller_codec.hpp"
 #include "platform/linux/controller_link_service.hpp"
+#include "platform/logging/logger.hpp"
 
 using namespace dockstation::hardware::interfaces;
 using namespace dockstation::platform::linux_platform;
@@ -440,6 +443,19 @@ public:
 }  // namespace
 
 int main() {
+    const std::string controller_link_log_path =
+        "/tmp/dockstation_controller_link_" +
+        std::to_string(static_cast<long long>(::getpid())) + ".jsonl";
+    dockstation::platform::logging::LoggerConfig logger_config{};
+    logger_config.minimum_level = dockstation::platform::logging::LogLevel::Info;
+    logger_config.file_path = controller_link_log_path;
+    logger_config.write_to_stderr = false;
+    const auto logger_initialized =
+        dockstation::platform::logging::initialize_logger(logger_config);
+    expect(logger_initialized.status ==
+               dockstation::platform::logging::LoggerStatus::Available,
+           "initializes a private test log file for ControllerLink transition assertions");
+
     ControllerLinkService service{};
     const auto not_configured = service.start({});
     expect(not_configured.state == ControllerLinkServiceState::NotConfigured &&
@@ -460,6 +476,11 @@ int main() {
                std::string(partial_result.error_code) ==
                    "CONTROLLER_CONFIGURATION_INVALID",
            "a partial controller identity configuration is rejected before device access");
+    for (std::size_t attempt = 0U; attempt < 4U; ++attempt) {
+        service.poll();
+    }
+    expect(service.status().state == ControllerLinkServiceState::Error,
+           "polling a terminal configuration error does not change ControllerLink state");
 
     ControllerLinkServiceConfig invalid_path{};
     invalid_path.uart_device_path = "/tmp/tty";
@@ -471,6 +492,11 @@ int main() {
                std::string(path_result.error_code) ==
                    "CONTROLLER_CONFIGURATION_INVALID",
            "a non-/dev UART path is rejected before credential or device access");
+    for (std::size_t attempt = 0U; attempt < 4U; ++attempt) {
+        service.poll();
+    }
+    expect(service.status().state == ControllerLinkServiceState::Error,
+           "repeated polling does not generate additional state changes for the same error");
 
     service.stop();
     expect(service.status().state == ControllerLinkServiceState::Stopped,
@@ -864,6 +890,39 @@ int main() {
 
     test_credentials = nullptr;
     credentials.clear();
+
+    const auto logger_shutdown = dockstation::platform::logging::shutdown_logger();
+    expect(logger_shutdown.status ==
+               dockstation::platform::logging::LoggerStatus::Available,
+           "flushes and closes the ControllerLink test journal");
+    std::ifstream log_input(controller_link_log_path);
+    const std::string log_contents{
+        std::istreambuf_iterator<char>{log_input},
+        std::istreambuf_iterator<char>{}};
+    const auto count_occurrences = [&log_contents](std::string_view needle) {
+        std::size_t count = 0U;
+        std::size_t offset = 0U;
+        while ((offset = log_contents.find(needle, offset)) != std::string::npos) {
+            ++count;
+            offset += needle.size();
+        }
+        return count;
+    };
+    expect(log_input.is_open() && !log_input.bad() &&
+               log_contents.find("ControllerLink state transition") != std::string::npos &&
+               log_contents.find("DHT22_READ_FAILED") != std::string::npos &&
+               log_contents.find("\"severity\":\"WARNING\"") != std::string::npos &&
+               log_contents.find("\"subsystem_id\":\"weather.temperature\"") != std::string::npos &&
+               log_contents.find("CONTROLLER_FRAME_REJECTED") != std::string::npos,
+           "journal records state transitions, authenticated controller errors and rejected frames");
+    expect(count_occurrences("CONTROLLER_CONFIGURATION_INVALID") == 2U,
+           "repeated polls do not spam duplicate configuration-error records");
+    expect(count_occurrences("DHT22_READ_FAILED") == 1U,
+           "an authenticated controller error is recorded with its structured code");
+    expect(log_contents.find("DHT22 read failed") == std::string::npos &&
+               log_contents.find("I2C timeout") == std::string::npos,
+           "free-form controller error descriptions are excluded from the shared journal");
+    (void)std::remove(controller_link_log_path.c_str());
 
     std::cout << "Checks: " << checks << ", failures: " << failures << '\n';
     return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
