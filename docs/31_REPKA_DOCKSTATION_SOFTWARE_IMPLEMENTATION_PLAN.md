@@ -1655,3 +1655,45 @@ REQUEST_SNAPSHOT и отказ на старый sequence. Это програм
 ## Дополнение 2.33 — проверяемый диапазон OpenSSL
 
 Введено решение DEC-073: Linux TLS backend принимает только OpenSSL 3.x (минимум 3.0.0, major version строго 3). CMake отклоняет 2.x/4.x до сборки; read-only Repka preflight применяет ту же проверку по заголовкам и pkg-config. В CI сохранён системный OpenSSL 3.0.x на Ubuntu 24.04 и добавлена полная сборка + CTest на OpenSSL 3.5.x LTS на Ubuntu 26.04. Отдельный CMake policy test проверяет нижнюю границу, версии 3.5 и отказ для 2.x/4.x. Это проверка API/build compatibility; production security suitability зависит от upstream или vendor maintenance конкретной ветки. OpenSSL 3.5 LTS рекомендован для новых установок; OpenSSL 3.0 допускается только при security backports поставщика ОС. ABI ceiling `OPENSSL_3.0.0` в ARM64 bundle остаётся независимым минимальным symbol-version requirement. Физическая Repka OS должна отдельно пройти target preflight и runtime dependency check.
+
+
+## Дополнение 2.34 — неблокирующий HTTP event loop и systemd sandbox
+
+Локальный C++ HTTP API переведён с последовательной обработки одного
+соединения на единый неблокирующий event loop. Одновременно обслуживаются
+до восьми активных клиентов; backlog listener также ограничен восемью
+соединениями. Для каждого клиента сохраняются частично принятый запрос,
+частично отправленный ответ и отдельный deadline чтения/записи (2,5 секунды
+на фазу). Размер запроса остаётся ограничен 8192 байтами, тела запросов
+не поддерживаются. Ошибочные и oversized запросы получают HTTP 400/413,
+медленные или отключившиеся клиенты удаляются без блокирующего ожидания.
+Соединения закрываются после ответа; keep-alive и worker threads не
+используются.
+
+Обработка HTTP выполняется в том же потоке, что и
+`ControllerLinkService::poll()`. Ни один клиентский socket не удерживает
+этот поток в синхронном recv/send: один вызов event loop делает ограниченный
+шаг приёма/чтения/записи, после чего Gateway возвращается к опросу
+ControllerLink. Это сохраняет единоличное владение изменяемым состоянием
+ControllerLink и его telemetry snapshot; перенос HTTP dispatch в потоки
+не допускается без отдельного решения о thread-safe snapshot boundary.
+
+Оба systemd профиля (базовый и UART) дополнительно ограничивают доступ
+службы к системным ресурсам: `ProtectClock`, `ProtectHostname`,
+`ProtectKernelLogs`, `ProtectProc=invisible` и
+`RestrictNamespaces`. Существующие `PrivateDevices` / точечный
+`DeviceAllow`, `ProtectSystem=strict`, loopback/network address families,
+SQLite state directory и journald logging сохранены. Системная диагностика
+по-прежнему читает необходимые агрегированные файлы `/proc`; режим
+`ProcSubset=pid` намеренно не включён. Статический deployment test
+проверяет наличие новых ограничений, а `systemd-analyze verify` проверяет
+синтаксис unit на CI runner.
+
+Host verification не заменяет проверку фактического systemd/kernel набора
+на целевой Repka OS. До аппаратной приёмки остаются: target `systemd-analyze
+verify`, запуск базового профиля, запуск выбранного UART instance и
+подтверждение, что диагностика /proc, SQLite, journald и UART доступны в
+соответствующем профиле. Host test локального API включает idle client,
+который не должен задерживать завершение нормального запроса; отдельная
+нагрузочная проверка восьми одновременных клиентов и длительного трафика
+остаётся частью CI/последующей аппаратной приёмки.
