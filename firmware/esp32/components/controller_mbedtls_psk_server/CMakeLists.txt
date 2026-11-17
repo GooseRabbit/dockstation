@@ -6,7 +6,7 @@ idf_component_register(
         "../../../../src/hardware/interfaces/controller_frame_stream_decoder.cpp"
         "../../../../src/hardware/interfaces/controller_link_peer_session.cpp"
     INCLUDE_DIRS "include" "../../../../src"
-    REQUIRES mbedtls
+    REQUIRES mbedtls bootloader_support
 )
 
 # Keep the firmware component on the same language baseline as the shared code.
