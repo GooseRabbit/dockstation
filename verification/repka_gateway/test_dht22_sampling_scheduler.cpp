@@ -67,10 +67,15 @@ int main() {
                "minimum interval is not shortened by one millisecond");
 
         decision = scheduler.try_begin_read(4000U);
-        expect(decision.status == Dht22SamplingStatus::Ready,
-               "next read is allowed at the two-second boundary");
+        expect(decision.status == Dht22SamplingStatus::MinimumInterval &&
+                   decision.remaining_wait_ms == 1U,
+               "read remains blocked one millisecond before the interval ends");
 
-        decision = scheduler.try_begin_read(6000U);
+        decision = scheduler.try_begin_read(4001U);
+        expect(decision.status == Dht22SamplingStatus::Ready,
+               "next read is allowed at the exact two-second boundary");
+
+        decision = scheduler.try_begin_read(6001U);
         expect(decision.status == Dht22SamplingStatus::Ready,
                "later reads remain separated by at least two seconds");
     }
