@@ -3,6 +3,7 @@
 #include "platform/linux/platform_capabilities.hpp"
 
 #include <arpa/inet.h>
+#include <array>
 #include <atomic>
 #include <cassert>
 #include <cstddef>
@@ -244,6 +245,57 @@ void test_request_parser() {
     assert(!parsed.valid);
 }
 
+void test_eight_concurrent_clients() {
+    LocalApiServer server;
+    assert(server.start(0U));
+    const auto status = server.status();
+    std::atomic<bool> finish_server{false};
+    std::thread server_thread([&server, &finish_server]() {
+        while (!finish_server.load()) {
+            (void)server.serve_once(25);
+        }
+    });
+
+    constexpr std::size_t client_count = 8U;
+    std::array<int, client_count> clients{};
+    const std::string request =
+        "GET /api/v1/health HTTP/1.1\\r\\nHost: localhost\\r\\n\\r\\n";
+    for (std::size_t i = 0; i < client_count; ++i) {
+        clients[i] = ::socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, IPPROTO_TCP);
+        assert(clients[i] >= 0);
+        struct sockaddr_in address {};
+        address.sin_family = AF_INET;
+        address.sin_port = htons(status.port);
+        assert(::inet_pton(AF_INET, "127.0.0.1", &address.sin_addr) == 1);
+        assert(::connect(clients[i],
+            reinterpret_cast<const struct sockaddr*>(&address),
+            sizeof(address)) == 0);
+        assert(::send(clients[i], request.data(), request.size(), 0) ==
+               static_cast<ssize_t>(request.size()));
+    }
+
+    for (int client : clients) {
+        std::string response;
+        char buffer[512];
+        for (;;) {
+            const ssize_t count = ::recv(client, buffer, sizeof(buffer), 0);
+            if (count == 0) {
+                break;
+            }
+            assert(count > 0);
+            response.append(buffer, static_cast<std::size_t>(count));
+        }
+        assert(response.find("HTTP/1.1 200 OK") != std::string::npos);
+        assert(response.find("\\\"service\\\":\\\"dockstation-cpp-gateway\\\"") !=
+               std::string::npos);
+        ::close(client);
+    }
+
+    finish_server.store(true);
+    server_thread.join();
+    server.stop();
+}
+
 void test_loopback_server() {
     LocalApiServer server;
     assert(server.start(0U));
@@ -331,6 +383,7 @@ int main() {
     test_controller_telemetry_serialization();
     test_routes();
     test_request_parser();
+    test_eight_concurrent_clients();
     test_loopback_server();
     std::cout << "Local API tests passed\n";
     return 0;
