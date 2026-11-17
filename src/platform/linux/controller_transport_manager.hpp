@@ -21,6 +21,7 @@ enum class ControllerTransportStatus : std::uint8_t {
     WouldBlock,
     HandshakeComplete,
     InvalidArgument,
+    DeviceBusy,
     Disconnected,
     PeerClosed,
     TlsFailed,

@@ -491,7 +491,9 @@ void ControllerLinkService::attempt_transport_start(
     if (result.status != ControllerTransportStatus::Started) {
         credentials.clear();
         state_ = ControllerLinkServiceState::LinkLost;
-        error_code_ = "CONTROLLER_UART_OPEN_FAILED";
+        error_code_ = result.status == ControllerTransportStatus::DeviceBusy
+                          ? "CONTROLLER_UART_DEVICE_BUSY"
+                          : "CONTROLLER_UART_OPEN_FAILED";
         next_retry_ms_ = now_ms + kReconnectDelayMilliseconds;
         tls_authenticated_ = false;
         snapshot_request_sent_this_session_ = false;

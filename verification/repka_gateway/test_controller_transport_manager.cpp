@@ -14,6 +14,7 @@
 #include <openssl/obj_mac.h>
 #include <openssl/rand.h>
 #include <openssl/ssl.h>
+#include <sys/file.h>
 #include <unistd.h>
 
 #include "platform/linux/controller_transport_manager.hpp"
@@ -352,6 +353,21 @@ int main() {
     if (pty.master < 0 || pty.slave.empty()) {
         std::cout << "Checks completed: " << checks << ", failures: " << failures << '\n';
         return EXIT_FAILURE;
+    }
+
+    const int lock_fd = ::open(
+        pty.slave.c_str(), O_RDWR | O_NOCTTY | O_NONBLOCK | O_CLOEXEC);
+    expect(lock_fd >= 0 && ::flock(lock_fd, LOCK_EX | LOCK_NB) == 0,
+           "holds a competing lock to simulate another UART owner");
+    ControllerTransportManager busy_manager;
+    const auto busy = busy_manager.start(pty.slave.c_str(), credentials);
+    expect(busy.status == ControllerTransportStatus::DeviceBusy &&
+               busy_manager.is_failed() && !busy_manager.is_started() &&
+               (busy.system_error == EWOULDBLOCK || busy.system_error == EAGAIN),
+           "propagates UART ownership conflict without starting TLS");
+    if (lock_fd >= 0) {
+        (void)::flock(lock_fd, LOCK_UN);
+        (void)::close(lock_fd);
     }
 
     ControllerTransportManager manager;

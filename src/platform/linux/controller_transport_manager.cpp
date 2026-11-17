@@ -13,6 +13,8 @@ namespace {
             return ControllerTransportStatus::Disconnected;
         case ControllerUartStatus::InvalidArgument:
             return ControllerTransportStatus::InvalidArgument;
+        case ControllerUartStatus::Busy:
+            return ControllerTransportStatus::DeviceBusy;
         case ControllerUartStatus::Success:
         case ControllerUartStatus::WouldBlock:
             return ControllerTransportStatus::Progress;

@@ -11,6 +11,7 @@ enum class ControllerUartStatus : std::uint8_t {
     NotOpen,
     InvalidArgument,
     InvalidDevice,
+    Busy,
     Disconnected,
     Failed
 };
@@ -27,6 +28,8 @@ struct ControllerUartIoResult final {
 //
 // The object is deliberately non-copyable and non-movable so a single owner
 // controls open/close and the file descriptor cannot be duplicated by accident.
+// Linux flock serializes cooperating DockStation openers; TIOCEXCL also rejects
+// later opens by unrelated processes that do not participate in that lock.
 class ControllerUartPort final {
 public:
     ControllerUartPort() noexcept = default;

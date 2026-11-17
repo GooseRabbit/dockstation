@@ -3,6 +3,8 @@
 #include <cerrno>
 #include <fcntl.h>
 #include <limits.h>
+#include <sys/file.h>
+#include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <termios.h>
 #include <unistd.h>
@@ -19,6 +21,11 @@ namespace {
     return error_number == EIO || error_number == ENODEV ||
            error_number == ENXIO || error_number == EPIPE ||
            error_number == EBADF;
+}
+
+[[nodiscard]] bool is_busy_error(int error_number) noexcept {
+    return error_number == EBUSY || error_number == EAGAIN ||
+           error_number == EWOULDBLOCK;
 }
 
 }  // namespace
@@ -38,7 +45,11 @@ ControllerUartIoResult ControllerUartPort::open(
     const int descriptor = ::open(
         absolute_device_path, O_RDWR | O_NOCTTY | O_NONBLOCK | O_CLOEXEC);
     if (descriptor < 0) {
-        return make_result(ControllerUartStatus::Failed, errno);
+        const int error_number = errno;
+        return make_result(is_busy_error(error_number)
+                               ? ControllerUartStatus::Busy
+                               : ControllerUartStatus::Failed,
+                           error_number);
     }
 
     struct stat metadata {};
@@ -52,9 +63,30 @@ ControllerUartIoResult ControllerUartPort::open(
         return make_result(ControllerUartStatus::InvalidDevice);
     }
 
+    // flock closes the race between two DockStation instances: the first
+    // opener holds an exclusive advisory lock on this device inode. TIOCEXCL
+    // then asks the kernel to reject subsequent opens by non-cooperating tools.
+    if (::flock(descriptor, LOCK_EX | LOCK_NB) != 0) {
+        const int error_number = errno;
+        (void)::close(descriptor);
+        return make_result(is_busy_error(error_number)
+                               ? ControllerUartStatus::Busy
+                               : ControllerUartStatus::Failed,
+                           error_number);
+    }
+    if (::ioctl(descriptor, TIOCEXCL) != 0) {
+        const int error_number = errno;
+        (void)::close(descriptor);  // Closing also releases the flock.
+        return make_result(is_busy_error(error_number)
+                               ? ControllerUartStatus::Busy
+                               : ControllerUartStatus::Failed,
+                           error_number);
+    }
+
     struct termios settings {};
     if (::tcgetattr(descriptor, &settings) != 0) {
         const int error_number = errno;
+        (void)::ioctl(descriptor, TIOCNXCL);
         (void)::close(descriptor);
         return make_result(ControllerUartStatus::Failed, error_number);
     }
@@ -72,6 +104,7 @@ ControllerUartIoResult ControllerUartPort::open(
         ::cfsetospeed(&settings, B115200) != 0 ||
         ::tcsetattr(descriptor, TCSANOW, &settings) != 0) {
         const int error_number = errno;
+        (void)::ioctl(descriptor, TIOCNXCL);
         (void)::close(descriptor);
         return make_result(ControllerUartStatus::Failed, error_number);
     }
@@ -82,6 +115,8 @@ ControllerUartIoResult ControllerUartPort::open(
 
 void ControllerUartPort::close() noexcept {
     if (file_descriptor_ >= 0) {
+        // The kernel releases TIOCEXCL when the last descriptor for this TTY
+        // closes; close also releases the advisory flock atomically.
         (void)::close(file_descriptor_);
         file_descriptor_ = -1;
     }

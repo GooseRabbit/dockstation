@@ -11,6 +11,7 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <stdlib.h>
+#include <sys/file.h>
 #include <termios.h>
 #include <unistd.h>
 
@@ -100,10 +101,35 @@ int main() {
         return EXIT_FAILURE;
     }
 
+    // Keep one descriptor open before TIOCEXCL so the test can inspect termios.
+    const int inspect_fd = ::open(pty.slave_name.c_str(), O_RDWR | O_NOCTTY | O_NONBLOCK);
+    expect(inspect_fd >= 0, "opens an observer descriptor before exclusive ownership");
+    if (inspect_fd < 0) {
+        std::cerr << "Cannot open PTY observer\\n";
+        return EXIT_FAILURE;
+    }
+
+    expect(::flock(inspect_fd, LOCK_EX | LOCK_NB) == 0,
+           "acquires a competing advisory lock on the same UART device");
+    ControllerUartPort blocked;
+    const auto blocked_result = blocked.open(pty.slave_name.c_str());
+    expect(blocked_result.status == ControllerUartStatus::Busy &&
+               !blocked.is_open() &&
+               (blocked_result.system_error == EWOULDBLOCK ||
+                blocked_result.system_error == EAGAIN),
+           "rejects a concurrent DockStation opener when flock is already held");
+    (void)::flock(inspect_fd, LOCK_UN);
+
     ControllerUartPort port;
     const auto opened = port.open(pty.slave_name.c_str());
     expect(opened.status == ControllerUartStatus::Success && port.is_open(),
-           "opens a character device and configures raw UART mode");
+           "opens a character device and claims exclusive kernel ownership");
+
+    ControllerUartPort competing;
+    const auto competing_result = competing.open(pty.slave_name.c_str());
+    expect(competing_result.status == ControllerUartStatus::Busy &&
+               competing_result.system_error == EBUSY && !competing.is_open(),
+           "kernel TIOCEXCL rejects a later opener that does not use flock");
 
     const auto empty_read = port.read_bytes(buffer.data(), buffer.size());
     expect(empty_read.status == ControllerUartStatus::WouldBlock &&
@@ -111,11 +137,7 @@ int main() {
            "empty non-blocking read reports WouldBlock");
 
     struct termios configured {};
-    const int inspect_fd = ::open(pty.slave_name.c_str(), O_RDWR | O_NOCTTY | O_NONBLOCK);
-    const bool inspected = inspect_fd >= 0 && ::tcgetattr(inspect_fd, &configured) == 0;
-    if (inspect_fd >= 0) {
-        (void)::close(inspect_fd);
-    }
+    const bool inspected = ::tcgetattr(inspect_fd, &configured) == 0;
     expect(inspected && (configured.c_cflag & CSIZE) == CS8 &&
                (configured.c_cflag & PARENB) == 0 &&
                (configured.c_cflag & CSTOPB) == 0 &&
@@ -125,6 +147,7 @@ int main() {
                (configured.c_cflag & CRTSCTS) == 0 &&
                (configured.c_lflag & (ICANON | ECHO | ISIG)) == 0,
            "sets 115200 baud, 8 data bits, no parity, one stop bit, no software flow control");
+    (void)::close(inspect_fd);
 
     constexpr std::array<std::uint8_t, 6U> inbound{{0x17U, 0x03U, 0x03U, 0x00U, 0x01U, 0xA5U}};
     expect(write_all(pty.master, inbound.data(), inbound.size()),
