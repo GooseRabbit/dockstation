@@ -778,6 +778,25 @@ int main() {
                    [](std::uint8_t value) noexcept { return value != 0U; }),
            "exporter proof remains available only while the authenticated TLS session is live");
     OPENSSL_cleanse(adapter_bound_proof.data(), adapter_bound_proof.size());
+
+    // A repeated peer error code in the same authenticated session is accepted
+    // as a report but must not produce another journal entry.
+    const ControllerErrorPayload repeated_subsystem_error{
+        "DHT22_READ_FAILED", ControllerErrorSeverity::Warning,
+        "DHT22 read failed again", "I2C timeout", {}, {}};
+    const auto repeated_error_envelope =
+        peer_envelope(ControllerMessageType::Error, 4U);
+    expect(send_peer_message(peer, pty.master, repeated_error_envelope,
+                             ControllerMessagePayload{repeated_subsystem_error}),
+           "sends a repeated authenticated controller error code");
+    for (std::size_t attempt = 0U;
+         attempt < 64U && e2e_service.status().error_messages_received < 2U;
+         ++attempt) {
+        e2e_service.poll();
+    }
+    expect(e2e_service.status().state == ControllerLinkServiceState::Established &&
+               e2e_service.status().error_messages_received == 2U,
+           "accepts the repeated controller report without losing the authenticated link");
 #if defined(DOCKSTATION_WITH_SQLITE_PERSISTENCE)
     expect(stored_event.event.event_id == expected_event_id,
            "Event ID is bound to pair identity, source, authenticated instance and sequence");
@@ -793,7 +812,7 @@ int main() {
         std::string_view{"weather.temperature"},
         ControllerSubsystemStatus::Pass};
     const auto recovered_envelope =
-        peer_envelope(ControllerMessageType::Error, 4U);
+        peer_envelope(ControllerMessageType::Error, 5U);
     expect(send_peer_message(peer, pty.master, recovered_envelope,
                              ControllerMessagePayload{recovered_subsystem}),
            "sends a newer authenticated PASS observation for the same subsystem");
@@ -803,7 +822,7 @@ int main() {
         e2e_service.poll();
     }
     std::string second_event_id = expected_event_id;
-    second_event_id.replace(second_event_id.size() - 1U, 1U, "4");
+    second_event_id.replace(second_event_id.size() - 1U, 1U, "5");
     const auto second_event = status_store.find_by_id(second_event_id);
     sqlite3_int64 second_history_count = 0;
     std::string second_current_event_id;
@@ -828,8 +847,8 @@ int main() {
            "newer PASS appends history and updates the current pointer without changing StationState");
     const auto advanced_cursor = source_store.read_source_cursor("sensor/esp32");
     expect(advanced_cursor.status == dockstation::core::SourceCursorReadStatus::Found &&
-               advanced_cursor.cursor.last_sequence == std::optional<std::uint64_t>{4U},
-           "second status commit advances the source cursor from sequence 3 to 4");
+               advanced_cursor.cursor.last_sequence == std::optional<std::uint64_t>{5U},
+           "second status commit advances the source cursor from sequence 3 to 5");
 #endif
 
     const auto established_link_status = e2e_service.status();
@@ -856,11 +875,11 @@ int main() {
                e2e_service.telemetry_snapshot().sequence_number() == 2U,
            "rejects the replayed sequence, closes the link and retains the last accepted snapshot");
 #if defined(DOCKSTATION_WITH_SQLITE_PERSISTENCE)
-    expect(event_adapter.statistics().authenticated_messages_received == 3U &&
+    expect(event_adapter.statistics().authenticated_messages_received == 4U &&
                event_adapter.statistics().pipeline_invocations == 2U,
            "a replayed sequence never reaches the authenticated event adapter or SSM pipeline");
 #else
-    expect(event_adapter.statistics().authenticated_messages_received == 2U &&
+    expect(event_adapter.statistics().authenticated_messages_received == 3U &&
                event_adapter.statistics().pipeline_invocations == 1U,
            "a replayed sequence never reaches the authenticated event adapter or SSM pipeline");
 #endif
