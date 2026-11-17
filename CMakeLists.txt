@@ -492,6 +492,16 @@ if(BUILD_TESTING)
     dockstation_apply_compile_policy(test_dht22_telemetry_adapter)
     add_test(NAME dht22_telemetry_adapter COMMAND test_dht22_telemetry_adapter)
 
+    add_executable(test_dht22_sampling_scheduler
+        firmware/esp32/components/controller_dht22_sensor/dht22_sampling_scheduler.cpp
+        verification/repka_gateway/test_dht22_sampling_scheduler.cpp
+    )
+    target_include_directories(test_dht22_sampling_scheduler PRIVATE
+        firmware/esp32/components/controller_dht22_sensor/include
+    )
+    dockstation_apply_compile_policy(test_dht22_sampling_scheduler)
+    add_test(NAME dht22_sampling_scheduler COMMAND test_dht22_sampling_scheduler)
+
     add_executable(test_lid_limit_switch_tracker
         firmware/esp32/components/controller_lid_limit_switches/lid_limit_switch_tracker.cpp
         verification/repka_gateway/test_lid_limit_switch_tracker.cpp

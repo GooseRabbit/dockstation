@@ -160,12 +160,21 @@ or infer freshness. The timestamp format remains the existing open protocol
 decision. Returned string views refer to caller-owned storage, which must stay
 valid while the measurements are used.
 
-This component does **not** read GPIO, generate sensor timing, power a sensor
-or schedule measurements. No sensor pin is assigned and no test value is sent
-to ControllerLink. The decoder and adapter are built by ESP-IDF and checked
-by the host CTest targets `dht22_frame_decoder` and
-`dht22_telemetry_adapter`; host tests do not prove physical sensor operation
-or acquisition timing.
+The component also contains a pure `Dht22SamplingScheduler`. Each
+physical sensor uses its own scheduler instance. The caller initializes it
+with the monotonic timestamp when sensor power was applied and calls
+`try_begin_read()` immediately before each acquisition attempt. The first
+read is blocked until more than 2,000 ms after power-on; later attempts are
+separated by at least 2,000 ms. A permitted attempt consumes its slot even if
+the physical acquisition subsequently fails. A monotonic-clock regression
+blocks further reads until explicit reinitialization.
+
+The scheduler does **not** read GPIO, generate sensor timing, power a sensor,
+create a FreeRTOS task or run a timer. No sensor pin is assigned and no test
+value is sent to ControllerLink. The decoder, adapter and scheduler are built
+by ESP-IDF and checked by the host CTest targets `dht22_frame_decoder`,
+`dht22_telemetry_adapter` and `dht22_sampling_scheduler`; these tests do
+not prove physical sensor operation or acquisition timing.
 
 ## Lid limit-switch state tracker
 
@@ -202,7 +211,7 @@ Not implemented by this scaffold:
 - board-specific UART pin assignment or a running UART connection;
 - the FreeRTOS ControllerLink polling/lifecycle task;
 - GPIO acquisition/pin assignment, motor control or hardware interlocks; the pure lid limit-switch state tracker exists but is not connected to hardware;
-- DHT22 GPIO/timing acquisition, sample scheduling and runtime telemetry publishing; only the pure frame decoder and telemetry adapter exist;
+- DHT22 GPIO/timing acquisition and runtime telemetry publishing; pure frame decoder, telemetry adapter and sampling policy exist, but are not connected to physical acquisition;
 - enabling/configuring Flash Encryption, Secure Boot policy or OTA update;
 - production partition/Flash sizing and final board profile.
 
