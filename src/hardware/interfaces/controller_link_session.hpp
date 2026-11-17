@@ -104,7 +104,8 @@ public:
     // Applies handshake/heartbeat deadlines, emits scheduled HEARTBEAT
     // envelopes, and retries HELLO after a lost link.
     [[nodiscard]] ControllerLinkSessionResult poll(
-        std::uint64_t now_ms, std::string_view sent_at) noexcept;
+        std::uint64_t now_ms, std::string_view sent_at,
+        bool allow_heartbeat = true) noexcept;
 
     // Accepts only HELLO_ACK while handshaking, then HEARTBEAT,
     // TELEMETRY_SNAPSHOT or ERROR from the established peer.
