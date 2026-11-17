@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import json
 import threading
 import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
 
-from repka_gateway.dockstation_gateway.server import create_server
 from dockstation_operator.api.station_api_client import ApiClientError
 from dockstation_operator.config.settings import ConnectionProfile
 from dockstation_operator.connection.connection_manager import ConnectionManager
@@ -59,6 +60,46 @@ def diagnostics_payload():
     }
 
 
+def create_operator_compatible_test_server(port=0, diagnostics_provider=None):
+    """Fake C++ Gateway endpoint for Operator connection lifecycle tests.
+
+    The real Python Gateway deliberately advertises a different implementation
+    identity and must be rejected by StationApiClient.
+    """
+    provider = diagnostics_provider or diagnostics_payload
+
+    class Handler(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def do_GET(self):
+            if self.path == "/api/v1/health":
+                payload = {
+                    "api_version": "1",
+                    "service": "dockstation-cpp-gateway",
+                    "implementation": "cpp",
+                    "status": "PASS",
+                    "read_only": True,
+                }
+            elif self.path == "/api/v1/system/diagnostics":
+                payload = provider()
+            else:
+                self.send_error(404)
+                return
+            body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Connection", "close")
+            self.end_headers()
+            self.wfile.write(body)
+            self.close_connection = True
+
+        def log_message(self, *_args):
+            return
+
+    return ThreadingHTTPServer(("127.0.0.1", port), Handler)
+
+
 class FakeTunnel:
     def __init__(self):
         self.is_running = False
@@ -72,7 +113,7 @@ class FakeTunnel:
 
 def test_connection_manager_exchanges_real_http_with_gateway_and_marks_link_loss():
     payload = diagnostics_payload()
-    server = create_server(port=0, diagnostics_provider=lambda: payload)
+    server = create_operator_compatible_test_server(port=0, diagnostics_provider=lambda: payload)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     tunnel = FakeTunnel()
@@ -144,7 +185,7 @@ def test_failed_connection_attempt_retains_profile_for_a_later_retry():
                 raise SshTunnelError("temporary SSH failure")
             super().start(profile)
 
-    server = create_server(port=0, diagnostics_provider=diagnostics_payload)
+    server = create_operator_compatible_test_server(port=0, diagnostics_provider=diagnostics_payload)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     manager = ConnectionManager(tunnel=InitiallyFailingTunnel())
@@ -172,7 +213,7 @@ def test_failed_connection_attempt_retains_profile_for_a_later_retry():
 def test_connection_manager_recovers_after_gateway_restart_and_reads_fresh_snapshot():
     payload = diagnostics_payload()
     payload["test_marker"] = "before-restart"
-    server = create_server(port=0, diagnostics_provider=lambda: payload)
+    server = create_operator_compatible_test_server(port=0, diagnostics_provider=lambda: payload)
     port = server.server_address[1]
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -198,7 +239,7 @@ def test_connection_manager_recovers_after_gateway_restart_and_reads_fresh_snaps
         assert manager.is_connected is False
 
         payload["test_marker"] = "after-restart"
-        restarted_server = create_server(port=port, diagnostics_provider=lambda: payload)
+        restarted_server = create_operator_compatible_test_server(port=port, diagnostics_provider=lambda: payload)
         restarted_thread = threading.Thread(
             target=restarted_server.serve_forever, daemon=True
         )
@@ -226,7 +267,7 @@ def test_connection_manager_allows_slow_diagnostics_beyond_health_timeout():
         time.sleep(2.2)
         return payload
 
-    server = create_server(port=0, diagnostics_provider=slow_diagnostics)
+    server = create_operator_compatible_test_server(port=0, diagnostics_provider=slow_diagnostics)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     manager = ConnectionManager(tunnel=FakeTunnel())
