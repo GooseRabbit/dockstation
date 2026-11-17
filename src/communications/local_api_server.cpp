@@ -406,11 +406,15 @@ LocalApiServeResult LocalApiServer::serve_once(int timeout_milliseconds) {
     }
 
     const auto now = std::chrono::steady_clock::now();
-    for (std::size_t index = 0; index < clients_.size();) {
+    // Walk the polled clients backwards: erasing a completed connection then
+    // cannot change the descriptor-to-client indices of earlier entries.
+    const std::size_t polled_clients =
+        std::min(clients_.size(), descriptors.size() - 1U);
+    for (std::size_t poll_index = polled_clients; poll_index > 0U; --poll_index) {
+        const std::size_t index = poll_index - 1U;
         Client& client = clients_[index];
         bool close_client = now >= client.deadline;
-        const short events = index + 1U < descriptors.size()
-            ? descriptors[index + 1U].revents : 0;
+        const short events = descriptors[poll_index].revents;
         if (!close_client && (events & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
             close_client = true;
         }
@@ -492,8 +496,6 @@ LocalApiServeResult LocalApiServer::serve_once(int timeout_milliseconds) {
         if (close_client) {
             ::close(client.descriptor);
             clients_.erase(clients_.begin() + static_cast<std::ptrdiff_t>(index));
-        } else {
-            ++index;
         }
     }
 
