@@ -557,6 +557,10 @@ std::string serialize_system_diagnostics(
            << ",\"network\":" << serialize_network(network)
            << ",\"controller_telemetry\":"
            << serialize_controller_telemetry(controller_link_status, telemetry_snapshot)
+           << ",\"controller_link\":"
+           << serialize_controller_link_status(controller_link_status == nullptr
+                   ? platform::linux_platform::ControllerLinkServiceStatus{}
+                   : *controller_link_status)
            << ",\"scope\":{\"read_only\":true,"
            << "\"hardware_controller_connected\":"
            << (hardware_controller_connected ? "true" : "false") << ","
