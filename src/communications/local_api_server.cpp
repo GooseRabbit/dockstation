@@ -26,6 +26,7 @@ namespace {
 
 constexpr std::size_t kMaximumHttpRequestBytes = 8192U;
 constexpr int kClientIoTimeoutMilliseconds = 2500;
+constexpr std::size_t kMaximumHttpClients = 8U;
 constexpr std::size_t kMaximumHeaderCount = 64U;
 
 bool set_nonblocking(int descriptor) {
@@ -235,75 +236,6 @@ ApiResponse dispatch_api_request_impl(
             serialize_error_response("NOT_FOUND", "API route not found"), {}};
 }
 
-bool read_request(int descriptor, std::string& request) {
-    const auto deadline = std::chrono::steady_clock::now() +
-        std::chrono::milliseconds{kClientIoTimeoutMilliseconds};
-    char buffer[1024];
-    for (;;) {
-        const auto now = std::chrono::steady_clock::now();
-        if (now >= deadline) {
-            return false;
-        }
-        const auto remaining =
-            std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now);
-        const int wait_ms = static_cast<int>(
-            std::max<std::int64_t>(1, std::min<std::int64_t>(remaining.count(), 500)));
-        if (!wait_for(descriptor, POLLIN, wait_ms)) {
-            continue;
-        }
-        const ssize_t count = ::recv(descriptor, buffer, sizeof(buffer), 0);
-        if (count == 0) {
-            return false;
-        }
-        if (count < 0) {
-            if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) {
-                continue;
-            }
-            return false;
-        }
-        request.append(buffer, static_cast<std::size_t>(count));
-        if (request.size() > kMaximumHttpRequestBytes) {
-            return true;
-        }
-        if (request.find("\r\n\r\n") != std::string::npos) {
-            return true;
-        }
-    }
-}
-
-bool send_all(int descriptor, const std::string& response) {
-    std::size_t offset = 0U;
-    const auto deadline = std::chrono::steady_clock::now() +
-        std::chrono::milliseconds{kClientIoTimeoutMilliseconds};
-    while (offset < response.size()) {
-        const auto now = std::chrono::steady_clock::now();
-        if (now >= deadline) {
-            return false;
-        }
-        const auto remaining =
-            std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now);
-        const int wait_ms = static_cast<int>(
-            std::max<std::int64_t>(1, std::min<std::int64_t>(remaining.count(), 500)));
-        if (!wait_for(descriptor, POLLOUT, wait_ms)) {
-            continue;
-        }
-        const ssize_t count = ::send(
-            descriptor, response.data() + offset, response.size() - offset,
-            MSG_NOSIGNAL);
-        if (count < 0) {
-            if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) {
-                continue;
-            }
-            return false;
-        }
-        if (count == 0) {
-            return false;
-        }
-        offset += static_cast<std::size_t>(count);
-    }
-    return true;
-}
-
 std::string build_http_response(const ApiResponse& response) {
     std::string result = "HTTP/1.1 " + std::to_string(response.status_code) +
         " " + response.reason_phrase + "\r\n"
@@ -318,37 +250,6 @@ std::string build_http_response(const ApiResponse& response) {
     result += "\r\n";
     result += response.body;
     return result;
-}
-
-void process_client(
-    int descriptor,
-    const platform::linux_platform::ControllerLinkService* controller_link) {
-    std::string raw_request;
-    raw_request.reserve(1024U);
-    ApiResponse response{};
-    if (!read_request(descriptor, raw_request)) {
-        response = {
-            400U, "Bad Request",
-            serialize_error_response("INVALID_HTTP_REQUEST",
-                                     "HTTP request could not be read"),
-            {}};
-    } else {
-        const HttpParseResult parsed = parse_http_request_impl(raw_request);
-        if (!parsed.valid) {
-            response = parsed.too_large
-                ? ApiResponse{413U, "Payload Too Large",
-                              serialize_error_response("REQUEST_TOO_LARGE",
-                                                       "HTTP request exceeds the 8192-byte limit"),
-                              {}}
-                : ApiResponse{400U, "Bad Request",
-                              serialize_error_response("INVALID_HTTP_REQUEST",
-                                                       parsed.error),
-                              {}};
-        } else {
-            response = dispatch_api_request_impl(parsed.request, controller_link);
-        }
-    }
-    (void)send_all(descriptor, build_http_response(response));
 }
 
 bool write_log(platform::logging::LogLevel level,
@@ -446,59 +347,165 @@ LocalApiServeResult LocalApiServer::serve_once(int timeout_milliseconds) {
         error_ = "Local API server is not running";
         return LocalApiServeResult::Error;
     }
-    struct pollfd item {};
-    item.fd = listen_descriptor_;
-    item.events = POLLIN;
-    const int poll_result =
-        ::poll(&item, 1, std::max(0, timeout_milliseconds));
-    if (poll_result == 0) {
-        return LocalApiServeResult::TimedOut;
+
+    // One poll call services the listener and every active client. No client
+    // performs a blocking read/write, so the caller can poll ControllerLink
+    // again on the next event-loop iteration.
+    std::vector<struct pollfd> descriptors;
+    descriptors.reserve(clients_.size() + 1U);
+    descriptors.push_back({listen_descriptor_, POLLIN, 0});
+    for (const Client& client : clients_) {
+        descriptors.push_back({
+            client.descriptor,
+            static_cast<short>(client.responding ? POLLOUT : POLLIN),
+            0});
     }
-    if (poll_result < 0) {
-        if (errno == EINTR) {
-            return LocalApiServeResult::TimedOut;
-        }
-        error_ = std::string{"API listener poll failed: "} + std::strerror(errno);
-        return LocalApiServeResult::Error;
-    }
-    if ((item.revents & POLLIN) == 0) {
-        error_ = "API listener reported an unexpected poll state";
+
+    const int poll_result = ::poll(
+        descriptors.data(), static_cast<nfds_t>(descriptors.size()),
+        std::max(0, timeout_milliseconds));
+    if (poll_result < 0 && errno != EINTR) {
+        error_ = std::string{"API event poll failed: "} + std::strerror(errno);
         return LocalApiServeResult::Error;
     }
 
-    struct sockaddr_in client_address {};
-    socklen_t client_length = sizeof(client_address);
-    const int client = ::accept(
-        listen_descriptor_,
-        reinterpret_cast<struct sockaddr*>(&client_address),
-        &client_length);
-    if (client < 0) {
-        if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) {
-            return LocalApiServeResult::TimedOut;
+    bool handled = false;
+    if (poll_result > 0 && (descriptors.front().revents & POLLIN) != 0) {
+        // Drain the accept queue, but never exceed the explicit active-client cap.
+        while (clients_.size() < kMaximumHttpClients) {
+            struct sockaddr_in client_address {};
+            socklen_t client_length = sizeof(client_address);
+            const int client_fd = ::accept(
+                listen_descriptor_,
+                reinterpret_cast<struct sockaddr*>(&client_address),
+                &client_length);
+            if (client_fd < 0) {
+                if (errno == EINTR) {
+                    continue;
+                }
+                if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    break;
+                }
+                error_ = std::string{"API accept failed: "} + std::strerror(errno);
+                return LocalApiServeResult::Error;
+            }
+            const int descriptor_flags = ::fcntl(client_fd, F_GETFD, 0);
+            if (!set_nonblocking(client_fd) || descriptor_flags < 0 ||
+                ::fcntl(client_fd, F_SETFD, descriptor_flags | FD_CLOEXEC) != 0) {
+                ::close(client_fd);
+                continue;
+            }
+            Client accepted{};
+            accepted.descriptor = client_fd;
+            accepted.deadline = std::chrono::steady_clock::now() +
+                std::chrono::milliseconds{kClientIoTimeoutMilliseconds};
+            accepted.request.reserve(1024U);
+            clients_.push_back(std::move(accepted));
+            handled = true;
         }
-        error_ = std::string{"API accept failed: "} + std::strerror(errno);
-        return LocalApiServeResult::Error;
     }
-    if (!set_nonblocking(client)) {
-        error_ = std::string{"Cannot configure API client socket: "} +
-                 std::strerror(errno);
-        ::close(client);
-        return LocalApiServeResult::Error;
+
+    const auto now = std::chrono::steady_clock::now();
+    for (std::size_t index = 0; index < clients_.size();) {
+        Client& client = clients_[index];
+        bool close_client = now >= client.deadline;
+        const short events = index + 1U < descriptors.size()
+            ? descriptors[index + 1U].revents : 0;
+        if (!close_client && (events & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
+            close_client = true;
+        }
+
+        if (!close_client && !client.responding && (events & POLLIN) != 0) {
+            char buffer[1024];
+            for (;;) {
+                const ssize_t count = ::recv(client.descriptor, buffer, sizeof(buffer), 0);
+                if (count > 0) {
+                    client.request.append(buffer, static_cast<std::size_t>(count));
+                    if (client.request.size() > kMaximumHttpRequestBytes ||
+                        client.request.find("\r\n\r\n") != std::string::npos) {
+                        break;
+                    }
+                    continue;
+                }
+                if (count == 0) {
+                    close_client = true;
+                } else if (errno != EINTR && errno != EAGAIN && errno != EWOULDBLOCK) {
+                    close_client = true;
+                }
+                if (count < 0 && errno == EINTR) {
+                    continue;
+                }
+                break;
+            }
+
+            if (!close_client &&
+                (client.request.size() > kMaximumHttpRequestBytes ||
+                 client.request.find("\r\n\r\n") != std::string::npos)) {
+                ApiResponse response{};
+                if (client.request.size() > kMaximumHttpRequestBytes) {
+                    response = {413U, "Payload Too Large",
+                        serialize_error_response("REQUEST_TOO_LARGE",
+                            "HTTP request exceeds the 8192-byte limit"), {}};
+                } else {
+                    const HttpParseResult parsed = parse_http_request_impl(client.request);
+                    if (!parsed.valid) {
+                        response = {400U, "Bad Request",
+                            serialize_error_response("INVALID_HTTP_REQUEST", parsed.error), {}};
+                    } else {
+                        response = dispatch_api_request_impl(parsed.request, controller_link_);
+                    }
+                }
+                client.response = build_http_response(response);
+                client.responding = true;
+                client.deadline = std::chrono::steady_clock::now() +
+                    std::chrono::milliseconds{kClientIoTimeoutMilliseconds};
+                handled = true;
+            }
+        }
+
+        if (!close_client && client.responding && (events & POLLOUT) != 0) {
+            while (client.response_offset < client.response.size()) {
+                const ssize_t count = ::send(
+                    client.descriptor,
+                    client.response.data() + client.response_offset,
+                    client.response.size() - client.response_offset,
+                    MSG_NOSIGNAL);
+                if (count > 0) {
+                    client.response_offset += static_cast<std::size_t>(count);
+                    continue;
+                }
+                if (count < 0 && errno == EINTR) {
+                    continue;
+                }
+                if (count < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+                    break;
+                }
+                close_client = true;
+                break;
+            }
+            if (client.response_offset == client.response.size()) {
+                close_client = true;
+                handled = true;
+            }
+        }
+
+        if (close_client) {
+            ::close(client.descriptor);
+            clients_.erase(clients_.begin() + static_cast<std::ptrdiff_t>(index));
+        } else {
+            ++index;
+        }
     }
-    const int descriptor_flags = ::fcntl(client, F_GETFD, 0);
-    if (descriptor_flags < 0 ||
-        ::fcntl(client, F_SETFD, descriptor_flags | FD_CLOEXEC) != 0) {
-        error_ = std::string{"Cannot set close-on-exec for API client socket: "} +
-                 std::strerror(errno);
-        ::close(client);
-        return LocalApiServeResult::Error;
-    }
-    process_client(client, controller_link_);
-    ::close(client);
-    return LocalApiServeResult::Handled;
+
+    return handled ? LocalApiServeResult::Handled
+                   : LocalApiServeResult::TimedOut;
 }
 
 void LocalApiServer::stop() noexcept {
+    for (const Client& client : clients_) {
+        ::close(client.descriptor);
+    }
+    clients_.clear();
     if (listen_descriptor_ >= 0) {
         ::close(listen_descriptor_);
         listen_descriptor_ = -1;
