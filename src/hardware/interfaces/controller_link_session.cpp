@@ -114,7 +114,8 @@ ControllerLinkSessionResult ControllerLinkSession::request_snapshot(
 }
 
 ControllerLinkSessionResult ControllerLinkSession::poll(
-    std::uint64_t now_ms, std::string_view sent_at) noexcept {
+    std::uint64_t now_ms, std::string_view sent_at,
+    bool allow_heartbeat) noexcept {
     if (!configured_) {
         return make_result(ControllerLinkSessionStatus::InvalidConfiguration,
                            ControllerLinkSessionEvent::None);
@@ -144,7 +145,8 @@ ControllerLinkSessionResult ControllerLinkSession::poll(
                 return make_result(ControllerLinkSessionStatus::HeartbeatTimeout,
                                    ControllerLinkSessionEvent::LinkLost);
             }
-            if (elapsed_at_least(now_ms, last_outbound_message_ms_,
+            if (allow_heartbeat &&
+                elapsed_at_least(now_ms, last_outbound_message_ms_,
                                  heartbeat_interval_ms_)) {
                 return make_outbound(ControllerMessageType::Heartbeat,
                                      ControllerLinkSessionEvent::HeartbeatDue,
