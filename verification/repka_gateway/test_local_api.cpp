@@ -328,6 +328,11 @@ void test_loopback_server() {
     // completes a normal request.
     const int slow_client = ::socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, IPPROTO_TCP);
     assert(slow_client >= 0);
+    struct timeval slow_timeout {};
+    slow_timeout.tv_sec = 3;
+    slow_timeout.tv_usec = 0;
+    assert(::setsockopt(slow_client, SOL_SOCKET, SO_RCVTIMEO,
+                        &slow_timeout, sizeof(slow_timeout)) == 0);
     struct sockaddr_in slow_address {};
     slow_address.sin_family = AF_INET;
     slow_address.sin_port = htons(status.port);
