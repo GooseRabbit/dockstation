@@ -47,6 +47,18 @@ def test_qml_prototype_loads_with_the_seven_approved_tabs():
             assert page.property("contentWidth") > 0
         roots[0].setProperty("currentTab", 0)
         app.processEvents()
+        link_panel = roots[0].findChild(QObject, "sensors.controller-link")
+        assert link_panel is not None, "ControllerLink needs a visible status panel."
+        assert "не настроено" in bridge.controllerLinkSummary
+        bridge.model.apply_diagnostics({
+            "controller_link": {
+                "status": "LINK_LOST", "state": "LINK_LOST",
+                "tls_authenticated": False, "protocol_established": False,
+                "telemetry_snapshots_received": 0, "error_messages_received": 0,
+                "rejected_frames": 0, "error_code": "CONTROLLER_UART_DEVICE_BUSY",
+            }
+        })
+        assert "UART занят другим процессом" in bridge.controllerLinkSummary
         telemetry_panel = roots[0].findChild(QObject, "sensors.controller-telemetry")
         assert telemetry_panel is not None, "Accepted ESP32 telemetry needs its own panel."
         assert bridge.controllerTelemetry == []
