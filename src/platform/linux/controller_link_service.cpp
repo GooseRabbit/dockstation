@@ -239,24 +239,18 @@ void ControllerLinkService::set_state(
         last_reported_controller_error_code_.fill('\0');
     }
 
-    // Logging is best-effort: an allocation or sink failure must never break
-    // the ControllerLink state machine or its noexcept polling path.
-    try {
-        using platform::logging::LogLevel;
-        const LogLevel level = next_state == ControllerLinkServiceState::Error
-            ? LogLevel::Error
-            : (next_state == ControllerLinkServiceState::LinkLost ||
-               safe_error_code[0] != '\0')
-                ? LogLevel::Warning
-                : LogLevel::Info;
-        (void)platform::logging::write_log_record(
-            level, "ControllerLink", "ControllerLink state transition",
-            {{"from_state", controller_link_state_name(previous_state)},
-             {"to_state", controller_link_state_name(next_state)},
-             {"error_code", safe_error_code}});
-    } catch (...) {
-        // State tracking remains authoritative if the optional journal is unavailable.
-    }
+    using platform::logging::LogLevel;
+    const LogLevel level = next_state == ControllerLinkServiceState::Error
+        ? LogLevel::Error
+        : (next_state == ControllerLinkServiceState::LinkLost ||
+           safe_error_code[0] != '\0')
+            ? LogLevel::Warning
+            : LogLevel::Info;
+    (void)platform::logging::write_log_record(
+        level, "ControllerLink", "ControllerLink state transition",
+        {{"from_state", controller_link_state_name(previous_state)},
+         {"to_state", controller_link_state_name(next_state)},
+         {"error_code", safe_error_code}});
 }
 
 void ControllerLinkService::log_controller_error(
@@ -293,27 +287,23 @@ void ControllerLinkService::log_controller_error(
             break;
     }
 
-    try {
-        std::vector<platform::logging::LogField> fields{
-            {"controller_error_code", std::string{code}},
-            {"severity", controller_error_severity_name(error.severity)},
-            {"sequence_number", std::to_string(sequence_number)}};
-        if (error.subsystem_id.has_value()) {
-            fields.push_back({"subsystem_id", std::string{*error.subsystem_id}});
-        }
-        if (error.subsystem_status.has_value()) {
-            fields.push_back({"subsystem_status",
-                              controller_subsystem_status_name(*error.subsystem_status)});
-        }
-
-        // Do not log free-form description/reason text: structured codes are enough
-        // for diagnosis and avoid accidentally copying sensitive peer-provided text.
-        (void)platform::logging::write_log_record(
-            level, "ControllerLink", "Authenticated controller reported an error",
-            fields);
-    } catch (...) {
-        // Peer diagnostics are optional; never let journal allocation affect ingress.
+    std::vector<platform::logging::LogField> fields{
+        {"controller_error_code", std::string{code}},
+        {"severity", controller_error_severity_name(error.severity)},
+        {"sequence_number", std::to_string(sequence_number)}};
+    if (error.subsystem_id.has_value()) {
+        fields.push_back({"subsystem_id", std::string{*error.subsystem_id}});
     }
+    if (error.subsystem_status.has_value()) {
+        fields.push_back({"subsystem_status",
+                          controller_subsystem_status_name(*error.subsystem_status)});
+    }
+
+    // Do not log free-form description/reason text: structured codes are enough
+    // for diagnosis and avoid accidentally copying sensitive peer-provided text.
+    (void)platform::logging::write_log_record(
+        level, "ControllerLink", "Authenticated controller reported an error",
+        fields);
 }
 
 ControllerLinkServiceStatus ControllerLinkService::start(
