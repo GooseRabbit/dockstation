@@ -393,9 +393,11 @@ class QmlOperatorBridge(QObject):
     @Property(str, notify=viewChanged)
     def controllerLinkSummary(self) -> str:
         snapshot = self.model.snapshot
-        link = snapshot.get("controller_link", {}) if isinstance(snapshot, dict) else {}
+        if not isinstance(snapshot, dict) or "controller_link" not in snapshot:
+            return "Gateway пока не передаёт состояние канала Repka–ESP32."
+        link = snapshot.get("controller_link")
         if not isinstance(link, dict):
-            return "Gateway не передал состояние канала Repka–ESP32."
+            return "Gateway передал некорректное состояние канала Repka–ESP32."
         status = link.get("status", "NOT_CONFIGURED")
         error_code = link.get("error_code", "")
         if status == "OK":
