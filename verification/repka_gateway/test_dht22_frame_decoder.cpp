@@ -13,9 +13,9 @@ int failures = 0;
 void expect(bool condition, const char* description) {
     ++checks;
     if (condition) {
-        std::cout << "PASS - " << description << '\\n';
+        std::cout << "PASS - " << description << '\n';
     } else {
-        std::cerr << "FAIL - " << description << '\\n';
+        std::cerr << "FAIL - " << description << '\n';
         ++failures;
     }
 }
@@ -140,6 +140,6 @@ int main() {
                reading.relative_humidity_tenths_percent == 0U,
            "oversized frame is rejected and output is cleared");
 
-    std::cout << "Checks: " << checks << ", failures: " << failures << '\\n';
+    std::cout << "Checks: " << checks << ", failures: " << failures << '\n';
     return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
