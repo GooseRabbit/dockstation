@@ -223,9 +223,10 @@ history for the current controller boot.
 Host interop/integration tests connect the OpenSSL client to upstream Mbed TLS
 3.6.7 over a POSIX socket pair. They cover TLS handshake, exporter parity,
 wrong PSK/identity rejection, bidirectional encrypted data, HELLO/HELLO_ACK,
-exporter gating and REQUEST_SNAPSHOT/TELEMETRY_SNAPSHOT. This host acceptance
-is separate from the Espressif-fork ESP-IDF target build and from physical
-UART/board acceptance.
+exporter gating and REQUEST_SNAPSHOT/TELEMETRY_SNAPSHOT. In this host build,
+ESP-IDF-specific entropy calls are excluded and Mbed TLS uses its platform
+entropy source. This host acceptance is separate from the Espressif-fork
+ESP-IDF target build and from physical UART/board acceptance.
 
 The current CI sdkconfig does not enable Flash Encryption and the current
 default partition table has no production-provisioned `nvs_keys` partition.
