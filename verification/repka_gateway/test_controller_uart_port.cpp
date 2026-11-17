@@ -105,7 +105,7 @@ int main() {
     const int inspect_fd = ::open(pty.slave_name.c_str(), O_RDWR | O_NOCTTY | O_NONBLOCK);
     expect(inspect_fd >= 0, "opens an observer descriptor before exclusive ownership");
     if (inspect_fd < 0) {
-        std::cerr << "Cannot open PTY observer\\n";
+        std::cerr << "Cannot open PTY observer\n";
         return EXIT_FAILURE;
     }
 
