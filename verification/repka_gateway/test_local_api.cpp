@@ -174,6 +174,16 @@ void test_controller_telemetry_serialization() {
     assert(live_payload.find("\"controller_telemetry\":{\"status\":\"PASS\"") !=
            std::string::npos);
 
+    dockstation::platform::linux_platform::ControllerLinkServiceStatus busy{};
+    busy.state = dockstation::platform::linux_platform::ControllerLinkServiceState::LinkLost;
+    busy.error_code = "CONTROLLER_UART_DEVICE_BUSY";
+    const auto busy_payload =
+        dockstation::communications::serialize_system_diagnostics(&busy);
+    assert(busy_payload.find("\"controller_link\":{\"status\":\"LINK_LOST\"") !=
+           std::string::npos);
+    assert(busy_payload.find("\"error_code\":\"CONTROLLER_UART_DEVICE_BUSY\"") !=
+           std::string::npos);
+
     const auto unavailable =
         dockstation::communications::serialize_system_diagnostics();
     assert(unavailable.find(
