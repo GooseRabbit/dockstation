@@ -663,7 +663,7 @@ int main() {
         } else {
             std::cerr << "(none)";
         }
-        std::cerr << '\\n';
+        std::cerr << '\n';
     }
     expect(periodic_snapshot_received &&
                peer_message.envelope.type == ControllerMessageType::RequestSnapshot &&
@@ -945,7 +945,7 @@ int main() {
         } else {
             std::cerr << "(none)";
         }
-        std::cerr << '\\n';
+        std::cerr << '\n';
     }
     expect(reconnect_tls_completed && e2e_service.status().tls_authenticated,
            "reconnect completes a new TLS 1.3 PSK-DHE handshake");
