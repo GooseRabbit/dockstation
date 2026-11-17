@@ -1,7 +1,8 @@
 #pragma once
 
-#include <csignal>
 #include <chrono>
+#include <csignal>
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
