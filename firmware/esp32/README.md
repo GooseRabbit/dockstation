@@ -144,7 +144,8 @@ records.
 
 ## DHT22 / AM2302 frame decoder
 
-`components/controller_dht22_sensor/` contains a pure five-byte frame decoder. It validates the exact frame length and checksum,
+`components/controller_dht22_sensor/` contains a pure five-byte frame decoder.
+It validates the exact frame length and checksum,
 decodes humidity and temperature in tenths, handles the temperature sign bit,
 and rejects values outside 0–99.9 %RH and −40.0…+80.0 °C. The output is
 cleared on every failure. Keeping integer tenths avoids premature rounding.

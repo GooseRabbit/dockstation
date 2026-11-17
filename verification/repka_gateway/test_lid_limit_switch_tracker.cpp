@@ -57,7 +57,7 @@ int main() {
 
     {
         LidLimitSwitchTracker tracker(configured_pair());
-        tracker.update(true, true, 0U);
+        static_cast<void>(tracker.update(true, true, 0U));
         auto snapshot = tracker.update(true, true, 10U);
         expect(snapshot.position == LidPositionStatus::Open,
                "test setup reaches stable OPEN");
@@ -75,7 +75,7 @@ int main() {
 
     {
         LidLimitSwitchTracker tracker(configured_pair());
-        tracker.update(false, false, 0U);
+        static_cast<void>(tracker.update(false, false, 0U));
         auto snapshot = tracker.update(false, false, 10U);
         expect(snapshot.position == LidPositionStatus::Closed,
                "explicit active-low closed switch confirms CLOSED");
@@ -98,7 +98,7 @@ int main() {
 
     {
         LidLimitSwitchTracker tracker(configured_pair());
-        tracker.update(true, false, 0U);
+        static_cast<void>(tracker.update(true, false, 0U));
         auto snapshot = tracker.update(true, false, 10U);
         expect(snapshot.position == LidPositionStatus::Unknown,
                "simultaneously active open and closed limits are contradictory");
@@ -130,7 +130,7 @@ int main() {
 
     {
         LidLimitSwitchTracker tracker(configured_pair());
-        tracker.update(true, true, 0U);
+        static_cast<void>(tracker.update(true, true, 0U));
         auto snapshot = tracker.update(std::nullopt, true, 10U);
         expect(snapshot.open_limit == LimitSwitchSignalStatus::Unknown &&
                    snapshot.position == LidPositionStatus::Unknown,
@@ -143,7 +143,7 @@ int main() {
 
     {
         LidLimitSwitchTracker tracker(configured_pair());
-        tracker.update(true, true, 100U);
+        static_cast<void>(tracker.update(true, true, 100U));
         const auto backwards = tracker.update(true, true, 90U);
         expect(backwards.update_status ==
                    LidLimitSwitchUpdateStatus::MonotonicTimeWentBackwards &&
@@ -157,7 +157,7 @@ int main() {
 
     {
         LidLimitSwitchTracker tracker(configured_pair());
-        tracker.update(true, true, 0U);
+        static_cast<void>(tracker.update(true, true, 0U));
         tracker.configure(configured_pair(20U));
         auto snapshot = tracker.update(true, true, 100U);
         expect(snapshot.position == LidPositionStatus::Transitioning,
