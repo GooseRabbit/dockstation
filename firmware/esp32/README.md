@@ -142,13 +142,32 @@ digits, `_`, `-`, `.` or `:`. The loader rejects missing, malformed or
 identical values and clears its output on failure. It never creates or repairs
 records.
 
+## DHT22 / AM2302 frame decoder
+
+`components/controller_dht22_sensor/` currently contains only a pure
+five-byte frame decoder. It validates the exact frame length and checksum,
+decodes humidity and temperature in tenths, handles the temperature sign bit,
+and rejects values outside 0–99.9 %RH and −40.0…+80.0 °C. The output is
+cleared on every failure. Keeping integer tenths avoids premature rounding.
+
+This component does **not** read GPIO, generate sensor timing, power a sensor,
+schedule measurements or publish telemetry. No sensor pin is assigned and
+no test value is sent to ControllerLink. The same decoder source is built by
+ESP-IDF and by the host CTest target `dht22_frame_decoder`.
+
+The [Aosong AM2302 technical manual](https://aosong.com/uploadfiles/2025/04/20250417105409216.pdf)
+defines the 40-bit frame, field order, scale, sign bit and checksum, and lists
+the measurement range. It also specifies a minimum two-second interval between
+reads and a wait of more than two seconds after power-up. These limits must be
+respected by the future acquisition task.
+
 Not implemented by this scaffold:
 
 - a provisioning writer/utility for PSK, PSK identity or stable controller IDs;
 - board-specific UART pin assignment or a running UART connection;
 - the FreeRTOS ControllerLink polling/lifecycle task;
 - GPIO, lid limit switches, motor control or interlocks;
-- DHT22 acquisition or any other sensor driver;
+- DHT22 GPIO/timing acquisition, sample scheduling and telemetry integration; only the pure frame decoder exists;
 - enabling/configuring Flash Encryption, Secure Boot policy or OTA update;
 - production partition/Flash sizing and final board profile.
 
