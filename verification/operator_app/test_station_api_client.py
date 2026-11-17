@@ -188,6 +188,23 @@ def test_validate_diagnostics_response_accepts_controller_telemetry():
     StationApiClient.validate_diagnostics_response(payload)
 
 
+def test_validate_diagnostics_response_accepts_invalid_non_finite_number_as_null():
+    payload = valid_diagnostics()
+    telemetry = valid_controller_telemetry()
+    telemetry["measurements"][0].update(value=None, quality_status="INVALID")
+    payload["controller_telemetry"] = telemetry
+    StationApiClient.validate_diagnostics_response(payload)
+
+
+def test_validate_diagnostics_response_rejects_null_number_without_invalid_quality():
+    payload = valid_diagnostics()
+    telemetry = valid_controller_telemetry()
+    telemetry["measurements"][0].update(value=None, quality_status="OK")
+    payload["controller_telemetry"] = telemetry
+    with pytest.raises(ApiClientError):
+        StationApiClient.validate_diagnostics_response(payload)
+
+
 def test_validate_diagnostics_response_remains_compatible_without_controller_telemetry():
     payload = valid_diagnostics()
     assert "controller_telemetry" not in payload

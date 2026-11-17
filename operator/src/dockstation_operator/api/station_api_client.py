@@ -174,6 +174,9 @@ def _validate_controller_telemetry(value: object) -> None:
         value_type = measurement.get("value_type")
         if not isinstance(value_type, str) or value_type not in _TELEMETRY_VALUE_TYPES:
             raise ApiClientError(f"Поле {label}.value_type содержит неизвестный тип.")
+        quality = measurement.get("quality_status")
+        if not isinstance(quality, str) or quality not in _TELEMETRY_QUALITY_STATUSES:
+            raise ApiClientError(f"Поле {label}.quality_status содержит неизвестное качество.")
         measured_value = measurement.get("value")
         if value_type == "BOOLEAN":
             valid_value = isinstance(measured_value, bool)
@@ -188,7 +191,11 @@ def _validate_controller_telemetry(value: object) -> None:
                 and 0 <= measured_value <= max_uint64
             )
         elif value_type == "NUMBER":
+            # Defensive Gateway fallback for non-finite binary64 values:
+            # JSON null is accepted only when the measurement is INVALID.
             valid_value = (
+                measured_value is None and quality == "INVALID"
+            ) or (
                 isinstance(measured_value, (int, float))
                 and not isinstance(measured_value, bool)
                 and math.isfinite(measured_value)
@@ -197,9 +204,6 @@ def _validate_controller_telemetry(value: object) -> None:
             valid_value = isinstance(measured_value, str)
         if not valid_value:
             raise ApiClientError(f"Поле {label}.value не соответствует value_type.")
-        quality = measurement.get("quality_status")
-        if not isinstance(quality, str) or quality not in _TELEMETRY_QUALITY_STATUSES:
-            raise ApiClientError(f"Поле {label}.quality_status содержит неизвестное качество.")
 
     if status == "PASS" and (not link_connected or not measurements):
         raise ApiClientError("Статус controller_telemetry=PASS требует активный канал и измерения.")

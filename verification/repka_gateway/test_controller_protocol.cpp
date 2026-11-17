@@ -205,14 +205,27 @@ int main() {
                ControllerPayloadValidationStatus::UnknownSensorQuality,
            "rejects an out-of-range sensor quality value");
 
-    invalid_measurement = measurements[0];
-    invalid_measurement.value = std::numeric_limits<double>::quiet_NaN();
-    const ControllerTelemetryMeasurement non_finite_value[] = {invalid_measurement};
-    expect(validate_controller_message_payload(
-               ControllerMessageType::TelemetrySnapshot,
-               ControllerTelemetrySnapshotPayload{non_finite_value, 1U}).status ==
-               ControllerPayloadValidationStatus::NonFiniteMeasurementValue,
-           "rejects a non-finite numeric sensor value");
+    const double non_finite_values[] = {
+        std::numeric_limits<double>::quiet_NaN(),
+        std::numeric_limits<double>::infinity(),
+        -std::numeric_limits<double>::infinity(),
+    };
+    const char* non_finite_names[] = {
+        "rejects NaN sensor values",
+        "rejects positive infinity sensor values",
+        "rejects negative infinity sensor values",
+    };
+    for (std::size_t index = 0U; index < 3U; ++index) {
+        invalid_measurement = measurements[0];
+        invalid_measurement.value = non_finite_values[index];
+        const ControllerTelemetryMeasurement non_finite_value[] = {
+            invalid_measurement};
+        expect(validate_controller_message_payload(
+                   ControllerMessageType::TelemetrySnapshot,
+                   ControllerTelemetrySnapshotPayload{non_finite_value, 1U}).status ==
+                   ControllerPayloadValidationStatus::NonFiniteMeasurementValue,
+               non_finite_names[index]);
+    }
 
     const ControllerErrorPayload error_payload{
         "SENSOR_READ_FAILED",

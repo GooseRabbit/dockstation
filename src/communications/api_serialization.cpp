@@ -156,6 +156,12 @@ std::string serialize_telemetry_value(
         return std::to_string(*unsigned_integer);
     }
     if (const auto* number = std::get_if<double>(&value)) {
+        // JSON has no NaN/Infinity literals. The protocol validator already
+        // rejects these values; keep this boundary defensive if a future
+        // caller ever bypasses the validated snapshot path.
+        if (!std::isfinite(*number)) {
+            return "null";
+        }
         std::ostringstream output;
         output << std::setprecision(17) << *number;
         return output.str();
@@ -164,6 +170,12 @@ std::string serialize_telemetry_value(
         return "\"" + json_escape(std::string{*text}) + "\"";
     }
     return "null";
+}
+
+bool telemetry_value_is_non_finite_number(
+    const hardware::interfaces::ControllerSensorValue& value) {
+    const auto* number = std::get_if<double>(&value);
+    return number != nullptr && !std::isfinite(*number);
 }
 
 const char* telemetry_value_type(
@@ -256,7 +268,9 @@ std::string serialize_controller_telemetry(
                    << "\",\"value_type\":\"" << telemetry_value_type(item.value)
                    << "\",\"value\":" << serialize_telemetry_value(item.value)
                    << ",\"unit\":\"" << json_escape(std::string{item.unit})
-                   << "\",\"quality_status\":\"" << telemetry_quality_name(item.quality)
+                   << "\",\"quality_status\":\""
+                   << (telemetry_value_is_non_finite_number(item.value)
+                       ? "INVALID" : telemetry_quality_name(item.quality))
                    << "\",\"measured_at\":\"" << json_escape(std::string{item.measured_at})
                    << "\"}";
         }
