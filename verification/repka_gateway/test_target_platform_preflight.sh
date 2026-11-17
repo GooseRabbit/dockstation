@@ -48,7 +48,11 @@ cat > "$FAKE_BIN/c++" <<'CXX'
 if [[ "${1:-}" == --version ]]; then
     printf '%s\n' 'g++ (test fixture) 14.2.0'
 else
-    cat >/dev/null
+    source="$(cat)"
+    if [[ "$source" == *OPENSSL_VERSION_MAJOR* ]] &&
+       [[ "${FAKE_OPENSSL_HEADER_MAJOR:-3}" != 3 ]]; then
+        exit 1
+    fi
 fi
 CXX
 cat > "$FAKE_BIN/pkg-config" <<'PKG_CONFIG'
@@ -148,5 +152,13 @@ run_case \
     "поддерживается только OpenSSL 3.x" \
     "FAKE_UNAME_MACHINE=aarch64" \
     "FAKE_OPENSSL_VERSION=4.0.3"
+
+run_case \
+    "target preflight rejects OpenSSL 4.x headers when pkg-config metadata is unavailable" \
+    2 \
+    "Не удалось скомпилировать проверку заголовков OpenSSL 3.x" \
+    "FAKE_UNAME_MACHINE=aarch64" \
+    "FAKE_OPENSSL_VERSION=missing" \
+    "FAKE_OPENSSL_HEADER_MAJOR=4"
 
 printf '\nAll target platform preflight tests passed.\n'
