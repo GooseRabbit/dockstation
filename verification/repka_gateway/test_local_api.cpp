@@ -259,6 +259,18 @@ void test_loopback_server() {
         }
     });
 
+    // An idle client must not hold the event loop while a second client
+    // completes a normal request.
+    const int slow_client = ::socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, IPPROTO_TCP);
+    assert(slow_client >= 0);
+    struct sockaddr_in slow_address {};
+    slow_address.sin_family = AF_INET;
+    slow_address.sin_port = htons(status.port);
+    assert(::inet_pton(AF_INET, "127.0.0.1", &slow_address.sin_addr) == 1);
+    assert(::connect(slow_client,
+        reinterpret_cast<const struct sockaddr*>(&slow_address),
+        sizeof(slow_address)) == 0);
+
     const int client = ::socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, IPPROTO_TCP);
     assert(client >= 0);
     struct timeval timeout {};
@@ -294,6 +306,7 @@ void test_loopback_server() {
         response.append(buffer, static_cast<std::size_t>(count));
     }
     ::close(client);
+    ::close(slow_client);
     finish_server.store(true);
     server_thread.join();
 
