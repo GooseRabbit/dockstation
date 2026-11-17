@@ -305,7 +305,8 @@ bool LocalApiServer::start(
         ::close(descriptor);
         return false;
     }
-    if (::listen(descriptor, 8) != 0 || !set_nonblocking(descriptor)) {
+    if (::listen(descriptor, static_cast<int>(kMaximumHttpClients)) != 0 ||
+        !set_nonblocking(descriptor)) {
         error_ = std::string{"Cannot listen on API socket: "} + std::strerror(errno);
         ::close(descriptor);
         return false;
