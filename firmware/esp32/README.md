@@ -203,6 +203,15 @@ until handshake completion, disables early data and issues no session tickets.
 Its 32-byte TLS exporter uses the same label/context as the Repka OpenSSL
 client.
 
+The server temporarily enables the ESP32 SAR-ADC entropy source
+around `mbedtls_ctr_drbg_seed()` and disables it immediately afterward. This
+is required because ESP-IDF documents that RNG output is only pseudo-random
+when neither RF nor the SAR-ADC entropy source is active. Initialization and
+transport restart must therefore run when no ADC, I2S or RF user is accessing
+those subsystems; the firmware must not seed TLS DRBG concurrently with them.
+This restriction is separate from the early per-boot UUID generation, which
+has its own short entropy-source window.
+
 The peer service starts the shared logical session only after TLS
 authentication, sends HELLO_ACK, blocks exporter access until HELLO_ACK has
 been transmitted, and turns an accepted REQUEST_SNAPSHOT into a pending
