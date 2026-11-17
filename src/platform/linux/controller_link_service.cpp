@@ -428,10 +428,17 @@ void ControllerLinkService::poll() noexcept {
     if (outbound_frame_size_ == 0U) {
         const ControllerLinkSessionResult tick = session_->poll(now_ms, sent_at);
         if (tick.status ==
-                hardware::interfaces::ControllerLinkSessionStatus::HandshakeTimeout ||
-            tick.status ==
-                hardware::interfaces::ControllerLinkSessionStatus::HeartbeatTimeout) {
-            set_state(ControllerLinkServiceState::LinkLost, error_code_);
+            hardware::interfaces::ControllerLinkSessionStatus::HandshakeTimeout) {
+            // A timed-out protocol handshake cannot be safely restarted over
+            // the same authenticated TLS stream; establish a fresh transport.
+            fail_transport("CONTROLLER_HANDSHAKE_TIMEOUT", now_ms);
+            return;
+        } else if (tick.status ==
+                   hardware::interfaces::ControllerLinkSessionStatus::HeartbeatTimeout) {
+            // The peer is no longer demonstrably alive. Close TLS and restart
+            // the full UART -> TLS -> HELLO/HELLO_ACK lifecycle.
+            fail_transport("CONTROLLER_HEARTBEAT_TIMEOUT", now_ms);
+            return;
         } else if (tick.status ==
                    hardware::interfaces::ControllerLinkSessionStatus::Success &&
                    tick.has_outbound_message) {
