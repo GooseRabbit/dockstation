@@ -13,10 +13,8 @@ import os
 import platform
 import re
 import shutil
-import socket
 import struct
 import subprocess
-import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -406,7 +404,12 @@ def read_network_interfaces(
 
 def read_default_routes(ip_command: str = "ip", command_runner: CommandRunner = run_command) -> dict[str, object]:
     if not shutil.which(ip_command):
-        return _status_result("UNAVAILABLE", f"Command not found: {ip_command}", routes=[])
+        return _status_result(
+            "UNAVAILABLE",
+            f"Command not found: {ip_command}",
+            routes=[],
+            family_status={"IPv4": "UNAVAILABLE", "IPv6": "UNAVAILABLE"},
+        )
 
     routes: list[dict[str, object]] = []
     unknown_lines: list[str] = []
