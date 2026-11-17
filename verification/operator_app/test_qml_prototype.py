@@ -50,6 +50,7 @@ def test_qml_prototype_loads_with_the_seven_approved_tabs():
         link_panel = roots[0].findChild(QObject, "sensors.controller-link")
         assert link_panel is not None, "ControllerLink needs a visible status panel."
         assert "пока не передаёт" in bridge.controllerLinkSummary
+        assert bridge.freshnessText == "Данные ещё не получены"
         bridge.model.apply_diagnostics({
             "controller_link": {
                 "status": "LINK_LOST", "state": "LINK_LOST",
@@ -96,7 +97,6 @@ def test_qml_prototype_loads_with_the_seven_approved_tabs():
             "system.hardware-platform",
         ):
             assert roots[0].findChild(QObject, panel_name) is not None, panel_name
-        assert bridge.freshnessText == "Данные ещё не получены"
     finally:
         bridge.shutdown()
         for root in engine.rootObjects():
