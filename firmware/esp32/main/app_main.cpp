@@ -1,4 +1,9 @@
+#include <cstdio>
+
 #include "esp_err.h"
+#include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "esp_log.h"
 #include "controller_psk_nvs_credential_store.hpp"
 #include "controller_instance_id_provider.hpp"
@@ -25,6 +30,16 @@ dockstation::firmware::esp32::ControllerInstanceIdProvider
 // into these buffers. They remain valid for the full application lifetime.
 dockstation::hardware::interfaces::ControllerStableIdPair
     g_controller_stable_ids{};
+
+// Credentials stay in static storage only until the runtime copies them into
+// the TLS server. The polling task clears this buffer immediately afterward.
+dockstation::firmware::esp32::ControllerMbedTlsPskCredentials
+    g_controller_link_credentials{};
+dockstation::firmware::esp32::ControllerLinkFirmwareRuntime
+    g_controller_link_runtime{};
+
+constexpr std::uint32_t kControllerLinkTaskStackSizeBytes = 12U * 1024U;
+constexpr UBaseType_t kControllerLinkTaskPriority = tskIDLE_PRIORITY + 3U;
 
 void log_startup_blockers(
     const dockstation::hardware::interfaces::ControllerLinkStartupReadiness&
@@ -72,6 +87,81 @@ void log_startup_blockers(
         ESP_LOGW(kTag, "ControllerLink blocked: local and peer controller IDs must differ");
     }
 }
+
+void controller_link_polling_task(void*) {
+    if (!g_controller_link_runtime.start(
+            g_controller_link_start_config,
+            g_controller_link_credentials,
+            g_controller_instance_id)) {
+        const auto runtime_status = g_controller_link_runtime.status();
+        log_startup_blockers(runtime_status.startup_readiness);
+        ESP_LOGE(
+            kTag,
+            "ControllerLink runtime start failed (UART: %s, TLS: %d)",
+            esp_err_to_name(runtime_status.last_uart_error),
+            runtime_status.peer.last_mbedtls_error);
+        g_controller_link_credentials.clear();
+        g_controller_link_runtime.stop();
+        vTaskDelete(nullptr);
+        return;
+    }
+
+    // The TLS server copied the fixed-size PSK and identity into its own
+    // protected storage; erase the startup copy immediately.
+    g_controller_link_credentials.clear();
+    ESP_LOGI(kTag, "ControllerLink polling task started");
+
+    constexpr TickType_t requested_delay = pdMS_TO_TICKS(10U);
+    constexpr TickType_t poll_delay =
+        requested_delay == 0U ? 1U : requested_delay;
+
+    for (;;) {
+        // UTC synchronization is not configured. This is a monotonic marker
+        // in microseconds since boot, not a calendar timestamp.
+        char sent_at[32]{};
+        const int written = std::snprintf(
+            sent_at, sizeof(sent_at), "mono_us_%lld",
+            static_cast<long long>(esp_timer_get_time()));
+        if (written <= 0 ||
+            static_cast<std::size_t>(written) >= sizeof(sent_at)) {
+            ESP_LOGE(kTag, "Could not format ControllerLink monotonic time");
+            g_controller_link_runtime.stop();
+            vTaskDelete(nullptr);
+            return;
+        }
+
+        const std::string_view sent_at_view{
+            sent_at, static_cast<std::size_t>(written)};
+        g_controller_link_runtime.poll(sent_at_view);
+
+        if (g_controller_link_runtime.snapshot_request_pending()) {
+            // Until physical acquisition is connected, return no measurements
+            // instead of fabricating values, identifiers or quality statuses.
+            const dockstation::hardware::interfaces::
+                ControllerTelemetrySnapshotPayload no_measurements{};
+            static_cast<void>(
+                g_controller_link_runtime.send_telemetry_snapshot(
+                    no_measurements, sent_at_view));
+        }
+
+        const auto runtime_status = g_controller_link_runtime.status();
+        if (runtime_status.state !=
+            dockstation::firmware::esp32::
+                ControllerLinkFirmwareRuntimeState::Running) {
+            ESP_LOGE(
+                kTag,
+                "ControllerLink polling stopped (state=%u, UART: %s, TLS: %d)",
+                static_cast<unsigned>(runtime_status.state),
+                esp_err_to_name(runtime_status.last_uart_error),
+                runtime_status.peer.last_mbedtls_error);
+            g_controller_link_runtime.stop();
+            vTaskDelete(nullptr);
+            return;
+        }
+
+        vTaskDelay(poll_delay);
+    }
+}
 }  // namespace
 
 extern "C" void app_main(void) {
@@ -116,13 +206,12 @@ extern "C" void app_main(void) {
         return;
     }
 
-    dockstation::firmware::esp32::ControllerMbedTlsPskCredentials credentials{};
-    if (!credential_store.load(credentials)) {
+    if (!credential_store.load(g_controller_link_credentials)) {
         ESP_LOGW(
             kTag,
             "ControllerLink remains NOT_CONFIGURED: pre-provisioned PSK/identity are unavailable (%s)",
             esp_err_to_name(credential_store.last_error()));
-        credentials.clear();
+        g_controller_link_credentials.clear();
         return;
     }
 
@@ -131,7 +220,7 @@ extern "C" void app_main(void) {
             kTag,
             "ControllerLink remains NOT_CONFIGURED: stable local/peer controller IDs are unavailable or invalid (%s)",
             esp_err_to_name(credential_store.last_error()));
-        credentials.clear();
+        g_controller_link_credentials.clear();
         g_controller_stable_ids.clear();
         return;
     }
@@ -170,17 +259,24 @@ extern "C" void app_main(void) {
         evaluate_controller_link_startup_readiness(readiness_input);
     if (!readiness.is_ready()) {
         log_startup_blockers(readiness);
-        credentials.clear();
+        g_controller_link_credentials.clear();
         return;
     }
 
-    // Do not start the link yet. The FreeRTOS polling/lifecycle task and the
-    // real telemetry sampler are separate implementation slices; starting
-    // the runtime without them would leave a live transport unserviced.
-    credentials.clear();
-    ESP_LOGW(
-        kTag,
-        "ControllerLink prerequisites are valid; runtime remains stopped until the application polling task and real telemetry source are integrated");
+    // The dedicated task starts and then exclusively owns runtime/UART/TLS.
+    const BaseType_t task_created = xTaskCreate(
+        controller_link_polling_task,
+        "dockstation_link",
+        kControllerLinkTaskStackSizeBytes,
+        nullptr,
+        kControllerLinkTaskPriority,
+        nullptr);
+    if (task_created != pdPASS) {
+        g_controller_link_credentials.clear();
+        ESP_LOGE(kTag, "Could not create ControllerLink polling task");
+        return;
+    }
+    ESP_LOGI(kTag, "ControllerLink prerequisites accepted; polling task queued");
 }
 
 // Link-only acceptance hook. The main component forces this symbol into the

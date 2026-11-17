@@ -303,6 +303,7 @@ struct ServerResult final {
     std::atomic<bool> exporter_ready{false};
     std::atomic<bool> invalid_snapshot_preserved_request{false};
     std::atomic<bool> telemetry_flushed{false};
+    std::atomic<bool> empty_snapshot_flushed{false};
     std::atomic<bool> stop_requested{false};
     std::atomic<int> error{0};
     std::array<std::uint8_t, kControllerLinkSessionProofSize> exporter{};
@@ -365,38 +366,47 @@ void run_peer_service(
 
         if (status.snapshot_request_pending &&
             !status.outbound_message_pending) {
-            const ControllerTelemetryMeasurement invalid_measurement{
-                "", 18.0, "degC", SensorQualityStatus::Ok, "1700000000000"};
-            const ControllerTelemetrySnapshotPayload invalid_snapshot{
-                &invalid_measurement, 1U};
+            if (status.telemetry_snapshots_sent == 0U) {
+                const ControllerTelemetryMeasurement invalid_measurement{
+                    "", 18.0, "degC", SensorQualityStatus::Ok, "1700000000000"};
+                const ControllerTelemetrySnapshotPayload invalid_snapshot{
+                    &invalid_measurement, 1U};
 
-            const bool invalid_was_rejected =
-                !service.send_telemetry_snapshot(
-                    invalid_snapshot, "1700000000200") &&
-                service.snapshot_request_pending() &&
-                service.status().state ==
-                    ControllerLinkPeerServiceState::Established;
-            result.invalid_snapshot_preserved_request.store(
-                invalid_was_rejected, std::memory_order_release);
+                const bool invalid_was_rejected =
+                    !service.send_telemetry_snapshot(
+                        invalid_snapshot, "1700000000200") &&
+                    service.snapshot_request_pending() &&
+                    service.status().state ==
+                        ControllerLinkPeerServiceState::Established;
+                result.invalid_snapshot_preserved_request.store(
+                    invalid_was_rejected, std::memory_order_release);
 
-            if (!invalid_was_rejected) {
-                result.error.store(-100, std::memory_order_release);
-                break;
-            }
+                if (!invalid_was_rejected) {
+                    result.error.store(-100, std::memory_order_release);
+                    break;
+                }
 
-            const ControllerTelemetryMeasurement measurements[] = {
-                {"test.climate.temperature", 23.75, "degC",
-                 SensorQualityStatus::Ok, "1700000000000"},
-                {"test.lid.closed", true, "bool",
-                 SensorQualityStatus::NotConfigured, "1700000000000"}
-            };
-            const ControllerTelemetrySnapshotPayload snapshot{
-                measurements, sizeof(measurements) / sizeof(measurements[0])};
+                const ControllerTelemetryMeasurement measurements[] = {
+                    {"test.climate.temperature", 23.75, "degC",
+                     SensorQualityStatus::Ok, "1700000000000"},
+                    {"test.lid.closed", true, "bool",
+                     SensorQualityStatus::NotConfigured, "1700000000000"}
+                };
+                const ControllerTelemetrySnapshotPayload snapshot{
+                    measurements, sizeof(measurements) / sizeof(measurements[0])};
 
-            if (!service.send_telemetry_snapshot(
-                    snapshot, "1700000000200")) {
-                result.error.store(-101, std::memory_order_release);
-                break;
+                if (!service.send_telemetry_snapshot(
+                        snapshot, "1700000000200")) {
+                    result.error.store(-101, std::memory_order_release);
+                    break;
+                }
+            } else {
+                const ControllerTelemetrySnapshotPayload empty_snapshot{};
+                if (!service.send_telemetry_snapshot(
+                        empty_snapshot, "1700000000300")) {
+                    result.error.store(-102, std::memory_order_release);
+                    break;
+                }
             }
         }
 
@@ -404,6 +414,10 @@ void run_peer_service(
         if (updated.telemetry_snapshots_sent == 1U &&
             !updated.outbound_message_pending) {
             result.telemetry_flushed.store(true, std::memory_order_release);
+        }
+        if (updated.telemetry_snapshots_sent == 2U &&
+            !updated.outbound_message_pending) {
+            result.empty_snapshot_flushed.store(true, std::memory_order_release);
         }
 
         (void)::poll(nullptr, 0U, 1);
@@ -495,6 +509,27 @@ bool run_complete_peer_service_flow() {
             std::get<bool>(snapshot->measurements[1].value);
     }
 
+    const bool first_snapshot_consumed =
+        telemetry_received && telemetry_valid && decoder.consume_frame();
+    ControllerMessageEnvelope empty_request = request;
+    empty_request.sequence_number = 3U;
+    empty_request.sent_at = "1700000000300";
+    const bool empty_request_sent = first_snapshot_consumed &&
+        write_controller_message(client, sockets[0], empty_request, empty_payload);
+    const bool empty_telemetry_received = empty_request_sent &&
+        read_controller_message(client, sockets[0], decoder, storage, decoded);
+    bool empty_telemetry_valid = false;
+    if (empty_telemetry_received &&
+        decoded.envelope.type == ControllerMessageType::TelemetrySnapshot &&
+        decoded.envelope.controller_id == "esp32-01" &&
+        decoded.envelope.controller_instance_id == "esp32-boot-01" &&
+        decoded.envelope.sequence_number == 3U) {
+        const auto* snapshot =
+            std::get_if<ControllerTelemetrySnapshotPayload>(&decoded.payload);
+        empty_telemetry_valid =
+            snapshot != nullptr && snapshot->measurement_count == 0U;
+    }
+
     std::array<std::uint8_t, kControllerLinkSessionProofSize> client_exporter{};
     const bool client_exported = tls_handshake && client.export_session_proof(
         reinterpret_cast<const std::uint8_t*>(kControllerSessionProofContext),
@@ -502,6 +537,7 @@ bool run_complete_peer_service_flow() {
 
     bool server_exporter_matches = false;
     bool server_telemetry_flushed = false;
+    bool server_empty_snapshot_flushed = false;
     for (std::size_t attempt = 0U; attempt < 500U; ++attempt) {
         server_exporter_matches =
             server_result.exporter_ready.load(std::memory_order_acquire) &&
@@ -509,7 +545,9 @@ bool run_complete_peer_service_flow() {
             server_result.exporter == client_exporter;
         server_telemetry_flushed =
             server_result.telemetry_flushed.load(std::memory_order_acquire);
-        if (server_telemetry_flushed ||
+        server_empty_snapshot_flushed =
+            server_result.empty_snapshot_flushed.load(std::memory_order_acquire);
+        if (server_empty_snapshot_flushed ||
             server_result.error.load(std::memory_order_acquire) != 0) {
             break;
         }
@@ -530,6 +568,8 @@ bool run_complete_peer_service_flow() {
            "rejects invalid sensor data without consuming REQUEST_SNAPSHOT");
     expect(telemetry_valid && server_telemetry_flushed,
            "responds to REQUEST_SNAPSHOT with the caller-supplied TELEMETRY_SNAPSHOT");
+    expect(empty_telemetry_valid && server_empty_snapshot_flushed,
+           "accepts and transmits an explicitly empty snapshot without inventing measurements");
 
     server_result.stop_requested.store(true, std::memory_order_release);
     client.close();
@@ -551,6 +591,7 @@ bool run_complete_peer_service_flow() {
         server_result.invalid_snapshot_preserved_request.load(
             std::memory_order_acquire) &&
         telemetry_valid && server_telemetry_flushed &&
+        empty_telemetry_valid && server_empty_snapshot_flushed &&
         server_result.error.load(std::memory_order_acquire) == 0;
 }
 

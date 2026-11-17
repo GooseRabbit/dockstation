@@ -77,12 +77,25 @@ controller IDs, and run the common startup-readiness evaluator. It never
 generates, repairs, writes, rotates or erases credentials. Any failed load
 clears secret output and leaves ControllerLink NOT_CONFIGURED.
 
-Even after a successful preflight, `app_main` does **not** install the UART
-driver, initialize TLS or start `ControllerLinkFirmwareRuntime`. The
-FreeRTOS polling/lifecycle task and a real telemetry source must be integrated
-first; starting the transport without them would leave an unserviced link.
-The link-only acceptance hook is forced into the ELF for compile/link coverage
-but is not executed.
+When preflight succeeds, `app_main` creates one dedicated FreeRTOS task. That
+task starts and exclusively owns `ControllerLinkFirmwareRuntime`, then polls
+the non-blocking UART/TLS/protocol state machine every 10 ms (or one scheduler
+tick if the configured tick rate requires it). A failed runtime is stopped in
+TLS-before-UART order and the task exits; automatic reconnect/recovery is not
+implemented yet.
+
+Until physical sensor acquisition exists, an accepted `REQUEST_SNAPSHOT` is
+answered with a valid zero-measurement `TELEMETRY_SNAPSHOT`. The protocol
+explicitly permits this and it does not claim that any unreported sensor is
+healthy. No fake temperatures, humidity, sensor identifiers or quality values
+are generated. The temporary envelope time marker is `mono_us_<value>`,
+monotonic microseconds since boot; it is **not UTC wall-clock time**, and the
+final timestamp convention remains open.
+
+The checked-in profile still has `hardware_profile_confirmed=false` and unset
+UART GPIOs. Therefore the normal image still returns before NVS and never
+creates this task. The link-only acceptance hook is forced into the ELF for
+compile/link coverage but is not executed.
 
 The default Mbed TLS configuration enables the required TLS 1.3 server,
 PSK-Ephemeral key exchange, AES-128-GCM/SHA-256, P-256 and keying-material
@@ -209,9 +222,9 @@ Not implemented by this scaffold:
 
 - a provisioning writer/utility for PSK, PSK identity or stable controller IDs;
 - board-specific UART pin assignment or a running UART connection;
-- the FreeRTOS ControllerLink polling/lifecycle task;
-- GPIO acquisition/pin assignment, motor control or hardware interlocks; the pure lid limit-switch state tracker exists but is not connected to hardware;
-- DHT22 GPIO/timing acquisition and runtime telemetry publishing; pure frame decoder, telemetry adapter and sampling policy exist, but are not connected to physical acquisition;
+- automatic ControllerLink reconnect/recovery policy;
+- physical DHT22 GPIO/timing acquisition and publication of real sensor measurements; the decoder, adapter and sampling policy are present, but no sensor pins are assigned;
+- GPIO acquisition/pin assignment for the lid limit switches, motor control or hardware interlocks; the pure lid limit-switch state tracker exists but is not connected to hardware;
 - enabling/configuring Flash Encryption, Secure Boot policy or OTA update;
 - production partition/Flash sizing and final board profile.
 

@@ -1,8 +1,8 @@
 # Полный план реализации программного комплекса DockStation на Repka Pi 5
 
 **Статус:** мастер-план реализации; последовательность разработки согласована, открытые платформенные, сетевые, серверные и аппаратные детали требуют отдельной проверки и решения.  
-**Редакция:** 2.19.
-**Дата:** 2026-11-16.  
+**Редакция:** 2.20.
+**Дата:** 2026-11-17.  
 **Вычислительная платформа:** Repka Pi 5.  
 **Предполагаемая ОС:** официальная Repka OS; образ и версия проверяются перед развёртыванием.
 
@@ -1401,6 +1401,7 @@ GitHub Actions [run 43699555707](https://github.com/GooseRabbit/dockstation/acti
 | 2.17 | 2026-11-16 | Введён общий `ControllerLinkStartupReadiness` и обязательный startup config runtime. Hardware profile должен быть явно подтверждён; UART конфигурация, pair credentials, instance identity и stable local/peer controller IDs проверяются до UART. `app_main` выводит blockers и сохраняет default-off режим без NVS/UART/TLS. Новый host CTest и ESP-IDF compile/link проверяют policy/API; физическая плата, pinout и encrypted provisioning по-прежнему не проверены. |
 | 2.18 | 2026-11-16 | Введён общий ASCII-контракт стабильных controller ID и read-only ESP32 NVS loader для `controller_id`/`peer_ctrl_id`; проверяются пустые, некорректные, длинные и совпадающие значения. NVS key limit 15 символов дополнительно защищён compile-time static_assert. GitHub Actions #43939967426: Linux CTest 38/38 на x86_64 и ARM64, 31/31 core host tests, 158 Python/Operator/Gateway tests; ESP32 build #43939967553 compile/link SUCCESS; TLS interoperability #43939967705 2/2 SUCCESS. Это не physical flash/UART/NVS provisioning/board acceptance; реальные ID не назначены. |
 | 2.19 | 2026-11-16 | FCC ID `2A54N-ESP32` и связанный FCC User Manual уточнили документированный кандидат платы HiLetgo ESP-WROOM-32: UART2 GPIO17/TX2 (контакт 28) и GPIO16/RX2 (контакт 27). GPIO остаются `GPIO_NUM_NC` до физической проверки. Datasheet стандартного ESP32-WROOM-32 указывает 4 MB SPI Flash, поэтому это условно ожидаемый объём при совпадении точной модели установленного модуля. Фактические Flash/PSRAM и production partition table ещё не проверены; default 2 MB в CI не является измерением Flash. Добавлен `docs/33_ESP32_HARDWARE_PROFILE.md`, исправлена опечатка FCC ID в DEC-062. Это документальный профиль-кандидат, не аппаратная приёмка. |
+| 2.20 | 2026-11-17 | Добавлен gated FreeRTOS polling task для ESP32 ControllerLink: runtime стартует внутри единственного владельца, poll выполняется с периодом 10 мс, при ошибке TLS закрывается до UART. До появления физического sensor acquisition `REQUEST_SNAPSHOT` получает валидный snapshot с нулём измерений, без синтетических данных. Временная метка `mono_us_<value>` — монотонные микросекунды с boot, не UTC. Текущий hardware gate остаётся false; обычная прошивка не открывает NVS/UART/TLS и не создаёт task. Host interop расширен проверкой empty snapshot; физическая связь и датчики не проверены. |
 
 Peer-side логика протокола уже реализована и дополнена host CTest для HELLO/HELLO_ACK, REQUEST_SNAPSHOT и TELEMETRY_SNAPSHOT. Следующие практические рубежи: подтвердить точную ESP32 плату/SoC, Flash capacity и production partition layout; согласовать и обеспечить источники стабильных local/peer `controller_id`; выполнить доверенное provisioning PSK/identity и NVS encryption; проверить UART pinout и электрическую совместимость обеих плат. До закрытия этих условий runtime остаётся отключённым. После этого отдельно выполняются физические ESP32/Repka UART и TLS испытания, а датчики и GPIO добавляются только после утверждения pin map и безопасной схемы выводов.
 
@@ -1544,3 +1545,36 @@ scheduler закрывается до явной повторной инициа
 состояние, границы 2000/2001 мс, межопросный интервал, независимые расписания
 двух сенсоров, регрессия времени и новая инициализация после power cycle.
 Успешный host/ESP-IDF build не является проверкой физического датчика.
+
+
+## Дополнение 2.27 — FreeRTOS polling owner для ControllerLink
+
+После успешного read-only preflight `app_main` создаёт отдельную задачу
+FreeRTOS. Именно внутри неё вызывается `ControllerLinkFirmwareRuntime::start()`;
+после старта эта задача становится единственным владельцем runtime, UART,
+Mbed TLS и peer service. Она выполняет неблокирующий `poll()` с периодом
+10 мс (минимум один tick при другой конфигурации FreeRTOS). При ошибке runtime
+сначала закрывает TLS, затем UART; задача записывает диагностический статус и
+завершается. Автоматический reconnect/recovery policy пока не реализован.
+
+Временная строка `sent_at` формируется как `mono_us_<value>` из
+`esp_timer_get_time()`. Это монотонные микросекунды после загрузки ESP32, а
+не UTC и не календарное время. Конвенция остаётся временной до принятия общего
+решения по часам/синхронизации. Секретные PSK/identity очищаются из startup
+буфера сразу после того, как TLS server скопировал их в своё внутреннее
+хранилище.
+
+До реализации физического acquisition каждый принятый `REQUEST_SNAPSHOT`
+получает типизированный `TELEMETRY_SNAPSHOT` с нулём измерений. Это валидный
+вариант текущего протокольного контракта и он явно означает отсутствие
+доступных измерений, а не здоровое состояние датчиков. Ни значения датчиков,
+ни ID, quality или время измерения не генерируются искусственно. Host
+interop проверяет TLS обмен с обычным непустым snapshot и отдельным пустым
+snapshot.
+
+Hardware profile в репозитории по-прежнему default-off: GPIO не назначены,
+NVS не открывается и polling task не создаётся при обычном старте. Поэтому
+изменение подтверждает compile/link и host-протокольную обработку, но не
+реальную работу FreeRTOS на физической плате, UART, TLS между платами,
+часы, DHT22 acquisition или lid GPIO. Следующая часть ESP32 acquisition
+по-прежнему требует подтверждённого pin map и электрической схемы.
