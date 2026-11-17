@@ -1,8 +1,8 @@
 # Идентичность станции и криптографическая защита
 
 **Статус:** техническая спецификация идентичности и доступа; правила изоляции OwnerSpace заданы владельцем проекта, базовый профиль внутреннего Repka—ESP32 канала DEC-066 утверждён владельцем проекта 2026-11-14; применение TLS exporter как основы channel-bound session proof согласовано владельцем 2026-11-16; остальные криптографические решения остаются предметом отдельного согласования.  
-**Редакция:** 1.6.  
-**Дата:** 2026-11-16.
+**Редакция:** 1.7.  
+**Дата:** 2026-11-17.
 
 ## 1. Назначение
 
@@ -500,3 +500,4 @@ Exporter доказывает привязку к текущему TLS-кана�
 | 1.4 | 2026-11-16 | Подключён обязательный `ControllerInstanceIdProvider` к `ControllerLinkFirmwareRuntime::start()`; runtime копирует generated UUIDv4 в peer session, отклоняет ungenerated/conflicting ID и проверяет конфигурацию до UART. Переподключение транспорта сохраняет boot ID и sequence/replay history; физический runtime/RNG не проверены. |
 | 1.5 | 2026-11-16 | Добавлена fail-closed оценка готовности ControllerLink: подтверждение аппаратного профиля, валидный UART pin profile, доступные pair credentials, per-boot ID и разные валидные controller IDs. Runtime выполняет проверки до установки UART driver; app_main только сообщает blockers и не загружает NVS/не запускает канал. |
 | 1.6 | 2026-11-16 | Существующая Repka-утилита `dockstation-credential-provision` получила read-only `--check`: проверка формата/различия stable controller ID и защищённой локальной PSK/identity пары без операций записи. Это preflight только Repka; он не проверяет и не provisioning-ует ESP32. Добавлены CTest и shell acceptance для положительных/ошибочных ID и проверки отсутствия изменений файла. |
+| 1.7 | 2026-11-17 | Исправлена инициализация ESP32 TLS CTR-DRBG: при каждом создании TLS server временно включается SAR-ADC entropy source на время `mbedtls_ctr_drbg_seed()`, затем сразу отключается до использования ADC/I²S/RF. Это необходимо, поскольку ESP-IDF документирует RNG как pseudo-random при отсутствии активного RF/SAR-ADC entropy source; вызов требует отсутствия конкурентного доступа к ADC/I²S/RF. Добавлена явная зависимость `bootloader_support`; физическое качество RNG и runtime-сериализация с аппаратными подсистемами требуют проверки на целевой плате. Источник: [ESP-IDF v5.5 Random Number Generation](https://docs.espressif.com/projects/esp-idf/en/v5.5-rc1/esp32/api-reference/system/random.html). |
