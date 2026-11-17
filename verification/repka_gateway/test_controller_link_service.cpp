@@ -146,10 +146,15 @@ struct TlsPeer final {
     BIO* transport{nullptr};
     PeerCredentials credentials{};
 
-    ~TlsPeer() {
+    ~TlsPeer() { reset(); }
+
+    void reset() noexcept {
         SSL_free(ssl);
+        ssl = nullptr;
         BIO_free(transport);
+        transport = nullptr;
         SSL_CTX_free(context);
+        context = nullptr;
         credentials.value.clear();
     }
 
@@ -880,6 +885,9 @@ int main() {
                !e2e_service.status().tls_authenticated,
            "heartbeat timeout schedules a fresh UART/TLS connection attempt");
 
+    // The previous peer process is gone with the timed-out TLS session.
+    // Release its BIO pair before modelling a fresh ESP32-side TLS endpoint.
+    peer.reset();
     TlsPeer recovery_peer;
     expect(recovery_peer.initialize(credentials),
            "initializes a new TLS peer for the reconnect acceptance path");
