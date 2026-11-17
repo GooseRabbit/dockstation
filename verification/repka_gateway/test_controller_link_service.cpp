@@ -908,13 +908,18 @@ int main() {
         }
         return count;
     };
-    expect(log_input.is_open() && !log_input.bad() &&
-               log_contents.find("ControllerLink state transition") != std::string::npos &&
-               log_contents.find("DHT22_READ_FAILED") != std::string::npos &&
-               log_contents.find("\"severity\":\"WARNING\"") != std::string::npos &&
-               log_contents.find("\"subsystem_id\":\"weather.temperature\"") != std::string::npos &&
-               log_contents.find("CONTROLLER_FRAME_REJECTED") != std::string::npos,
-           "journal records state transitions, authenticated controller errors and rejected frames");
+    expect(log_input.is_open() && !log_input.bad(),
+           "opens and reads the ControllerLink journal file");
+    expect(log_contents.find("ControllerLink state transition") != std::string::npos,
+           "journal records ControllerLink state transitions");
+    expect(log_contents.find("DHT22_READ_FAILED") != std::string::npos,
+           "journal records authenticated controller error codes");
+    expect(log_contents.find("\"severity\":\"WARNING\"") != std::string::npos,
+           "journal records controller error severity");
+    expect(log_contents.find("\"subsystem_id\":\"weather.temperature\"") != std::string::npos,
+           "journal records the affected controller subsystem");
+    expect(log_contents.find("CONTROLLER_FRAME_REJECTED") != std::string::npos,
+           "journal records rejected controller frames");
     expect(count_occurrences("CONTROLLER_CONFIGURATION_INVALID") == 2U,
            "repeated polls do not spam duplicate configuration-error records");
     expect(count_occurrences("DHT22_READ_FAILED") == 1U,
