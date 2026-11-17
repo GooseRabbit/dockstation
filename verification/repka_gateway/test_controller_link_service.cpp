@@ -633,8 +633,39 @@ int main() {
     std::this_thread::sleep_for(std::chrono::milliseconds{2100U});
     peer_storage = {};
     peer_message = {};
-    expect(read_service_message(e2e_service, peer, pty.master, peer_frame,
-                                peer_storage, peer_message) &&
+    const bool periodic_snapshot_received = read_service_message(
+        e2e_service, peer, pty.master, peer_frame, peer_storage, peer_message);
+    if (!periodic_snapshot_received ||
+        peer_message.envelope.type != ControllerMessageType::RequestSnapshot ||
+        !e2e_service.status().protocol_established) {
+        const auto diagnostic_status = e2e_service.status();
+        std::cerr << "DIAGNOSTIC periodic snapshot: received="
+                  << periodic_snapshot_received
+                  << " message_type="
+                  << static_cast<unsigned int>(peer_message.envelope.type)
+                  << " state=" << static_cast<unsigned int>(diagnostic_status.state)
+                  << " tls=" << diagnostic_status.tls_authenticated
+                  << " protocol=" << diagnostic_status.protocol_established
+                  << " snapshots=" << diagnostic_status.telemetry_snapshots_received
+                  << " errors=" << diagnostic_status.error_messages_received
+                  << " rejected=" << diagnostic_status.rejected_frames
+                  << " error_code="
+                  << (diagnostic_status.error_code != nullptr
+                          ? diagnostic_status.error_code : "(null)")
+                  << " ssl_state=" << SSL_state_string_long(peer.ssl)
+                  << " ssl_pending=" << SSL_pending(peer.ssl)
+                  << " openssl_error=";
+        const unsigned long openssl_error = ERR_peek_last_error();
+        if (openssl_error != 0UL) {
+            std::array<char, 256U> error_text{};
+            ERR_error_string_n(openssl_error, error_text.data(), error_text.size());
+            std::cerr << error_text.data();
+        } else {
+            std::cerr << "(none)";
+        }
+        std::cerr << '\\n';
+    }
+    expect(periodic_snapshot_received &&
                peer_message.envelope.type == ControllerMessageType::RequestSnapshot &&
                e2e_service.status().protocol_established,
            "emits another REQUEST_SNAPSHOT after the two-second polling interval");
@@ -891,8 +922,32 @@ int main() {
     TlsPeer recovery_peer;
     expect(recovery_peer.initialize(credentials),
            "initializes a new TLS peer for the reconnect acceptance path");
-    expect(complete_tls_handshake(e2e_service, recovery_peer, pty.master) &&
-               e2e_service.status().tls_authenticated,
+    const bool reconnect_tls_completed =
+        complete_tls_handshake(e2e_service, recovery_peer, pty.master);
+    if (!reconnect_tls_completed || !e2e_service.status().tls_authenticated) {
+        const auto diagnostic_status = e2e_service.status();
+        std::cerr << "DIAGNOSTIC reconnect TLS: completed="
+                  << reconnect_tls_completed
+                  << " state=" << static_cast<unsigned int>(diagnostic_status.state)
+                  << " tls=" << diagnostic_status.tls_authenticated
+                  << " protocol=" << diagnostic_status.protocol_established
+                  << " error_code="
+                  << (diagnostic_status.error_code != nullptr
+                          ? diagnostic_status.error_code : "(null)")
+                  << " ssl_state=" << SSL_state_string_long(recovery_peer.ssl)
+                  << " ssl_error=" << SSL_get_error(recovery_peer.ssl, -1)
+                  << " openssl_error=";
+        const unsigned long openssl_error = ERR_peek_last_error();
+        if (openssl_error != 0UL) {
+            std::array<char, 256U> error_text{};
+            ERR_error_string_n(openssl_error, error_text.data(), error_text.size());
+            std::cerr << error_text.data();
+        } else {
+            std::cerr << "(none)";
+        }
+        std::cerr << '\\n';
+    }
+    expect(reconnect_tls_completed && e2e_service.status().tls_authenticated,
            "reconnect completes a new TLS 1.3 PSK-DHE handshake");
     peer_storage = {};
     peer_message = {};
