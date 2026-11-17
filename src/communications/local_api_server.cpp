@@ -34,20 +34,6 @@ bool set_nonblocking(int descriptor) {
     return flags >= 0 && ::fcntl(descriptor, F_SETFL, flags | O_NONBLOCK) == 0;
 }
 
-bool wait_for(int descriptor, short events, int timeout_milliseconds) {
-    struct pollfd item {};
-    item.fd = descriptor;
-    item.events = events;
-    const int result = ::poll(&item, 1, timeout_milliseconds);
-    if (result <= 0) {
-        return false;
-    }
-    if ((item.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
-        return true;
-    }
-    return (item.revents & events) != 0;
-}
-
 std::string trim_header_value(std::string_view value) {
     while (!value.empty() && (value.front() == ' ' || value.front() == '\t')) {
         value.remove_prefix(1U);
