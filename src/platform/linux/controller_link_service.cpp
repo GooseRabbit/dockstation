@@ -407,24 +407,8 @@ void ControllerLinkService::poll() noexcept {
         return;
     }
 
-    const bool snapshot_request_due =
-        !snapshot_request_sent_this_session_ ||
-        elapsed_at_least(now_ms, last_snapshot_request_ms_,
-                         kSnapshotRequestIntervalMilliseconds);
-    if (state_ == ControllerLinkServiceState::Established &&
-        snapshot_request_due && outbound_frame_size_ == 0U) {
-        const ControllerLinkSessionResult request =
-            session_->request_snapshot(now_ms, sent_at);
-        if (request.status != hardware::interfaces::ControllerLinkSessionStatus::Success ||
-            !request.has_outbound_message ||
-            !queue_outbound_message(request.outbound_message)) {
-            fail_transport("CONTROLLER_SNAPSHOT_REQUEST_FAILED", now_ms);
-            return;
-        }
-        snapshot_request_sent_this_session_ = true;
-        last_snapshot_request_ms_ = now_ms;
-    }
-
+    // Evaluate session deadlines before periodic snapshot scheduling so a
+    // due REQUEST_SNAPSHOT cannot postpone heartbeat/handshake timeout handling.
     if (outbound_frame_size_ == 0U) {
         const ControllerLinkSessionResult tick = session_->poll(now_ms, sent_at);
         if (tick.status ==
@@ -451,6 +435,24 @@ void ControllerLinkService::poll() noexcept {
             fail_transport("CONTROLLER_SESSION_FAILED", now_ms);
             return;
         }
+    }
+
+    const bool snapshot_request_due =
+        !snapshot_request_sent_this_session_ ||
+        elapsed_at_least(now_ms, last_snapshot_request_ms_,
+                         kSnapshotRequestIntervalMilliseconds);
+    if (state_ == ControllerLinkServiceState::Established &&
+        snapshot_request_due && outbound_frame_size_ == 0U) {
+        const ControllerLinkSessionResult request =
+            session_->request_snapshot(now_ms, sent_at);
+        if (request.status != hardware::interfaces::ControllerLinkSessionStatus::Success ||
+            !request.has_outbound_message ||
+            !queue_outbound_message(request.outbound_message)) {
+            fail_transport("CONTROLLER_SNAPSHOT_REQUEST_FAILED", now_ms);
+            return;
+        }
+        snapshot_request_sent_this_session_ = true;
+        last_snapshot_request_ms_ = now_ms;
     }
 
     update_protocol_state();
