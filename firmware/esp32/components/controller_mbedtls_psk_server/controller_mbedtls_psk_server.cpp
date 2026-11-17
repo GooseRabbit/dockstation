@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <mbedtls/platform_util.h>
+#include "bootloader_random.h"
 #include <mbedtls/ssl_ciphersuites.h>
 #include <mbedtls/version.h>
 
@@ -59,11 +60,23 @@ bool ControllerMbedTlsPskServer::initialize(
     mbedtls_ssl_init(&ssl_);
     ssl_initialized_ = true;
 
-    int result = mbedtls_ctr_drbg_seed(
+    // ESP32 provides true hardware entropy only while RF is active or
+    // the SAR-ADC entropy source is enabled. Seed CTR-DRBG while that source
+    // is temporarily enabled, then disable it before ADC/I2S/RF can be used.
+    // Call initialize() during the early controller startup phase, with no
+    // concurrent ADC/RF users.
+    bootloader_random_enable();
+    const int seed_result = mbedtls_ctr_drbg_seed(
         &ctr_drbg_, mbedtls_entropy_func, &entropy_,
         reinterpret_cast<const unsigned char*>(kDrbgPersonalization),
         sizeof(kDrbgPersonalization) - 1U);
-    if (result != 0) { mark_failed(result); return false; }
+    bootloader_random_disable();
+    if (seed_result != 0) {
+        mark_failed(seed_result);
+        return false;
+    }
+
+    int result = 0;
 
     result = mbedtls_ssl_config_defaults(
         &config_, MBEDTLS_SSL_IS_SERVER, MBEDTLS_SSL_TRANSPORT_STREAM,
