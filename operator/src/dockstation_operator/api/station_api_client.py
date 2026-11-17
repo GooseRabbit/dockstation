@@ -109,6 +109,39 @@ def _validate_platform_capabilities(value: object) -> None:
     _require_string(section.get("note"), "platform.capabilities.note")
 
 
+_CONTROLLER_LINK_STATUSES = {"NOT_CONFIGURED", "CONNECTING", "OK", "LINK_LOST", "ERROR"}
+_CONTROLLER_LINK_STATES = {
+    "NOT_CONFIGURED", "TLS_HANDSHAKE", "PROTOCOL_HANDSHAKE",
+    "ESTABLISHED", "LINK_LOST", "ERROR", "STOPPED",
+}
+
+
+def _validate_controller_link(value: object) -> None:
+    section = _require_object(value, "controller_link")
+    status = section.get("status")
+    state = section.get("state")
+    if status not in _CONTROLLER_LINK_STATUSES:
+        raise ApiClientError("Поле controller_link.status содержит неизвестный статус.")
+    if state not in _CONTROLLER_LINK_STATES:
+        raise ApiClientError("Поле controller_link.state содержит неизвестное состояние.")
+    for field in ("tls_authenticated", "protocol_established"):
+        if not isinstance(section.get(field), bool):
+            raise ApiClientError(f"Поле controller_link.{field} должно быть boolean.")
+    for field in ("telemetry_snapshots_received", "error_messages_received", "rejected_frames"):
+        number = section.get(field)
+        if isinstance(number, bool) or not isinstance(number, int) or not 0 <= number < (1 << 64):
+            raise ApiClientError(f"Поле controller_link.{field} должно быть uint64.")
+    _require_string(section.get("error_code"), "controller_link.error_code")
+    if status == "OK" and (state != "ESTABLISHED" or not section["tls_authenticated"] or not section["protocol_established"]):
+        raise ApiClientError("Статус controller_link=OK требует установленного TLS и протокола.")
+    if status == "CONNECTING" and state not in {"TLS_HANDSHAKE", "PROTOCOL_HANDSHAKE"}:
+        raise ApiClientError("Статус controller_link=CONNECTING противоречит состоянию.")
+    if status == "LINK_LOST" and state != "LINK_LOST":
+        raise ApiClientError("Статус controller_link=LINK_LOST противоречит состоянию.")
+    if status == "ERROR" and state != "ERROR":
+        raise ApiClientError("Статус controller_link=ERROR противоречит состоянию.")
+
+
 _TELEMETRY_QUALITY_STATUSES = {
     "OK", "STALE", "INVALID", "UNAVAILABLE", "NOT_CONFIGURED", "UNKNOWN"
 }
@@ -486,6 +519,10 @@ class StationApiClient:
                 raise ApiClientError("Успешная диагностика температуры CPU должна содержать значение и тип датчика.")
             if cpu_load.get("status") == "PASS" and any(cpu_load.get(key) is None for key in ("one_minute", "five_minutes", "fifteen_minutes", "runnable_tasks", "total_tasks")):
                 raise ApiClientError("Успешная диагностика load average должна содержать все значения.")
+
+        # ControllerLink is additive so older read-only Gateway snapshots remain valid.
+        if "controller_link" in payload:
+            _validate_controller_link(payload.get("controller_link"))
 
         # Additive telemetry fields are absent on older VM Gateway versions.
         if "controller_telemetry" in payload:
