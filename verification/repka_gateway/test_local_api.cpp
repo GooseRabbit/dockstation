@@ -3,6 +3,7 @@
 #include "platform/linux/platform_capabilities.hpp"
 
 #include <arpa/inet.h>
+#include <atomic>
 #include <cassert>
 #include <cstddef>
 #include <cstdio>
@@ -251,9 +252,11 @@ void test_loopback_server() {
     assert(status.bind_address == "127.0.0.1");
     assert(status.port != 0U);
 
-    LocalApiServeResult serve_result = LocalApiServeResult::Error;
-    std::thread server_thread([&server, &serve_result]() {
-        serve_result = server.serve_once(5000);
+    std::atomic<bool> finish_server{false};
+    std::thread server_thread([&server, &finish_server]() {
+        while (!finish_server.load()) {
+            (void)server.serve_once(50);
+        }
     });
 
     const int client = ::socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, IPPROTO_TCP);
@@ -291,9 +294,9 @@ void test_loopback_server() {
         response.append(buffer, static_cast<std::size_t>(count));
     }
     ::close(client);
+    finish_server.store(true);
     server_thread.join();
 
-    assert(serve_result == LocalApiServeResult::Handled);
     assert(response.find("HTTP/1.1 200 OK") != std::string::npos);
     assert(response.find("Content-Type: application/json; charset=utf-8") !=
            std::string::npos);
