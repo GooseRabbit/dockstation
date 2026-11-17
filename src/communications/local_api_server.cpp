@@ -355,6 +355,12 @@ LocalApiServeResult LocalApiServer::serve_once(int timeout_milliseconds) {
         return LocalApiServeResult::Error;
     }
 
+    if (poll_result > 0 &&
+        (descriptors.front().revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
+        error_ = "API listener reported an invalid poll state";
+        return LocalApiServeResult::Error;
+    }
+
     bool handled = false;
     if (poll_result > 0 && (descriptors.front().revents & POLLIN) != 0) {
         // Drain the accept queue, but never exceed the explicit active-client cap.
