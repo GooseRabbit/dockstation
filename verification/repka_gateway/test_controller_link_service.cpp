@@ -918,8 +918,8 @@ int main() {
            "journal records controller error severity");
     expect(log_contents.find("\"subsystem_id\":\"weather.temperature\"") != std::string::npos,
            "journal records the affected controller subsystem");
-    expect(log_contents.find("CONTROLLER_FRAME_REJECTED") != std::string::npos,
-           "journal records rejected controller frames");
+    expect(log_contents.find("CONTROLLER_MESSAGE_REJECTED") != std::string::npos,
+           "journal records rejected controller protocol messages");
     expect(count_occurrences("CONTROLLER_CONFIGURATION_INVALID") == 2U,
            "repeated polls do not spam duplicate configuration-error records");
     expect(count_occurrences("DHT22_READ_FAILED") == 1U,
