@@ -371,7 +371,6 @@ void test_loopback_server() {
         response.append(buffer, static_cast<std::size_t>(count));
     }
     ::close(client);
-    ::close(slow_client);
     finish_server.store(true);
     server_thread.join();
 
@@ -384,6 +383,9 @@ void test_loopback_server() {
            std::string::npos);
 
     server.stop();
+    char shutdown_byte = 0;
+    assert(::recv(slow_client, &shutdown_byte, 1U, 0) == 0);
+    ::close(slow_client);
     assert(!server.status().running);
 }
 
