@@ -184,7 +184,7 @@ def test_validate_health_response_requires_expected_gateway():
         StationApiClient.validate_health_response({
             "api_version": "1", "service": "dockstation-python-gateway", "implementation": "python", "status": "PASS", "read_only": True
         })
-    with pytest.raises(ApiClientError, match="C++ Gateway"):
+    with pytest.raises(ApiClientError, match="C\\+\\+ Gateway"):
         StationApiClient.validate_health_response({
             "api_version": "1", "service": "dockstation-cpp-gateway", "status": "PASS", "read_only": True
         })
