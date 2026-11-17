@@ -147,6 +147,17 @@ def test_read_default_routes_warns_on_unexpected_json():
     assert result["status"] == "WARN"
 
 
+def test_read_default_routes_reports_family_status_when_ip_is_missing():
+    def fail_command_runner(*args, **kwargs):  # pragma: no cover - must not be called
+        raise AssertionError("command runner must not be invoked when ip is unavailable")
+
+    with patch.object(diagnostics.shutil, "which", return_value=None):
+        result = diagnostics.read_default_routes(command_runner=fail_command_runner)
+    assert result["status"] == "UNAVAILABLE"
+    assert result["routes"] == []
+    assert result["family_status"] == {"IPv4": "UNAVAILABLE", "IPv6": "UNAVAILABLE"}
+
+
 def test_dns_not_configured_is_not_reported_as_success():
     result = diagnostics.resolve_dns_name(None)
     assert result["status"] == "NOT_CONFIGURED"

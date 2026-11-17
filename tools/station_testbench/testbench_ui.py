@@ -3,10 +3,7 @@
 
 from __future__ import annotations
 
-import os
-import queue
 import subprocess
-import sys
 import tkinter as tk
 from tkinter import messagebox, ttk
 from pathlib import Path
