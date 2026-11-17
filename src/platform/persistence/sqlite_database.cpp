@@ -250,58 +250,21 @@ constexpr char kSubsystemStatusMigrationSql[] =
             count) && count == 1;
 }
 
-[[nodiscard]] bool apply_source_session_migration(sqlite3* database) noexcept {
+[[nodiscard]] bool apply_schema_transaction(
+    sqlite3* database, const char* migration_sql) noexcept {
     if (execute_sql(database, "BEGIN EXCLUSIVE;") != SQLITE_OK) {
         return false;
     }
 
-    const bool migrated =
-        execute_sql(database, kSourceSessionMigrationSql) == SQLITE_OK;
+    const bool migrated = execute_sql(database, migration_sql) == SQLITE_OK;
     const int commit_status = migrated
         ? execute_sql(database, "COMMIT;")
         : SQLITE_ERROR;
-    if (commit_status == SQLITE_OK) {
-        return true;
-    }
-
-    (void)execute_sql(database, "ROLLBACK;");
-    return false;
-}
-
-[[nodiscard]] bool apply_subsystem_status_migration(sqlite3* database) noexcept {
-    if (execute_sql(database, "BEGIN EXCLUSIVE;") != SQLITE_OK) {
+    if (commit_status != SQLITE_OK) {
+        (void)execute_sql(database, "ROLLBACK;");
         return false;
     }
-
-    const bool migrated =
-        execute_sql(database, kSubsystemStatusMigrationSql) == SQLITE_OK;
-    const int commit_status = migrated
-        ? execute_sql(database, "COMMIT;")
-        : SQLITE_ERROR;
-    if (commit_status == SQLITE_OK) {
-        return true;
-    }
-
-    (void)execute_sql(database, "ROLLBACK;");
-    return false;
-}
-
-[[nodiscard]] bool initialize_schema(sqlite3* database) noexcept {
-    if (execute_sql(database, "BEGIN EXCLUSIVE;") != SQLITE_OK) {
-        return false;
-    }
-
-    const bool migrated =
-        execute_sql(database, kMigrationSql) == SQLITE_OK;
-    const int commit_status = migrated
-        ? execute_sql(database, "COMMIT;")
-        : SQLITE_ERROR;
-    if (commit_status == SQLITE_OK) {
-        return true;
-    }
-
-    (void)execute_sql(database, "ROLLBACK;");
-    return false;
+    return true;
 }
 
 }  // namespace
@@ -401,7 +364,7 @@ SqliteDatabaseResult SqliteDatabase::open(
     }
 
     if (uninitialized_database || incomplete_database) {
-        if (!initialize_schema(database_)) {
+        if (!apply_schema_transaction(database_, kMigrationSql)) {
             last_sqlite_status_ = sqlite3_extended_errcode(database_);
             (void)close();
             return {SqliteDatabaseStatus::SchemaMigrationFailed,
@@ -422,10 +385,10 @@ SqliteDatabaseResult SqliteDatabase::open(
         bool migrated = false;
         if (stored_version + 1 ==
             static_cast<sqlite3_int64>(kSourceSessionSchemaVersion)) {
-            migrated = apply_source_session_migration(database_);
+            migrated = apply_schema_transaction(database_, kSourceSessionMigrationSql);
         } else if (stored_version + 1 ==
                    static_cast<sqlite3_int64>(kSubsystemStatusSchemaVersion)) {
-            migrated = apply_subsystem_status_migration(database_);
+            migrated = apply_schema_transaction(database_, kSubsystemStatusMigrationSql);
         }
         if (!migrated) {
             last_sqlite_status_ = sqlite3_extended_errcode(database_);
