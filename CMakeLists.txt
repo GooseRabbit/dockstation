@@ -11,6 +11,13 @@ include(GNUInstallDirs)
 
 find_package(Threads REQUIRED)
 find_package(OpenSSL 3.0 REQUIRED COMPONENTS SSL Crypto)
+include(cmake/DockStationOpenSSLVersion.cmake)
+dockstation_openssl_version_supported("${OPENSSL_VERSION}" DOCKSTATION_OPENSSL_VERSION_SUPPORTED)
+if(NOT DOCKSTATION_OPENSSL_VERSION_SUPPORTED)
+    message(FATAL_ERROR
+        "DockStation supports OpenSSL 3.x only; found '${OPENSSL_VERSION}'. "
+        "OpenSSL 4.x requires a separate compatibility review.")
+endif()
 
 # Approved local SQLite persistence backend (DEC-068).
 # Gateway-only Repka builds can omit the SQLite development package entirely.
@@ -269,6 +276,11 @@ dockstation_apply_compile_policy(dockstation_linux_bootstrap)
 
 if(BUILD_TESTING)
     # Keep the credential-loader injection seam out of production/release builds.
+    add_test(
+        NAME openssl_version_policy
+        COMMAND ${CMAKE_COMMAND}
+                -P ${PROJECT_SOURCE_DIR}/verification/repka_gateway/test_openssl_version_policy.cmake
+    )
     target_compile_definitions(dockstation_linux_runtime
         PUBLIC DOCKSTATION_ENABLE_TEST_SEAMS)
 

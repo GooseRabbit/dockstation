@@ -129,10 +129,24 @@ run_case \
     "FAKE_SQLITE_VERSION=missing"
 
 run_case \
-    "target preflight treats OpenSSL older than 3.0 as a blocker" \
+    "target preflight accepts OpenSSL 3.5 LTS" \
+    1 \
+    "Заголовки OpenSSL 3.x доступны компилятору." \
+    "FAKE_UNAME_MACHINE=aarch64" \
+    "FAKE_OPENSSL_VERSION=3.5.5"
+
+run_case \
+    "target preflight rejects OpenSSL older than 3.0" \
     2 \
     "pkg-config указывает OpenSSL" \
     "FAKE_UNAME_MACHINE=aarch64" \
     "FAKE_OPENSSL_VERSION=1.1.1"
+
+run_case \
+    "target preflight rejects unsupported OpenSSL 4.x" \
+    2 \
+    "поддерживается только OpenSSL 3.x" \
+    "FAKE_UNAME_MACHINE=aarch64" \
+    "FAKE_OPENSSL_VERSION=4.0.3"
 
 printf '\nAll target platform preflight tests passed.\n'

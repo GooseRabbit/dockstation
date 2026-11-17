@@ -1650,3 +1650,8 @@ heartbeat timeout, проверяет закрытие старого authentica
 REQUEST_SNAPSHOT и отказ на старый sequence. Это программная проверка
 на Linux host; физический UART, ESP32/Mbed TLS и поведение на Repka OS
 по-прежнему требуют аппаратной приёмки.
+
+
+## Дополнение 2.33 — проверяемый диапазон OpenSSL
+
+Введено решение DEC-073: Linux TLS backend принимает только OpenSSL 3.x (минимум 3.0.0, major version строго 3). CMake отклоняет 2.x/4.x до сборки; read-only Repka preflight применяет ту же проверку по заголовкам и pkg-config. В CI сохранён системный OpenSSL 3.0.x на Ubuntu 24.04 и добавлена полная сборка + CTest на OpenSSL 3.5.x LTS на Ubuntu 26.04. Отдельный CMake policy test проверяет нижнюю границу, версии 3.5 и отказ для 2.x/4.x. Это проверка API/build compatibility; production security suitability зависит от upstream или vendor maintenance конкретной ветки. OpenSSL 3.5 LTS рекомендован для новых установок; OpenSSL 3.0 допускается только при security backports поставщика ОС. ABI ceiling `OPENSSL_3.0.0` в ARM64 bundle остаётся независимым минимальным symbol-version requirement. Физическая Repka OS должна отдельно пройти target preflight и runtime dependency check.

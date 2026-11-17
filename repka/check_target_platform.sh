@@ -133,16 +133,16 @@ if command -v "$CXX_COMMAND" >/dev/null 2>&1; then
     fi
 
     OPENSSL_PROBE='#include <openssl/opensslv.h>
-#if !defined(OPENSSL_VERSION_MAJOR) || OPENSSL_VERSION_MAJOR < 3
-#error OpenSSL 3.0 headers are required
+#if !defined(OPENSSL_VERSION_MAJOR) || OPENSSL_VERSION_MAJOR != 3
+#error OpenSSL 3.x headers are required
 #endif
 #include <openssl/ssl.h>
 int main() { return 0; }'
     if printf '%s\n' "$OPENSSL_PROBE" \
         | "$CXX_COMMAND" -std=c++17 "${OPENSSL_CFLAGS[@]}" -x c++ -fsyntax-only - >/dev/null 2>&1; then
         if [[ -n "$OPENSSL_PKG_VERSION" ]] &&
-           ! version_at_least "$OPENSSL_PKG_VERSION" "3.0.0"; then
-            report FAIL "pkg-config указывает OpenSSL $OPENSSL_PKG_VERSION, хотя Gateway требует OpenSSL 3.0+."
+           [[ ! "$OPENSSL_PKG_VERSION" =~ ^3\.[0-9]+\.[0-9]+([.+-].*)?$ ]]; then
+            report FAIL "pkg-config указывает OpenSSL $OPENSSL_PKG_VERSION; поддерживается только OpenSSL 3.x (3.0 или новее в пределах major 3)."
         else
             report PASS "Заголовки OpenSSL 3.x доступны компилятору."
         fi

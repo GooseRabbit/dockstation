@@ -363,6 +363,34 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  openssl-35-compatibility:
+    name: Build and CTest (OpenSSL 3.5 LTS)
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install OpenSSL 3.5 LTS development headers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev libsqlite3-dev
+          openssl_version="$(pkg-config --modversion openssl)"
+          echo "OpenSSL version: $openssl_version"
+          [[ "$openssl_version" =~ ^3\.5\.[0-9]+([.+-].*)?$ ]]
+
+      - name: Configure CMake with OpenSSL 3.5 LTS
+        run: >-
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Debug
+          -DDOCKSTATION_BUILD_SQLITE_PERSISTENCE=ON
+
+      - name: Build all Linux targets with OpenSSL 3.5 LTS
+        run: cmake --build build --parallel 2
+
+      - name: Run CTest with OpenSSL 3.5 LTS
+        run: ctest --test-dir build --output-on-failure
+
   attest-arm64-bundle:
     name: Sign and verify ARM64 release bundle
     needs: arm64-build-and-test
