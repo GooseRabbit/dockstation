@@ -2,7 +2,9 @@
 #include <algorithm>
 #include <cstdint>
 
+#if defined(ESP_PLATFORM)
 #include "bootloader_random.h"
+#endif
 #include <mbedtls/platform_util.h>
 #include <mbedtls/ssl_ciphersuites.h>
 #include <mbedtls/version.h>
@@ -66,12 +68,16 @@ bool ControllerMbedTlsPskServer::initialize(
     // is temporarily enabled, then disable it before ADC/I2S/RF can be used.
     // Call initialize() during the early controller startup phase, with no
     // concurrent ADC/RF users.
+#if defined(ESP_PLATFORM)
     bootloader_random_enable();
+#endif
     const int seed_result = mbedtls_ctr_drbg_seed(
         &ctr_drbg_, mbedtls_entropy_func, &entropy_,
         reinterpret_cast<const unsigned char*>(kDrbgPersonalization),
         sizeof(kDrbgPersonalization) - 1U);
+#if defined(ESP_PLATFORM)
     bootloader_random_disable();
+#endif
     if (seed_result != 0) {
         mark_failed(seed_result);
         return false;
