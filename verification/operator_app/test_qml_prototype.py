@@ -49,7 +49,7 @@ def test_qml_prototype_loads_with_the_seven_approved_tabs():
         app.processEvents()
         link_panel = roots[0].findChild(QObject, "sensors.controller-link")
         assert link_panel is not None, "ControllerLink needs a visible status panel."
-        assert "не настроено" in bridge.controllerLinkSummary
+        assert "пока не передаёт" in bridge.controllerLinkSummary
         bridge.model.apply_diagnostics({
             "controller_link": {
                 "status": "LINK_LOST", "state": "LINK_LOST",
