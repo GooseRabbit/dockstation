@@ -970,6 +970,29 @@ ApplicationWindow {
                             font.bold: true
                         }
                         Panel {
+                            objectName: "sensors.controller-link"
+                            Layout.fillWidth: true
+                            implicitHeight: controllerLinkPanel.implicitHeight + 40
+                            ColumnLayout {
+                                id: controllerLinkPanel
+                                anchors.fill: parent
+                                anchors.margins: 20
+                                spacing: 10
+                                Text {
+                                    text: "Канал связи с ESP32"
+                                    color: root.primaryText
+                                    font.pixelSize: 16
+                                    font.bold: true
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: bridge.controllerLinkSummary
+                                    color: root.secondaryText
+                                    wrapMode: Text.WordWrap
+                                }
+                            }
+                        }
+                        Panel {
                             objectName: "sensors.controller-telemetry"
                             Layout.fillWidth: true
                             implicitHeight: controllerTelemetryPanel.implicitHeight + 40
