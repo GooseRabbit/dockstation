@@ -115,8 +115,9 @@ ControllerUartIoResult ControllerUartPort::open(
 
 void ControllerUartPort::close() noexcept {
     if (file_descriptor_ >= 0) {
-        // The kernel releases TIOCEXCL when the last descriptor for this TTY
-        // closes; close also releases the advisory flock atomically.
+        // Linux keeps TIOCEXCL set after close until TIOCNXCL is issued.
+        // Keep the advisory flock held until after exclusivity is released.
+        (void)::ioctl(file_descriptor_, TIOCNXCL);
         (void)::close(file_descriptor_);
         file_descriptor_ = -1;
     }
