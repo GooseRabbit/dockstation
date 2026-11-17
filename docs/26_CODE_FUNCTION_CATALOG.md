@@ -1387,3 +1387,16 @@ verification/repka_gateway/test_controller_link_service.cpp в SQLite-enabled bu
 | `ControllerPskNvsCredentialStore::load_controller_ids()` (read-only loader реализован) | Читает `controller_id` и `peer_ctrl_id` из уже инициализированного encrypted NVS namespace `dockstation`; не генерирует и не записывает значения. |
 
 Repka использует `controller_local_id` и `controller_peer_id` из системного RuntimeConfig. ESP32 использует зеркальную пару из NVS. Provisioning writer, назначение фактических значений и физическая проверка после записи остаются отдельными задачами.
+
+
+## Дополнение: ESP32 — DHT22 / AM2302
+
+| Функция / тип | Назначение |
+|---|---|
+| `Dht22DecodedReading` | Хранит температуру в десятых °C и относительную влажность в десятых процента RH. Значения сохраняются целыми числами до формирования общего TELEMETRY_SNAPSHOT. |
+| `Dht22DecodeStatus` | Разделяет успешное декодирование, неверный аргумент/длину, ошибку checksum и значения вне диапазона влажности/температуры. |
+| `decode_dht22_frame(const uint8_t*, size_t, Dht22DecodedReading&)` | Декодирует уже захваченные пять байт AM2302/DHT22: humidity MSB/LSB, temperature MSB/LSB и checksum. Проверяет 8-битную сумму первых четырёх байтов, sign bit температуры и диапазоны; на любой ошибке очищает output. Не обращается к GPIO и не создаёт показания. |
+
+Реализация находится в `firmware/esp32/components/controller_dht22_sensor/`; та же функция входит в ESP-IDF target build и host CTest `dht22_frame_decoder`. Тайминги single-bus, GPIO pin map, питание, минимальный интервал опроса, состояние/качество канала и интеграция двух физических датчиков остаются отдельной работой после подтверждения аппаратного профиля. Host-тесты проверяют только декодер кадра, не датчик и не электрическую линию.
+
+Источник формата и ограничений: [Aosong AM2302 Technical Manual](https://aosong.com/uploadfiles/2025/04/20250417105409216.pdf), таблица 6 и разделы 5.2–5.3.
