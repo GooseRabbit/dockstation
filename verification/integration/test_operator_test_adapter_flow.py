@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import threading
 
-from dockstation_operator.api.station_api_client import StationApiClient
+import pytest
+
+from dockstation_operator.api.station_api_client import ApiClientError, StationApiClient
 from repka_gateway.dockstation_gateway.adapters.test_request_adapter import TestRequestAdapter
 from repka_gateway.dockstation_gateway.application.test_request_service import (
     TestRequestService as GatewayTestRequestService,
@@ -32,8 +34,9 @@ def test_operator_gateway_application_service_and_test_adapter_flow():
         assert receipt["source"] == "TEST_ADAPTER"
         assert receipt["physical_action_performed"] is False
 
-        # The original read-only health route remains available and unchanged.
-        assert operator_client.get_health()["read_only"] is True
+        # The temporary Python Gateway must not pass as the production C++ Gateway.
+        with pytest.raises(ApiClientError, match="основного C\\+\\+ Gateway"):
+            operator_client.get_health()
     finally:
         server.shutdown()
         server.server_close()
