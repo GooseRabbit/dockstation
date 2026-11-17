@@ -1,8 +1,9 @@
 #include "controller_mbedtls_psk_server.hpp"
 #include <algorithm>
 #include <cstdint>
-#include <mbedtls/platform_util.h>
+
 #include "bootloader_random.h"
+#include <mbedtls/platform_util.h>
 #include <mbedtls/ssl_ciphersuites.h>
 #include <mbedtls/version.h>
 
@@ -76,9 +77,7 @@ bool ControllerMbedTlsPskServer::initialize(
         return false;
     }
 
-    int result = 0;
-
-    result = mbedtls_ssl_config_defaults(
+    int result = mbedtls_ssl_config_defaults(
         &config_, MBEDTLS_SSL_IS_SERVER, MBEDTLS_SSL_TRANSPORT_STREAM,
         MBEDTLS_SSL_PRESET_DEFAULT);
     if (result != 0) { mark_failed(result); return false; }
