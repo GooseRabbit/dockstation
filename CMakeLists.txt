@@ -492,6 +492,16 @@ if(BUILD_TESTING)
     dockstation_apply_compile_policy(test_dht22_telemetry_adapter)
     add_test(NAME dht22_telemetry_adapter COMMAND test_dht22_telemetry_adapter)
 
+    add_executable(test_lid_limit_switch_tracker
+        firmware/esp32/components/controller_lid_limit_switches/lid_limit_switch_tracker.cpp
+        verification/repka_gateway/test_lid_limit_switch_tracker.cpp
+    )
+    target_include_directories(test_lid_limit_switch_tracker PRIVATE
+        firmware/esp32/components/controller_lid_limit_switches/include
+    )
+    dockstation_apply_compile_policy(test_lid_limit_switch_tracker)
+    add_test(NAME lid_limit_switch_tracker COMMAND test_lid_limit_switch_tracker)
+
     add_executable(test_controller_subsystem_status_event_projector
         verification/repka_gateway/test_controller_subsystem_status_event_projector.cpp
     )

@@ -144,8 +144,7 @@ records.
 
 ## DHT22 / AM2302 frame decoder
 
-`components/controller_dht22_sensor/` currently contains only a pure
-five-byte frame decoder. It validates the exact frame length and checksum,
+`components/controller_dht22_sensor/` contains a pure five-byte frame decoder. It validates the exact frame length and checksum,
 decodes humidity and temperature in tenths, handles the temperature sign bit,
 and rejects values outside 0–99.9 %RH and −40.0…+80.0 °C. The output is
 cleared on every failure. Keeping integer tenths avoids premature rounding.
@@ -167,6 +166,29 @@ by the host CTest targets `dht22_frame_decoder` and
 `dht22_telemetry_adapter`; host tests do not prove physical sensor operation
 or acquisition timing.
 
+## Lid limit-switch state tracker
+
+`components/controller_lid_limit_switches/` contains a pure, allocation-free
+state tracker for the two lid end-stop inputs. The caller supplies each raw
+electrical level (or `nullopt` when a sample could not be read), an explicit
+active level for each configured switch, a non-zero debounce interval for each
+input and a monotonic timestamp.
+
+The tracker does not assume normally-open/normally-closed wiring, choose GPIO
+pins, read GPIO or control the lid motor. A fresh or changing sample remains
+`TRANSITIONING` until the full debounce interval has elapsed. Both endpoints
+must be configured and stable to report `OPEN` or `CLOSED`. If neither
+end-stop is active, the position is `TRANSITIONING` (not at a verified
+endpoint); if both are active, an input is unavailable, the configuration is
+invalid or monotonic time moves backwards, the result is `UNKNOWN`.
+Two unconfigured endpoints produce `NOT_CONFIGURED`.
+
+The host CTest target `lid_limit_switch_tracker` checks the state mapping,
+mixed active polarities, debounce timing, contradictory signals, unavailable
+samples, invalid/incomplete configuration, clock regression and reconfiguration.
+These are software contract tests only; the electrical profile and physical
+switch behaviour remain unverified.
+
 The [Aosong AM2302 technical manual](https://aosong.com/uploadfiles/2025/04/20250417105409216.pdf)
 defines the 40-bit frame, field order, scale, sign bit and checksum, and lists
 the measurement range. It also specifies a minimum two-second interval between
@@ -178,8 +200,8 @@ Not implemented by this scaffold:
 - a provisioning writer/utility for PSK, PSK identity or stable controller IDs;
 - board-specific UART pin assignment or a running UART connection;
 - the FreeRTOS ControllerLink polling/lifecycle task;
-- GPIO, lid limit switches, motor control or interlocks;
-- DHT22 GPIO/timing acquisition, sample scheduling and telemetry integration; only the pure frame decoder exists;
+- GPIO acquisition/pin assignment, motor control or hardware interlocks; the pure lid limit-switch state tracker exists but is not connected to hardware;
+- DHT22 GPIO/timing acquisition, sample scheduling and runtime telemetry publishing; only the pure frame decoder and telemetry adapter exist;
 - enabling/configuring Flash Encryption, Secure Boot policy or OTA update;
 - production partition/Flash sizing and final board profile.
 
