@@ -165,6 +165,12 @@ def valid_diagnostics():
                 "active_units": ["ssh.service"],
             },
         },
+        "controller_link": {
+            "status": "NOT_CONFIGURED", "state": "NOT_CONFIGURED",
+            "tls_authenticated": False, "protocol_established": False,
+            "telemetry_snapshots_received": 0, "error_messages_received": 0,
+            "rejected_frames": 0, "error_code": "",
+        },
         "scope": {
             "read_only": True,
             "hardware_controller_connected": False,
@@ -188,6 +194,25 @@ def test_validate_health_response_requires_expected_gateway():
         StationApiClient.validate_health_response({
             "api_version": "1", "service": "dockstation-cpp-gateway", "status": "PASS", "read_only": True
         })
+
+
+def test_validate_diagnostics_response_accepts_uart_busy_controller_link():
+    payload = valid_diagnostics()
+    payload["controller_link"].update(
+        status="LINK_LOST", state="LINK_LOST",
+        error_code="CONTROLLER_UART_DEVICE_BUSY",
+    )
+    StationApiClient.validate_diagnostics_response(payload)
+
+
+def test_validate_diagnostics_response_rejects_inconsistent_controller_link():
+    payload = valid_diagnostics()
+    payload["controller_link"].update(
+        status="OK", state="LINK_LOST",
+        error_code="CONTROLLER_UART_DEVICE_BUSY",
+    )
+    with pytest.raises(ApiClientError, match="controller_link=OK"):
+        StationApiClient.validate_diagnostics_response(payload)
 
 
 def test_validate_diagnostics_response_accepts_controller_telemetry():
