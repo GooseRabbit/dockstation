@@ -407,10 +407,17 @@ void ControllerLinkService::poll() noexcept {
         return;
     }
 
-    // Evaluate session deadlines before periodic snapshot scheduling so a
-    // due REQUEST_SNAPSHOT cannot postpone heartbeat/handshake timeout handling.
+    const bool snapshot_request_due =
+        !snapshot_request_sent_this_session_ ||
+        elapsed_at_least(now_ms, last_snapshot_request_ms_,
+                         kSnapshotRequestIntervalMilliseconds);
+
+    // Evaluate session deadlines before periodic snapshot scheduling. When a
+    // snapshot is due, suppress only the optional heartbeat emission so that
+    // the telemetry request is not starved by the more frequent heartbeat.
     if (outbound_frame_size_ == 0U) {
-        const ControllerLinkSessionResult tick = session_->poll(now_ms, sent_at);
+        const ControllerLinkSessionResult tick =
+            session_->poll(now_ms, sent_at, !snapshot_request_due);
         if (tick.status ==
             hardware::interfaces::ControllerLinkSessionStatus::HandshakeTimeout) {
             // A timed-out protocol handshake cannot be safely restarted over
@@ -437,10 +444,6 @@ void ControllerLinkService::poll() noexcept {
         }
     }
 
-    const bool snapshot_request_due =
-        !snapshot_request_sent_this_session_ ||
-        elapsed_at_least(now_ms, last_snapshot_request_ms_,
-                         kSnapshotRequestIntervalMilliseconds);
     if (state_ == ControllerLinkServiceState::Established &&
         snapshot_request_due && outbound_frame_size_ == 0U) {
         const ControllerLinkSessionResult request =
