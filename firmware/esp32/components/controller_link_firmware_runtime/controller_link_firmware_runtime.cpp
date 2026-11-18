@@ -244,13 +244,15 @@ void ControllerLinkFirmwareRuntime::reset_connection_liveness() noexcept {
 }
 
 bool ControllerLinkFirmwareRuntime::snapshot_request_pending() const noexcept {
-    return running_ && peer_service_.snapshot_request_pending();
+    return running_ && !uart_.has_pending_transport_events() &&
+        peer_service_.snapshot_request_pending();
 }
 
 bool ControllerLinkFirmwareRuntime::send_telemetry_snapshot(
     const hardware::interfaces::ControllerTelemetrySnapshotPayload& snapshot,
     std::string_view sent_at) noexcept {
-    return running_ && peer_service_.send_telemetry_snapshot(snapshot, sent_at);
+    return running_ && !uart_.has_pending_transport_events() &&
+        peer_service_.send_telemetry_snapshot(snapshot, sent_at);
 }
 
 bool ControllerLinkFirmwareRuntime::export_authenticated_session_proof(
