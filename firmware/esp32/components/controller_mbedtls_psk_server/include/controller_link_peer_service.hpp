@@ -89,6 +89,10 @@ public:
                    hardware::interfaces::kControllerLinkSessionProofSize>&
             output) noexcept;
 
+    // Set only from a verified wiring profile. Reconfiguration resets debounce
+    // history; until fresh stable samples arrive, lid position is not trusted.
+    void configure_lid_limit_switches(LidLimitSwitchConfig config) noexcept;
+
     // Hardware integration supplies sampled electrical levels here. The
     // adapter debounces them before they can affect command safety decisions.
     void update_lid_limit_switch_samples(
