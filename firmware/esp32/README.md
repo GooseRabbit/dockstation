@@ -92,13 +92,16 @@ seconds. The Repka-side Linux transport independently applies a ten-second
 monotonic deadline to its initial TLS handshake; expiry tears down both UART
 and TLS state so the link service can enter its normal reconnect backoff.
 
-Until physical sensor acquisition exists, an accepted `REQUEST_SNAPSHOT` is
-answered with a valid zero-measurement `TELEMETRY_SNAPSHOT`. The protocol
-explicitly permits this and it does not claim that any unreported sensor is
-healthy. No fake temperatures, humidity, sensor identifiers or quality values
-are generated. The temporary envelope time marker is `mono_us_<value>`,
-monotonic microseconds since boot; it is **not UTC wall-clock time**, and the
-final timestamp convention remains open.
+An accepted `REQUEST_SNAPSHOT` is answered with eight logical station-state
+measurements: lid position, platform/cleaning/drive activity, safety-stop state,
+workspace state, last command decision and pending-command state. Unavailable
+physical inputs are represented as `UNKNOWN` with `Unknown` quality; an
+unconfigured lid is `NOT_CONFIGURED`. The current firmware does not acquire
+DHT22 readings or GPIO feedback, so no temperature, humidity, motor state or
+limit-switch value is fabricated. The DHT22 decoder/adapter and lid tracker
+remain pure components awaiting hardware acquisition. The temporary envelope
+time marker is `mono_us_<value>`, monotonic microseconds since boot; it is
+**not UTC wall-clock time**, and the final timestamp convention remains open.
 
 The checked-in profile still has `hardware_profile_confirmed=false` and unset
 UART GPIOs. Therefore the normal image still returns before NVS and never
@@ -360,3 +363,26 @@ command while another is pending is rejected. If the connection is lost after
 a command may have been accepted, its physical outcome remains unknown. The
 current prototype has no durable command IDs or exactly-once execution across
 controller reboots. No test simulates physical actuator completion.
+
+
+## Station command policy and logical state
+
+`controller_station_logic/` is the ESP32-side authorization/state boundary.
+Normal motion commands require an explicit inactive safety-stop signal and
+explicit feedback for platform, cleaning and drive motion. Missing feedback is
+not treated as an idle mechanism. Lid commands additionally require a
+confirmed debounced endpoint. Cleaning additionally requires a known clear
+workspace. Stop requests remain admissible with missing feedback or an active
+safety stop, but `ACCEPTED` means only that the request passed policy and is
+pending; no motor is driven by this component.
+
+Only one normal command may remain pending. A later normal command is rejected
+without erasing the earlier pending request; a stop request may supersede it.
+The pending state is cleared on connection loss or by the future actuator layer
+only after physical completion feedback. There is currently no actuator layer,
+GPIO acquisition, or physical completion acknowledgement in the firmware.
+
+The polling task now answers snapshot requests with logical station-state
+telemetry. Its unknown input qualities are intentional. DHT22 sampling and lid
+limit-switch debounce are still not connected to GPIO, and the actual board
+profile remains default-off until physical acceptance.

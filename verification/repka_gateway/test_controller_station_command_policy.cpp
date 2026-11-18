@@ -25,6 +25,10 @@ void expect(bool condition, const char* description) {
 int main() {
     ControllerStationSafetyInputs safe_closed{};
     safe_closed.lid_position = LidPositionStatus::Closed;
+    safe_closed.platform_motion_active = false;
+    safe_closed.cleaning_active = false;
+    safe_closed.drive_motion_active = false;
+    safe_closed.safety_stop_active = false;
     safe_closed.workspace_known = true;
     safe_closed.workspace_clear = true;
 
@@ -57,6 +61,10 @@ int main() {
 
     ControllerStationSafetyInputs open_lid{};
     open_lid.lid_position = LidPositionStatus::Open;
+    open_lid.platform_motion_active = false;
+    open_lid.cleaning_active = false;
+    open_lid.drive_motion_active = false;
+    open_lid.safety_stop_active = false;
     expect(
         evaluate_controller_station_command(
             ControllerStationCommandType::CloseLid, open_lid).status ==
@@ -76,6 +84,37 @@ int main() {
             ControllerStationCommandType::CloseLid, open_lid).status ==
             ControllerStationCommandDecisionStatus::DenySafetyStop,
         "safety stop denies normal motion commands");
+
+    ControllerStationSafetyInputs missing_feedback{};
+    missing_feedback.lid_position = LidPositionStatus::Closed;
+    expect(
+        evaluate_controller_station_command(
+            ControllerStationCommandType::OpenLid, missing_feedback).status ==
+            ControllerStationCommandDecisionStatus::DenySafetyInputsUnknown,
+        "missing safety-stop feedback fails closed");
+
+    missing_feedback.safety_stop_active = false;
+    expect(
+        evaluate_controller_station_command(
+            ControllerStationCommandType::OpenLid, missing_feedback).status ==
+            ControllerStationCommandDecisionStatus::DenySafetyInputsUnknown,
+        "missing mechanism feedback is not interpreted as idle");
+
+    ControllerStationSafetyInputs active_motion = safe_closed;
+    active_motion.platform_motion_active = true;
+    expect(
+        evaluate_controller_station_command(
+            ControllerStationCommandType::OpenLid, active_motion).status ==
+            ControllerStationCommandDecisionStatus::DenyMotionConflict,
+        "active platform motion blocks lid opening");
+
+    ControllerStationSafetyInputs active_stop = safe_closed;
+    active_stop.safety_stop_active = true;
+    expect(
+        evaluate_controller_station_command(
+            ControllerStationCommandType::OpenLid, active_stop).status ==
+            ControllerStationCommandDecisionStatus::DenySafetyStop,
+        "active safety stop blocks normal commands");
 
     expect(
         evaluate_controller_station_command(

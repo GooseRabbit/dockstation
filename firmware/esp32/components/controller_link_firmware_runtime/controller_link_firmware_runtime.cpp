@@ -264,6 +264,34 @@ bool ControllerLinkFirmwareRuntime::send_telemetry_snapshot(
         peer_service_.send_telemetry_snapshot(snapshot, sent_at);
 }
 
+bool ControllerLinkFirmwareRuntime::send_station_state_snapshot(
+    std::string_view sent_at) noexcept {
+    return running_ && !uart_.has_pending_transport_events() &&
+        peer_service_.send_station_state_snapshot(sent_at);
+}
+
+void ControllerLinkFirmwareRuntime::set_safety_inputs(
+    const ControllerStationSafetyInputs& inputs) noexcept {
+    peer_service_.set_safety_inputs(inputs);
+}
+
+void ControllerLinkFirmwareRuntime::configure_lid_limit_switches(
+    LidLimitSwitchConfig config) noexcept {
+    peer_service_.configure_lid_limit_switches(config);
+}
+
+void ControllerLinkFirmwareRuntime::update_lid_limit_switch_samples(
+    std::optional<bool> open_line_high,
+    std::optional<bool> closed_line_high,
+    std::uint64_t monotonic_time_ms) noexcept {
+    peer_service_.update_lid_limit_switch_samples(
+        open_line_high, closed_line_high, monotonic_time_ms);
+}
+
+void ControllerLinkFirmwareRuntime::acknowledge_pending_command() noexcept {
+    peer_service_.acknowledge_pending_command();
+}
+
 bool ControllerLinkFirmwareRuntime::export_authenticated_session_proof(
     std::array<std::uint8_t,
                hardware::interfaces::kControllerLinkSessionProofSize>& output) noexcept {

@@ -391,6 +391,27 @@ bool ControllerLinkPeerService::send_telemetry_snapshot(
     return true;
 }
 
+bool ControllerLinkPeerService::send_station_state_snapshot(
+    std::string_view sent_at) noexcept {
+    std::array<hardware::interfaces::ControllerTelemetryMeasurement, 8U>
+        measurements{};
+    const std::size_t count =
+        station_state_.build_telemetry(measurements, sent_at);
+    const hardware::interfaces::ControllerTelemetrySnapshotPayload snapshot{
+        measurements.data(), count};
+    return send_telemetry_snapshot(snapshot, sent_at);
+}
+
+void ControllerLinkPeerService::set_safety_inputs(
+    const ControllerStationSafetyInputs& inputs) noexcept {
+    station_state_.set_safety_inputs(inputs);
+}
+
+void ControllerLinkPeerService::acknowledge_pending_command() noexcept {
+    // ACCEPTED is not completion: clear only after physical feedback verifies it.
+    station_state_.clear_pending_command();
+}
+
 bool ControllerLinkPeerService::export_authenticated_session_proof(
     std::array<std::uint8_t,
                hardware::interfaces::kControllerLinkSessionProofSize>&
@@ -407,7 +428,10 @@ void ControllerLinkPeerService::configure_lid_limit_switches(
     LidLimitSwitchConfig config) noexcept {
     safety_input_adapter_.configure(config);
     auto current = station_state_.snapshot().safety;
-    current.lid_position = LidPositionStatus::Unknown;
+    current.lid_position =
+        !config.open_limit.configured && !config.closed_limit.configured
+            ? LidPositionStatus::NotConfigured
+            : LidPositionStatus::Unknown;
     station_state_.set_safety_inputs(current);
 }
 

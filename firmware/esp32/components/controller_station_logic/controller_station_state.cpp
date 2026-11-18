@@ -37,6 +37,10 @@ using hardware::interfaces::SensorQualityStatus;
             return "DENY_WORKSPACE_UNKNOWN";
         case ControllerStationCommandDecisionStatus::DenySafetyStop:
             return "DENY_SAFETY_STOP";
+        case ControllerStationCommandDecisionStatus::DenySafetyInputsUnknown:
+            return "DENY_SAFETY_INPUTS_UNKNOWN";
+        case ControllerStationCommandDecisionStatus::DenyCommandPending:
+            return "DENY_COMMAND_PENDING";
     }
     return "DENY_UNKNOWN";
 }
@@ -69,16 +73,17 @@ void append_text_measurement(
     output.measured_at = measured_at;
 }
 
-void append_bool_measurement(
+void append_optional_state_measurement(
     ControllerTelemetryMeasurement& output,
     std::string_view sensor_id,
-    bool value,
+    std::optional<bool> value,
     std::string_view measured_at) noexcept {
-    output.sensor_id = sensor_id;
-    output.value = ControllerSensorValue{value};
-    output.unit = "bool";
-    output.quality = SensorQualityStatus::Ok;
-    output.measured_at = measured_at;
+    const std::string_view state = !value.has_value()
+        ? "UNKNOWN" : (*value ? "ACTIVE" : "INACTIVE");
+    append_text_measurement(
+        output, sensor_id, state,
+        value.has_value() ? SensorQualityStatus::Ok : SensorQualityStatus::Unknown,
+        measured_at);
 }
 
 }  // namespace
@@ -90,16 +95,22 @@ void ControllerStationState::set_safety_inputs(
 
 ControllerStationCommandDecision ControllerStationState::request_command(
     ControllerStationCommandType command) noexcept {
-    const auto decision = evaluate_controller_station_command(command, safety_);
+    const bool is_stop =
+        command == ControllerStationCommandType::StopMotion ||
+        command == ControllerStationCommandType::StopCleaning;
+    // An accepted command remains pending until the actuator layer confirms
+    // completion. A later normal command must not silently replace it.
+    const auto decision = pending_command_.has_value() && !is_stop
+        ? ControllerStationCommandDecision{
+              ControllerStationCommandDecisionStatus::DenyCommandPending,
+              "COMMAND_ALREADY_PENDING"}
+        : evaluate_controller_station_command(command, safety_);
     last_command_status_ = decision.status;
     last_command_reason_ = decision.reason_code;
-
     if (decision.status == ControllerStationCommandDecisionStatus::Allow) {
+        // A stop request may supersede a pending motion request.
         pending_command_ = command;
-    } else {
-        pending_command_.reset();
     }
-
     return decision;
 }
 
@@ -117,13 +128,13 @@ std::size_t ControllerStationState::build_telemetry(
     append_text_measurement(
         output[0], "lid.position", lid_position_text(safety_.lid_position),
         lid_quality(safety_.lid_position), measured_at);
-    append_bool_measurement(
+    append_optional_state_measurement(
         output[1], "platform.motion_active", safety_.platform_motion_active, measured_at);
-    append_bool_measurement(
+    append_optional_state_measurement(
         output[2], "cleaning.active", safety_.cleaning_active, measured_at);
-    append_bool_measurement(
+    append_optional_state_measurement(
         output[3], "drive.motion_active", safety_.drive_motion_active, measured_at);
-    append_bool_measurement(
+    append_optional_state_measurement(
         output[4], "safety_stop.active", safety_.safety_stop_active, measured_at);
 
     append_text_measurement(

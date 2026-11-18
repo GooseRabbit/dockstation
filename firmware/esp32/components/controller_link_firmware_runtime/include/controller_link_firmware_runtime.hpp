@@ -67,6 +67,14 @@ public:
     [[nodiscard]] bool send_telemetry_snapshot(
         const hardware::interfaces::ControllerTelemetrySnapshotPayload& snapshot,
         std::string_view sent_at) noexcept;
+    [[nodiscard]] bool send_station_state_snapshot(std::string_view sent_at) noexcept;
+    void set_safety_inputs(const ControllerStationSafetyInputs& inputs) noexcept;
+    void configure_lid_limit_switches(LidLimitSwitchConfig config) noexcept;
+    void update_lid_limit_switch_samples(
+        std::optional<bool> open_line_high,
+        std::optional<bool> closed_line_high,
+        std::uint64_t monotonic_time_ms) noexcept;
+    void acknowledge_pending_command() noexcept;
     [[nodiscard]] bool export_authenticated_session_proof(
         std::array<std::uint8_t,
                    hardware::interfaces::kControllerLinkSessionProofSize>& output) noexcept;

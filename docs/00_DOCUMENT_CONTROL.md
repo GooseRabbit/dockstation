@@ -42,7 +42,8 @@
 - поэтапная реализация сетевого подключения Repka Pi 5 — `30_REPKA_NETWORK_IMPLEMENTATION_PLAN.md`;
 - полный мастер-план программного продукта Repka Pi 5 — `31_REPKA_DOCKSTATION_SOFTWARE_IMPLEMENTATION_PLAN.md`.
 - распределение локальных, серверных и резервных данных — `32_PERSISTENCE_AND_STORAGE_TOPOLOGY.md`.
-- проверки отказов программного обмена Repka ↔ ESP32 и границы их доказательности — docs/34_CONTROLLER_LINK_FAULT_INJECTION_TESTS.md.
+- проверки отказов программного обмена Repka ↔ ESP32 и границы их доказательности — docs/34_CONTROLLER_LINK_FAULT_INJECTION_TESTS.md;
+- ESP32 command policy, pending lifecycle, safety-input semantics и logical-state telemetry — docs/35_ESP32_APPLICATION_LOGIC.md.
 
 Специализированная спецификация уточняет общие архитектурные документы, но не может молча отменять требование или согласованное решение. При обнаружении расхождения действует процедура раздела 10 настоящего документа.
 

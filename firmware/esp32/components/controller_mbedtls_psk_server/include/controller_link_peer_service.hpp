@@ -83,6 +83,12 @@ public:
     [[nodiscard]] bool send_telemetry_snapshot(
         const hardware::interfaces::ControllerTelemetrySnapshotPayload& snapshot,
         std::string_view sent_at) noexcept;
+    // Publishes logical station state with UNKNOWN quality for unavailable
+    // physical inputs; it never invents sensor or actuator readings.
+    [[nodiscard]] bool send_station_state_snapshot(std::string_view sent_at) noexcept;
+    void set_safety_inputs(const ControllerStationSafetyInputs& inputs) noexcept;
+    // Future actuator code may call this only after physical completion feedback.
+    void acknowledge_pending_command() noexcept;
 
     // Requires TLS authentication AND a fully transmitted HELLO_ACK.
     [[nodiscard]] bool export_authenticated_session_proof(

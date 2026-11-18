@@ -40,6 +40,10 @@ int main() {
 
     ControllerStationSafetyInputs safe{};
     safe.lid_position = LidPositionStatus::Closed;
+    safe.platform_motion_active = false;
+    safe.cleaning_active = false;
+    safe.drive_motion_active = false;
+    safe.safety_stop_active = false;
     safe.workspace_known = true;
     safe.workspace_clear = true;
     station.set_safety_inputs(safe);
@@ -68,6 +72,18 @@ int main() {
                std::get<std::string_view>(pending->value) == "PENDING",
            "telemetry exposes a pending command separately");
 
+    const auto blocked_by_pending =
+        station.request_command(ControllerStationCommandType::CloseLid);
+    snapshot = station.snapshot();
+    expect(blocked_by_pending.status ==
+               ControllerStationCommandDecisionStatus::DenyCommandPending &&
+               snapshot.pending_command.has_value() &&
+               *snapshot.pending_command == ControllerStationCommandType::OpenLid,
+           "a second normal command cannot replace an accepted pending command");
+
+    // This is an explicit future actuator acknowledgement seam, not a
+    // simulated physical action.
+    station.clear_pending_command();
     safe.lid_position = LidPositionStatus::Unknown;
     station.set_safety_inputs(safe);
     const auto denied = station.request_command(ControllerStationCommandType::OpenLid);
@@ -78,7 +94,7 @@ int main() {
     expect(!snapshot.pending_command.has_value() &&
                snapshot.last_command_status ==
                    ControllerStationCommandDecisionStatus::DenyUnknownLidPosition,
-           "denied command clears the pending request and records its reason");
+           "denied command does not create pending intent and records its reason");
 
     const auto stop = station.request_command(ControllerStationCommandType::StopMotion);
     expect(stop.status == ControllerStationCommandDecisionStatus::Allow,
@@ -93,6 +109,7 @@ int main() {
     expect(!station.snapshot().pending_command.has_value(),
            "pending request can be cleared after actuator acknowledgement");
 
+    station.clear_pending_command();
     safe.safety_stop_active = true;
     station.set_safety_inputs(safe);
     const auto blocked = station.request_command(ControllerStationCommandType::StartCleaning);
@@ -107,6 +124,20 @@ int main() {
                    "DENY_SAFETY_STOP" &&
                command_result->quality == SensorQualityStatus::Ok,
            "telemetry reports the last command decision");
+
+    ControllerStationState unconfigured;
+    telemetry.fill({});
+    static_cast<void>(unconfigured.build_telemetry(telemetry, "t3"));
+    const auto* unknown_motion = find(telemetry, "platform.motion_active");
+    const auto* unknown_stop = find(telemetry, "safety_stop.active");
+    expect(unknown_motion != nullptr &&
+               std::get<std::string_view>(unknown_motion->value) == "UNKNOWN" &&
+               unknown_motion->quality == SensorQualityStatus::Unknown,
+           "unavailable motion feedback is reported UNKNOWN, not false");
+    expect(unknown_stop != nullptr &&
+               std::get<std::string_view>(unknown_stop->value) == "UNKNOWN" &&
+               unknown_stop->quality == SensorQualityStatus::Unknown,
+           "unavailable safety-stop feedback is reported UNKNOWN");
 
     std::cout << "Checks: " << checks << ", failures: " << failures << '\n';
     return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;

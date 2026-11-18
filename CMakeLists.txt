@@ -798,6 +798,12 @@ if(BUILD_TESTING)
                     test_controller_link_service
                     test_controller_uart_event_queue_policy
                     test_controller_telemetry_snapshot
+                    test_dht22_telemetry_adapter
+                    test_dht22_sampling_scheduler
+                    test_controller_station_state
+                    test_controller_station_safety_input_adapter
+                    test_controller_station_command_policy
+                    test_lid_limit_switch_tracker
                     test_dht22_frame_decoder
                     test_controller_psk_credential_store
                     test_local_api
@@ -883,6 +889,17 @@ if(BUILD_TESTING)
             target_link_options(test_controller_uart_event_queue_policy PRIVATE
                 -fsanitize=address,undefined
             )
+            foreach(target_name
+                    test_dht22_telemetry_adapter
+                    test_dht22_sampling_scheduler
+                    test_controller_station_state
+                    test_controller_station_safety_input_adapter
+                    test_controller_station_command_policy
+                    test_lid_limit_switch_tracker)
+                target_link_options(${target_name} PRIVATE
+                    -fsanitize=address,undefined
+                )
+            endforeach()
             target_link_options(test_controller_telemetry_snapshot PRIVATE
                 -fsanitize=address,undefined
             )

@@ -184,11 +184,11 @@ void controller_link_polling_task(void*) {
                 g_controller_link_runtime.poll(sent_at_view);
 
                 if (g_controller_link_runtime.snapshot_request_pending()) {
-                    const dockstation::hardware::interfaces::
-                        ControllerTelemetrySnapshotPayload no_measurements{};
+                    // Publish logical station state. Unconfigured physical
+                    // inputs are explicitly UNKNOWN; no values are fabricated.
                     static_cast<void>(
-                        g_controller_link_runtime.send_telemetry_snapshot(
-                            no_measurements, sent_at_view));
+                        g_controller_link_runtime.send_station_state_snapshot(
+                            sent_at_view));
                 }
                 runtime_status = g_controller_link_runtime.status();
             }
