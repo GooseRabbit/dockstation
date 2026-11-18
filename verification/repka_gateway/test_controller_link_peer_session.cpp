@@ -291,6 +291,20 @@ int main() {
                result.outbound_message.sequence_number == 4U,
            "accepts a new peer boot while preserving this controller boot ID and transmit sequence");
 
+    const auto command_envelope = make_envelope(ControllerMessageType::CommandRequest, 4U);
+    const ControllerMessagePayload command_payload{ControllerCommandRequestPayload{ControllerCommandType::OpenLid}};
+    const auto command_frame = encode(command_envelope, command_payload);
+    ControllerCodecDecodeStorage command_storage{};
+    ControllerCodecDecodedMessage command_message{};
+    expect(decode_controller_message(command_frame.data(), command_frame.size(), command_storage, command_message).status == ControllerCodecStatus::Success,
+           "decodes a command request for the peer session");
+    const auto command_event = session.handle_message(command_message, "t-command");
+    expect(command_event.status == ControllerLinkPeerSessionStatus::Success && command_event.event == ControllerLinkPeerSessionEvent::CommandRequested,
+           "accepts a command request as pending");
+    const auto command_result = session.make_command_result(ControllerCommandType::OpenLid, ControllerCommandResultStatus::Accepted, "PENDING", "t-result");
+    expect(command_result.status == ControllerLinkPeerSessionStatus::Success && command_result.outbound_message.type == ControllerMessageType::CommandResult,
+           "returns an accepted-not-completed command result");
+
     std::cout << "Checks: " << checks << ", failures: " << failures << '\n';
     return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
