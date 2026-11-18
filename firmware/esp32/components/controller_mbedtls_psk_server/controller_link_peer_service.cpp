@@ -401,6 +401,15 @@ bool ControllerLinkPeerService::export_authenticated_session_proof(
     return tls_server_.export_session_proof(output);
 }
 
+void ControllerLinkPeerService::update_lid_limit_switch_samples(
+    std::optional<bool> open_line_high,
+    std::optional<bool> closed_line_high,
+    std::uint64_t monotonic_time_ms) noexcept {
+    const auto current = station_state_.snapshot().safety;
+    station_state_.set_safety_inputs(safety_input_adapter_.update(
+        current, open_line_high, closed_line_high, monotonic_time_ms));
+}
+
 ControllerLinkPeerServiceStatus ControllerLinkPeerService::status() const noexcept {
     ControllerLinkPeerServiceStatus result{};
     result.state = state_;
