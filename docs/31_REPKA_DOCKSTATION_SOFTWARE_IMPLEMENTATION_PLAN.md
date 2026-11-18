@@ -1788,3 +1788,19 @@ Host CTest проверяет типы, codec round-trip и обработку �
 
 Физическое чтение GPIO, выбор пинов/NO-NC, проверка дребезга на реальных выключателях и исполнительные механизмы не реализованы и остаются аппаратной приёмкой.
 
+## Дополнение 2.42 — сквозная проверка команд ControllerLink через TLS
+
+Host integration test Mbed TLS запускает реальный ControllerLinkPeerService ESP32
+на POSIX socket pair и проходит TLS 1.3 PSK-DHE + HELLO/HELLO_ACK, после чего
+передаёт команды production codec поверх установленного защищённого канала.
+Проверяются два исхода локальной safety-policy: fail-safe STOP_MOTION получает
+COMMAND_RESULT ACCEPTED с причиной ALLOWED и остаётся только ожидающей командой;
+OPEN_LID при NOT_CONFIGURED/UNKNOWN положении крышки получает REJECTED с точной
+причиной LID_POSITION_UNKNOWN. Никакое физическое исполнение не моделируется.
+
+Статус peer service теперь явно показывает наличие pending-команды. После
+повторного принятия STOP_MOTION тест обрывает TLS transport и проверяет, что
+peer service очищает pending-команду при закрытии/ошибке соединения. Это
+проверяет интеграцию транспорта, peer-session и локальной safety-policy на host;
+реальные UART, ESP32 GPIO, концевики и исполнительные драйверы по-прежнему
+требуют аппаратной приёмки.
