@@ -433,7 +433,7 @@ void ControllerLinkService::poll() noexcept {
         } else if (tick.status ==
                    hardware::interfaces::ControllerLinkSessionStatus::Success &&
                    tick.has_outbound_message) {
-            if (!queue_outbound_message(tick.outbound_message)) {
+            if (!queue_outbound_message(tick.outbound_message, tick.outbound_payload)) {
                 fail_transport("CONTROLLER_OUTBOUND_FRAME_FAILED", now_ms);
                 return;
             }
@@ -450,7 +450,7 @@ void ControllerLinkService::poll() noexcept {
             session_->request_snapshot(now_ms, sent_at);
         if (request.status != hardware::interfaces::ControllerLinkSessionStatus::Success ||
             !request.has_outbound_message ||
-            !queue_outbound_message(request.outbound_message)) {
+            !queue_outbound_message(request.outbound_message, request.outbound_payload)) {
             fail_transport("CONTROLLER_SNAPSHOT_REQUEST_FAILED", now_ms);
             return;
         }
@@ -521,6 +521,22 @@ bool ControllerLinkService::export_authenticated_session_proof(
     return transport_.export_session_proof(
         reinterpret_cast<const std::uint8_t*>(kControllerSessionProofContext),
         sizeof(kControllerSessionProofContext) - 1U, output);
+}
+
+bool ControllerLinkService::request_command(
+    hardware::interfaces::ControllerCommandType command) noexcept {
+    if (state_ != ControllerLinkServiceState::Established || !session_.has_value() ||
+        session_->state() != ControllerLinkSessionState::Established ||
+        outbound_frame_size_ != 0U || !hardware::interfaces::is_known_controller_command_type(command)) {
+        return false;
+    }
+    std::array<char, 32U> timestamp_buffer{};
+    const std::string_view sent_at = make_timestamp(timestamp_buffer);
+    if (sent_at.empty()) return false;
+    const auto request = session_->request_command(command, monotonic_milliseconds(), sent_at);
+    if (request.status != hardware::interfaces::ControllerLinkSessionStatus::Success ||
+        !request.has_outbound_message) return false;
+    return queue_outbound_message(request.outbound_message, request.outbound_payload);
 }
 
 ControllerLinkServiceStatus ControllerLinkService::status() const noexcept {
@@ -691,13 +707,14 @@ void ControllerLinkService::fail_transport(
 }
 
 bool ControllerLinkService::queue_outbound_message(
-    const hardware::interfaces::ControllerMessageEnvelope& envelope) noexcept {
+    const hardware::interfaces::ControllerMessageEnvelope& envelope,
+    const hardware::interfaces::ControllerMessagePayload& payload) noexcept {
     if (outbound_frame_size_ != 0U) {
         return false;
     }
     const auto result = hardware::interfaces::encode_controller_message(
         envelope,
-        ControllerMessagePayload{EmptyControllerMessagePayload{}},
+        payload,
         outbound_frame_.data(), outbound_frame_.size());
     if (result.status != ControllerCodecStatus::Success ||
         result.frame_size == 0U ||
@@ -847,7 +864,7 @@ bool ControllerLinkService::begin_protocol_session(
             hardware::interfaces::ControllerLinkSessionStatus::Success ||
         !hello.has_outbound_message ||
         hello.outbound_message.type != ControllerMessageType::Hello ||
-        !queue_outbound_message(hello.outbound_message)) {
+        !queue_outbound_message(hello.outbound_message, hello.outbound_payload)) {
         return false;
     }
     tls_authenticated_ = true;
