@@ -2,6 +2,8 @@
 
 #include <openssl/crypto.h>
 
+#include <chrono>
+
 namespace dockstation::platform::linux_platform {
 namespace {
 
@@ -27,6 +29,11 @@ namespace {
 
 }  // namespace
 
+ControllerTransportManager::ControllerTransportManager(
+    std::chrono::milliseconds handshake_timeout) noexcept
+    : handshake_timeout_(handshake_timeout.count() > 0
+          ? handshake_timeout : kControllerTlsHandshakeTimeout) {}
+
 ControllerTransportManager::~ControllerTransportManager() {
     close();
 }
@@ -46,6 +53,7 @@ ControllerTransportResult ControllerTransportManager::start(
                     tls_.last_openssl_error());
     }
 
+    handshake_started_at_ = std::chrono::steady_clock::now();
     active_ = true;
     return make_result(ControllerTransportStatus::Started);
 }
@@ -65,6 +73,14 @@ ControllerTransportResult ControllerTransportManager::poll() noexcept {
     if (!active_) {
         return make_result(failed_ ? failure_status_
                                    : ControllerTransportStatus::NotStarted);
+    }
+
+    // A silent or stalled peer must not leave the Repka link in TLS_HANDSHAKE
+    // indefinitely. Use a monotonic deadline so wall-clock adjustments cannot
+    // extend or prematurely expire the initial handshake.
+    if (!tls_.is_handshake_complete() &&
+        std::chrono::steady_clock::now() - handshake_started_at_ >= handshake_timeout_) {
+        return fail(ControllerTransportStatus::TlsHandshakeTimeout);
     }
 
     const bool handshake_was_complete = tls_.is_handshake_complete();
