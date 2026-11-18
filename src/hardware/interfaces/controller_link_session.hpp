@@ -40,9 +40,11 @@ enum class ControllerLinkSessionEvent : std::uint8_t {
     HelloRequired,
     HeartbeatDue,
     SnapshotRequestReady,
+    CommandRequestReady,
     SessionEstablished,
     PeerHeartbeatReceived,
     PeerMessageReceived,
+    CommandResultReceived,
     LinkLost
 };
 
@@ -69,6 +71,7 @@ struct ControllerLinkSessionResult {
     // backing object is changed or destroyed. Outbound payloads are always
     // EmptyControllerMessagePayload.
     ControllerMessageEnvelope outbound_message{};
+    ControllerMessagePayload outbound_payload{EmptyControllerMessagePayload{}};
 };
 
 // Protocol-level Repka/controller session coordinator. It has no UART, timer,
@@ -98,6 +101,10 @@ public:
 
     // Requests one read-only telemetry snapshot after the authenticated
     // transport has established this logical protocol session.
+    [[nodiscard]] ControllerLinkSessionResult request_command(
+        ControllerCommandType command,
+        std::uint64_t now_ms, std::string_view sent_at) noexcept;
+
     [[nodiscard]] ControllerLinkSessionResult request_snapshot(
         std::uint64_t now_ms, std::string_view sent_at) noexcept;
 
@@ -125,6 +132,7 @@ private:
     [[nodiscard]] ControllerLinkSessionResult make_outbound(
         ControllerMessageType type,
         ControllerLinkSessionEvent event,
+        const ControllerMessagePayload& payload,
         std::uint64_t now_ms,
         std::string_view sent_at) noexcept;
 
