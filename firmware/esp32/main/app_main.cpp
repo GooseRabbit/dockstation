@@ -1,3 +1,4 @@
+#include <cstddef>
 #include <cstdio>
 
 #include "esp_err.h"
