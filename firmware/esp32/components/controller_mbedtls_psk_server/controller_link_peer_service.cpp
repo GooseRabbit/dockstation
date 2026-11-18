@@ -401,6 +401,14 @@ bool ControllerLinkPeerService::export_authenticated_session_proof(
     return tls_server_.export_session_proof(output);
 }
 
+void ControllerLinkPeerService::configure_lid_limit_switches(
+    LidLimitSwitchConfig config) noexcept {
+    safety_input_adapter_.configure(config);
+    auto current = station_state_.snapshot().safety;
+    current.lid_position = LidPositionStatus::Unknown;
+    station_state_.set_safety_inputs(current);
+}
+
 void ControllerLinkPeerService::update_lid_limit_switch_samples(
     std::optional<bool> open_line_high,
     std::optional<bool> closed_line_high,
