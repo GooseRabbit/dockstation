@@ -100,7 +100,7 @@ int main() {
            "safety stop blocks normal operation");
 
     telemetry.fill({});
-    station.build_telemetry(telemetry, "t2");
+    static_cast<void>(station.build_telemetry(telemetry, "t2"));
     const auto* command_result = find(telemetry, "command.last_decision");
     expect(command_result != nullptr &&
                std::get<std::string_view>(command_result->value) ==
