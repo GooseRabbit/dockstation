@@ -6,7 +6,7 @@ namespace dockstation::hardware::interfaces {
 namespace {
 
 [[nodiscard]] bool is_known_wire_message_type(std::uint8_t type) noexcept {
-    return type >= 1U && type <= 6U;
+    return type >= 1U && type <= 8U;
 }
 
 [[nodiscard]] std::size_t read_u16_le(
