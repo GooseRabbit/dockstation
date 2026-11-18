@@ -4,13 +4,13 @@ namespace dockstation::firmware::esp32 {
 namespace {
 
 [[nodiscard]] ControllerStationCommandDecision deny(
-    ControllerStationCommandDecision status,
+    ControllerStationCommandDecisionStatus status,
     std::string_view reason) noexcept {
     return {status, reason};
 }
 
 [[nodiscard]] ControllerStationCommandDecision allow() noexcept {
-    return {ControllerStationCommandDecision::Allow, "ALLOWED"};
+    return {ControllerStationCommandDecisionStatus::Allow, "ALLOWED"};
 }
 
 [[nodiscard]] bool any_motion(
@@ -32,7 +32,7 @@ ControllerStationCommandDecision evaluate_controller_station_command(
 
     if (inputs.safety_stop_active) {
         return deny(
-            ControllerStationCommandDecision::DenySafetyStop,
+            ControllerStationCommandDecisionStatus::DenySafetyStop,
             "SAFETY_STOP_ACTIVE");
     }
 
@@ -41,17 +41,17 @@ ControllerStationCommandDecision evaluate_controller_station_command(
             if (inputs.lid_position == LidPositionStatus::Unknown ||
                 inputs.lid_position == LidPositionStatus::NotConfigured) {
                 return deny(
-                    ControllerStationCommandDecision::DenyUnknownLidPosition,
+                    ControllerStationCommandDecisionStatus::DenyUnknownLidPosition,
                     "LID_POSITION_UNKNOWN");
             }
             if (inputs.lid_position != LidPositionStatus::Closed) {
                 return deny(
-                    ControllerStationCommandDecision::DenyLidNotClosed,
+                    ControllerStationCommandDecisionStatus::DenyLidNotClosed,
                     "LID_NOT_CLOSED");
             }
             if (any_motion(inputs) || inputs.cleaning_active) {
                 return deny(
-                    ControllerStationCommandDecision::DenyMotionConflict,
+                    ControllerStationCommandDecisionStatus::DenyMotionConflict,
                     "MOTION_ACTIVE");
             }
             return allow();
@@ -60,17 +60,17 @@ ControllerStationCommandDecision evaluate_controller_station_command(
             if (inputs.lid_position == LidPositionStatus::Unknown ||
                 inputs.lid_position == LidPositionStatus::NotConfigured) {
                 return deny(
-                    ControllerStationCommandDecision::DenyUnknownLidPosition,
+                    ControllerStationCommandDecisionStatus::DenyUnknownLidPosition,
                     "LID_POSITION_UNKNOWN");
             }
             if (inputs.lid_position != LidPositionStatus::Open) {
                 return deny(
-                    ControllerStationCommandDecision::DenyLidNotOpen,
+                    ControllerStationCommandDecisionStatus::DenyLidNotOpen,
                     "LID_NOT_OPEN");
             }
             if (any_motion(inputs) || inputs.cleaning_active) {
                 return deny(
-                    ControllerStationCommandDecision::DenyMotionConflict,
+                    ControllerStationCommandDecisionStatus::DenyMotionConflict,
                     "MOTION_ACTIVE");
             }
             return allow();
@@ -80,8 +80,8 @@ ControllerStationCommandDecision evaluate_controller_station_command(
                 return deny(
                     inputs.lid_position == LidPositionStatus::Unknown ||
                             inputs.lid_position == LidPositionStatus::NotConfigured
-                        ? ControllerStationCommandDecision::DenyUnknownLidPosition
-                        : ControllerStationCommandDecision::DenyLidNotClosed,
+                        ? ControllerStationCommandDecisionStatus::DenyUnknownLidPosition
+                        : ControllerStationCommandDecisionStatus::DenyLidNotClosed,
                     inputs.lid_position == LidPositionStatus::Unknown ||
                             inputs.lid_position == LidPositionStatus::NotConfigured
                         ? "LID_POSITION_UNKNOWN"
@@ -89,17 +89,17 @@ ControllerStationCommandDecision evaluate_controller_station_command(
             }
             if (inputs.drive_motion_active) {
                 return deny(
-                    ControllerStationCommandDecision::DenyMotionConflict,
+                    ControllerStationCommandDecisionStatus::DenyMotionConflict,
                     "DRIVE_MOTION_ACTIVE");
             }
             if (inputs.platform_motion_active || inputs.cleaning_active) {
                 return deny(
-                    ControllerStationCommandDecision::DenyCleaningConflict,
+                    ControllerStationCommandDecisionStatus::DenyCleaningConflict,
                     "CLEANING_OR_PLATFORM_ACTIVE");
             }
             if (!inputs.workspace_known || !inputs.workspace_clear) {
                 return deny(
-                    ControllerStationCommandDecision::DenyWorkspaceUnknown,
+                    ControllerStationCommandDecisionStatus::DenyWorkspaceUnknown,
                     "WORKSPACE_NOT_CONFIRMED_CLEAR");
             }
             return allow();
@@ -109,8 +109,8 @@ ControllerStationCommandDecision evaluate_controller_station_command(
                 return deny(
                     inputs.lid_position == LidPositionStatus::Unknown ||
                             inputs.lid_position == LidPositionStatus::NotConfigured
-                        ? ControllerStationCommandDecision::DenyUnknownLidPosition
-                        : ControllerStationCommandDecision::DenyLidNotClosed,
+                        ? ControllerStationCommandDecisionStatus::DenyUnknownLidPosition
+                        : ControllerStationCommandDecisionStatus::DenyLidNotClosed,
                     inputs.lid_position == LidPositionStatus::Unknown ||
                             inputs.lid_position == LidPositionStatus::NotConfigured
                         ? "LID_POSITION_UNKNOWN"
@@ -118,7 +118,7 @@ ControllerStationCommandDecision evaluate_controller_station_command(
             }
             if (inputs.cleaning_active || inputs.drive_motion_active) {
                 return deny(
-                    ControllerStationCommandDecision::DenyMotionConflict,
+                    ControllerStationCommandDecisionStatus::DenyMotionConflict,
                     "CONFLICTING_OPERATION_ACTIVE");
             }
             return allow();
@@ -129,7 +129,7 @@ ControllerStationCommandDecision evaluate_controller_station_command(
     }
 
     return deny(
-        ControllerStationCommandDecision::DenySafetyStop,
+        ControllerStationCommandDecisionStatus::DenySafetyStop,
         "UNKNOWN_COMMAND");
 }
 

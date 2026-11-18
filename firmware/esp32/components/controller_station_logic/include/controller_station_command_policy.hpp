@@ -16,7 +16,7 @@ enum class ControllerStationCommandType : std::uint8_t {
     StopMotion
 };
 
-enum class ControllerStationCommandDecision : std::uint8_t {
+enum class ControllerStationCommandDecisionStatus : std::uint8_t {
     Allow,
     DenyUnknownLidPosition,
     DenyLidNotClosed,
@@ -38,7 +38,7 @@ struct ControllerStationSafetyInputs final {
 };
 
 struct ControllerStationCommandDecision final {
-    ControllerStationCommandDecision status{
+    ControllerStationCommandDecisionStatus status{
         ControllerStationCommandDecision::DenyUnknownLidPosition};
     std::string_view reason_code{};
 };
