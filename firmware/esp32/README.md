@@ -335,5 +335,8 @@ events. This prevents TLS from consuming bytes while older UART overflow or
 framing/parity events are still waiting in the event queue.
 
 
-- UART event queue handling is bounded to eight events per runtime poll. If events remain queued, TLS/ControllerLink processing is deferred until a later poll so overflow/framing/parity faults are observed before more bytes are consumed.
-- UART diagnostics preserve the concrete failure class: FIFO overflow, RX buffer full, frame error, parity error, BREAK, driver configuration/install/close failure, and TX/RX callback failure. The runtime carries this class across TLS/UART teardown and includes it beside the ESP-IDF error name in reconnect logs.
+UART diagnostics preserve the concrete failure class: FIFO overflow, RX buffer
+full, frame error, parity error, BREAK, driver configuration/install/close
+failure, and TX/RX callback failure. The runtime carries this class across
+TLS/UART teardown and includes it beside the ESP-IDF error name in reconnect
+logs.
