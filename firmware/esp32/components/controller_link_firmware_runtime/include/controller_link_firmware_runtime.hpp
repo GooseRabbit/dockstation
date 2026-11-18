@@ -33,6 +33,7 @@ struct ControllerLinkFirmwareRuntimeStatus final {
     esp_err_t last_uart_error{ESP_OK};
     ControllerLinkPeerServiceStatus peer{};
     hardware::interfaces::ControllerLinkStartupReadiness startup_readiness{};
+    ControllerUartFault last_uart_fault{ControllerUartFault::None};
 };
 
 // Owns the UART and peer service in one place. The peer service is always
@@ -80,6 +81,7 @@ private:
     ControllerLinkFirmwareRuntimeState state_{
         ControllerLinkFirmwareRuntimeState::NotConfigured};
     esp_err_t last_uart_error_{ESP_OK};
+    ControllerUartFault last_uart_fault_{ControllerUartFault::None};
     std::uint64_t connection_started_at_us_{0U};
     std::uint64_t last_peer_activity_at_us_{0U};
     std::uint64_t last_peer_message_count_{0U};
