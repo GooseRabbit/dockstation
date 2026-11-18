@@ -527,6 +527,19 @@ if(BUILD_TESTING)
     dockstation_apply_compile_policy(test_controller_station_state)
     add_test(NAME controller_station_state COMMAND test_controller_station_state)
 
+    add_executable(test_controller_station_safety_input_adapter
+        firmware/esp32/components/controller_station_logic/controller_station_safety_input_adapter.cpp
+        firmware/esp32/components/controller_lid_limit_switches/lid_limit_switch_tracker.cpp
+        verification/repka_gateway/test_controller_station_safety_input_adapter.cpp
+    )
+    target_include_directories(test_controller_station_safety_input_adapter PRIVATE
+        firmware/esp32/components/controller_station_logic/include
+        firmware/esp32/components/controller_lid_limit_switches/include
+    )
+    dockstation_apply_compile_policy(test_controller_station_safety_input_adapter)
+    add_test(NAME controller_station_safety_input_adapter
+        COMMAND test_controller_station_safety_input_adapter)
+
     add_executable(test_controller_station_command_policy
         firmware/esp32/components/controller_station_logic/controller_station_command_policy.cpp
         verification/repka_gateway/test_controller_station_command_policy.cpp
