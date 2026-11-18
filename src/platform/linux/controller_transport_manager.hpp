@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <chrono>
 
 #include <openssl/crypto.h>
 
@@ -13,6 +14,7 @@ namespace dockstation::platform::linux_platform {
 
 inline constexpr std::size_t kControllerTransportBufferSize = 4096U;
 inline constexpr std::size_t kControllerTransportPumpLimit = 12U;
+inline constexpr std::chrono::milliseconds kControllerTlsHandshakeTimeout{10000};
 
 enum class ControllerTransportStatus : std::uint8_t {
     NotStarted,
@@ -25,6 +27,7 @@ enum class ControllerTransportStatus : std::uint8_t {
     Disconnected,
     PeerClosed,
     TlsFailed,
+    TlsHandshakeTimeout,
     TransportFailed
 };
 
@@ -46,7 +49,8 @@ struct ControllerTransportResult final {
 // the credential store, ControllerCodec, link session, timers, or Gateway API.
 class ControllerTransportManager final {
 public:
-    ControllerTransportManager() noexcept = default;
+    explicit ControllerTransportManager(
+        std::chrono::milliseconds handshake_timeout = kControllerTlsHandshakeTimeout) noexcept;
     ~ControllerTransportManager();
 
     ControllerTransportManager(const ControllerTransportManager&) = delete;
@@ -127,6 +131,8 @@ private:
     bool active_{false};
     bool failed_{false};
     ControllerTransportStatus failure_status_{ControllerTransportStatus::NotStarted};
+    std::chrono::milliseconds handshake_timeout_{kControllerTlsHandshakeTimeout};
+    std::chrono::steady_clock::time_point handshake_started_at_{};
     int last_system_error_{0};
     unsigned long last_openssl_error_{0UL};
 };
