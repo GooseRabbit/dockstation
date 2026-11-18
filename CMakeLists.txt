@@ -112,12 +112,18 @@ if(DOCKSTATION_BUILD_MBEDTLS_INTEROP_TESTS)
     add_library(dockstation_controller_mbedtls_server STATIC
         firmware/esp32/components/controller_mbedtls_psk_server/controller_mbedtls_psk_server.cpp
         firmware/esp32/components/controller_mbedtls_psk_server/controller_link_peer_service.cpp
+        firmware/esp32/components/controller_station_logic/controller_station_command_policy.cpp
+        firmware/esp32/components/controller_station_logic/controller_station_state.cpp
+        firmware/esp32/components/controller_station_logic/controller_station_safety_input_adapter.cpp
+        firmware/esp32/components/controller_lid_limit_switches/lid_limit_switch_tracker.cpp
         src/hardware/interfaces/controller_codec.cpp
         src/hardware/interfaces/controller_frame_stream_decoder.cpp
         src/hardware/interfaces/controller_link_peer_session.cpp
     )
     target_include_directories(dockstation_controller_mbedtls_server PUBLIC
         "${CMAKE_CURRENT_SOURCE_DIR}/firmware/esp32/components/controller_mbedtls_psk_server/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/firmware/esp32/components/controller_station_logic/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/firmware/esp32/components/controller_lid_limit_switches/include"
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
     )
     target_link_libraries(dockstation_controller_mbedtls_server
