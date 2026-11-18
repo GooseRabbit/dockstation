@@ -359,6 +359,21 @@ int main() {
                ControllerCodecStatus::InvalidBooleanValue,
            "rejects boolean encodings other than zero or one even with a recomputed CRC");
 
+    const auto command_envelope = valid_envelope(ControllerMessageType::CommandRequest);
+    const ControllerCommandRequestPayload request{ControllerCommandType::OpenLid};
+    result = encode(command_envelope, request, frame);
+    expect(result.status == ControllerCodecStatus::Success, "encodes a command request");
+    decode_result = decode_controller_message(frame.data(), result.frame_size, storage, decoded);
+    expect(decode_result.status == ControllerCodecStatus::Success && decoded.envelope.type == ControllerMessageType::CommandRequest && std::get<ControllerCommandRequestPayload>(decoded.payload).command == ControllerCommandType::OpenLid,
+           "round-trips a command request");
+    const auto command_result_envelope = valid_envelope(ControllerMessageType::CommandResult);
+    const ControllerCommandResultPayload command_result{ControllerCommandType::OpenLid, ControllerCommandResultStatus::Accepted, "PENDING"};
+    result = encode(command_result_envelope, command_result, frame);
+    expect(result.status == ControllerCodecStatus::Success, "encodes a command result");
+    decode_result = decode_controller_message(frame.data(), result.frame_size, storage, decoded);
+    expect(decode_result.status == ControllerCodecStatus::Success && decoded.envelope.type == ControllerMessageType::CommandResult && std::get<ControllerCommandResultPayload>(decoded.payload).reason_code == "PENDING",
+           "round-trips a command result");
+
     std::cout << "Checks: " << checks << ", failures: " << failures << '\n';
     return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
