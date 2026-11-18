@@ -500,10 +500,20 @@ private:
         case ControllerMessageType::RequestSnapshot:
             return std::holds_alternative<EmptyControllerMessagePayload>(payload);
 
-        case ControllerMessageType::CommandRequest: { const auto* command=std::get_if<ControllerCommandRequestPayload>(&payload); return command!=nullptr && write_command_type(writer,command->command); }
-        case ControllerMessageType::CommandResult: { const auto* result=std::get_if<ControllerCommandResultPayload>(&payload); return result!=nullptr && write_command_type(writer,result->command) && write_command_result_status(writer,result->status) && writer.write_text(result->reason_code); }
-        case ControllerMessageType::CommandRequest: { ControllerCommandType command{}; if(!read_command_type(reader,command)){status=ControllerCodecStatus::MalformedField;return false;} payload=ControllerCommandRequestPayload{command}; return true; }
-        case ControllerMessageType::CommandResult: { ControllerCommandType command{}; ControllerCommandResultStatus result_status{}; std::string_view reason{}; if(!read_command_type(reader,command)||!read_command_result_status(reader,result_status)||!reader.read_text(reason)){status=ControllerCodecStatus::MalformedField;return false;} payload=ControllerCommandResultPayload{command,result_status,reason}; return true; }
+        case ControllerMessageType::CommandRequest: {
+            const auto* command =
+                std::get_if<ControllerCommandRequestPayload>(&payload);
+            return command != nullptr &&
+                   write_command_type(writer, command->command);
+        }
+        case ControllerMessageType::CommandResult: {
+            const auto* result =
+                std::get_if<ControllerCommandResultPayload>(&payload);
+            return result != nullptr &&
+                   write_command_type(writer, result->command) &&
+                   write_command_result_status(writer, result->status) &&
+                   writer.write_text(result->reason_code);
+        }
         case ControllerMessageType::TelemetrySnapshot: {
             const auto* snapshot =
                 std::get_if<ControllerTelemetrySnapshotPayload>(&payload);
@@ -583,6 +593,37 @@ private:
         case ControllerMessageType::RequestSnapshot:
             payload = EmptyControllerMessagePayload{};
             return true;
+
+        case ControllerMessageType::CommandRequest: {
+            ControllerCommandType command{};
+            if (!read_command_type(reader, command)) {
+                status = reader.status();
+                if (status == ControllerCodecStatus::Success) {
+                    status = ControllerCodecStatus::MalformedField;
+                }
+                return false;
+            }
+            payload = ControllerCommandRequestPayload{command};
+            return true;
+        }
+
+        case ControllerMessageType::CommandResult: {
+            ControllerCommandType command{};
+            ControllerCommandResultStatus result_status{};
+            std::string_view reason{};
+            if (!read_command_type(reader, command) ||
+                !read_command_result_status(reader, result_status) ||
+                !reader.read_text(reason)) {
+                status = reader.status();
+                if (status == ControllerCodecStatus::Success) {
+                    status = ControllerCodecStatus::MalformedField;
+                }
+                return false;
+            }
+            payload =
+                ControllerCommandResultPayload{command, result_status, reason};
+            return true;
+        }
 
         case ControllerMessageType::TelemetrySnapshot: {
             std::uint8_t count = 0U;
