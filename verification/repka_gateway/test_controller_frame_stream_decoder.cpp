@@ -44,6 +44,32 @@ std::size_t make_hello_frame(
         : 0U;
 }
 
+
+std::size_t make_command_frame(
+    ControllerMessageType type,
+    std::array<std::uint8_t, kControllerCodecMaximumFrameSize>& frame) {
+    ControllerMessageEnvelope envelope{};
+    envelope.type = type;
+    envelope.protocol_version = ControllerProtocolVersion{1U, 1U};
+    envelope.controller_id = "repka-01";
+    envelope.controller_instance_id = "repka-boot-01";
+    envelope.sequence_number = 7U;
+    envelope.sent_at = "2026-11-18T09:00:00Z";
+
+    const ControllerMessagePayload payload =
+        type == ControllerMessageType::CommandRequest
+            ? ControllerMessagePayload{ControllerCommandRequestPayload{
+                  ControllerCommandType::StopMotion}}
+            : ControllerMessagePayload{ControllerCommandResultPayload{
+                  ControllerCommandType::StopMotion,
+                  ControllerCommandResultStatus::Accepted, "ALLOWED"}};
+    const auto result = encode_controller_message(
+        envelope, payload, frame.data(), frame.size());
+    return result.status == ControllerCodecStatus::Success
+        ? result.frame_size
+        : 0U;
+}
+
 ControllerCodecResult decode_ready_frame(
     const ControllerFrameStreamDecoder& stream,
     ControllerCodecDecodeStorage& storage,
@@ -239,6 +265,32 @@ int main() {
 
     expect(length_recovery_stream.consume_frame(),
            "consumes clean frame after malformed length recovery");
+
+
+    // Command messages were added after the original six wire message kinds.
+    // The stream scanner must recognize both new wire values (7 and 8), not
+    // silently discard them as unknown header bytes.
+    for (const auto type : {ControllerMessageType::CommandRequest,
+                            ControllerMessageType::CommandResult}) {
+        std::array<std::uint8_t, kControllerCodecMaximumFrameSize> command_frame{};
+        const auto command_size = make_command_frame(type, command_frame);
+        ControllerFrameStreamDecoder command_stream{};
+        const auto command_progress = command_stream.push_bytes(
+            command_frame.data(), command_size);
+        ControllerCodecDecodedMessage command_decoded{};
+        const auto command_decode = decode_ready_frame(
+            command_stream, storage, command_decoded);
+        expect(command_size > 0U &&
+                   command_progress.status == ControllerFrameStreamStatus::FrameReady &&
+                   command_progress.frame_size == command_size &&
+                   command_decode.status == ControllerCodecStatus::Success &&
+                   command_decoded.envelope.type == type,
+               type == ControllerMessageType::CommandRequest
+                   ? "recognizes and decodes COMMAND_REQUEST wire type 7"
+                   : "recognizes and decodes COMMAND_RESULT wire type 8");
+        expect(command_stream.consume_frame(),
+               "consumes a recognized command frame");
+    }
 
     ControllerFrameStreamDecoder null_stream{};
     expect(null_stream.push_bytes(nullptr, 1U).status ==
