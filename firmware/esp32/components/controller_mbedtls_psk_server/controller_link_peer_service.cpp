@@ -429,6 +429,7 @@ ControllerLinkPeerServiceStatus ControllerLinkPeerService::status() const noexce
          state_ == ControllerLinkPeerServiceState::Established);
     result.protocol_established = logical_session_established_;
     result.snapshot_request_pending = snapshot_request_pending_;
+    result.command_pending = station_state_.snapshot().pending_command.has_value();
     result.outbound_message_pending = outbound_frame_size_ != 0U;
     result.messages_received = messages_received_;
     result.telemetry_snapshots_sent = telemetry_snapshots_sent_;
