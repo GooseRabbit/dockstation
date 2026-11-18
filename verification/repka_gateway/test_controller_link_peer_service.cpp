@@ -306,6 +306,10 @@ struct ServerResult final {
     std::atomic<bool> empty_snapshot_flushed{false};
     std::atomic<bool> command_pending_observed{false};
     std::atomic<bool> command_pending_cleared_after_disconnect{false};
+    std::atomic<std::uint64_t> last_messages_received{0U};
+    std::atomic<int> last_protocol_status{0};
+    std::atomic<bool> last_outbound_pending{false};
+    std::atomic<int> last_peer_state{0};
     std::atomic<bool> stop_requested{false};
     std::atomic<int> error{0};
     std::array<std::uint8_t, kControllerLinkSessionProofSize> exporter{};
@@ -332,6 +336,15 @@ void run_peer_service(
          ++attempt) {
         service.poll("1700000000000");
         const auto status = service.status();
+        result.last_messages_received.store(status.messages_received,
+                                             std::memory_order_release);
+        result.last_protocol_status.store(
+            static_cast<int>(status.last_protocol_status),
+            std::memory_order_release);
+        result.last_outbound_pending.store(status.outbound_message_pending,
+                                           std::memory_order_release);
+        result.last_peer_state.store(static_cast<int>(status.state),
+                                     std::memory_order_release);
         if (status.command_pending) {
             result.command_pending_observed.store(true, std::memory_order_release);
         }
@@ -677,6 +690,14 @@ bool run_complete_peer_service_flow() {
                   << ", disconnect_received=" << disconnect_command_received
                   << ", disconnect_valid=" << disconnect_command_valid
                   << ", peer_error=" << server_result.error.load(
+                         std::memory_order_acquire)
+                  << ", messages_received=" << server_result.last_messages_received.load(
+                         std::memory_order_acquire)
+                  << ", protocol_status=" << server_result.last_protocol_status.load(
+                         std::memory_order_acquire)
+                  << ", outbound_pending=" << server_result.last_outbound_pending.load(
+                         std::memory_order_acquire)
+                  << ", peer_state=" << server_result.last_peer_state.load(
                          std::memory_order_acquire) << '\n';
     }
     expect(server_result.command_pending_cleared_after_disconnect.load(
