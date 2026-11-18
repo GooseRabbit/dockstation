@@ -340,3 +340,23 @@ full, frame error, parity error, BREAK, driver configuration/install/close
 failure, and TX/RX callback failure. The runtime carries this class across
 TLS/UART teardown and includes it beside the ESP-IDF error name in reconnect
 logs.
+
+
+## ControllerLink fault-injection verification
+
+Host CTest exercises partial TLS application writes, peer loss during an
+incomplete frame, reconnect with a fresh TLS and HELLO/HELLO_ACK exchange,
+malformed lengths and CRC recovery, exact command replay, a second command
+while one is pending, bounded UART event batches, deferred queue backlog,
+FIFO overflow and UART framing faults.
+
+The event-queue policy is shared by the ESP-IDF transport and a host test. The
+host test validates bounded draining and fault classification; it does not
+claim to exercise the physical ESP-IDF queue or electrical UART.
+
+Repka does not automatically retransmit command requests. A repeated frame
+with the same protocol sequence is rejected by replay protection, and a new
+command while another is pending is rejected. If the connection is lost after
+a command may have been accepted, its physical outcome remains unknown. The
+current prototype has no durable command IDs or exactly-once execution across
+controller reboots. No test simulates physical actuator completion.

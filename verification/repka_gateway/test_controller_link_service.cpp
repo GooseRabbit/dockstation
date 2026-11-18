@@ -313,14 +313,22 @@ bool send_peer_message(
     std::array<std::uint8_t, kControllerCodecMaximumFrameSize> frame{};
     const auto encoded = encode_controller_message(
         envelope, payload, frame.data(), frame.size());
-    if (encoded.status != ControllerCodecStatus::Success ||
-        encoded.frame_size == 0U) {
-        return false;
-    }
+    if (encoded.status != ControllerCodecStatus::Success || encoded.frame_size == 0U) return false;
     std::size_t written = 0U;
     return SSL_write_ex(peer.ssl, frame.data(), encoded.frame_size, &written) == 1 &&
-           written == encoded.frame_size &&
-           peer_to_uart(peer.transport, master);
+           written == encoded.frame_size && peer_to_uart(peer.transport, master);
+}
+bool send_peer_message_fragment(
+    TlsPeer& peer, int master, const ControllerMessageEnvelope& envelope,
+    const ControllerMessagePayload& payload, std::size_t offset,
+    std::size_t count) noexcept {
+    std::array<std::uint8_t, kControllerCodecMaximumFrameSize> frame{};
+    const auto encoded = encode_controller_message(envelope, payload, frame.data(), frame.size());
+    if (encoded.status != ControllerCodecStatus::Success || offset > encoded.frame_size ||
+        count == 0U || count > encoded.frame_size - offset) return false;
+    std::size_t written = 0U;
+    return SSL_write_ex(peer.ssl, frame.data() + offset, count, &written) == 1 &&
+           written == count && peer_to_uart(peer.transport, master);
 }
 
 #if defined(DOCKSTATION_WITH_SQLITE_PERSISTENCE)
@@ -899,16 +907,37 @@ int main() {
                diagnostics.find("\"value\":21.5") != std::string::npos,
            "publishes the accepted peer snapshot through the real diagnostics serializer");
 
-    // Stop sending peer traffic long enough to exercise the service-level
-    // heartbeat deadline. Recovery must create a new TLS transport and repeat
-    // HELLO/HELLO_ACK rather than reusing the stale authenticated stream.
-    std::this_thread::sleep_for(std::chrono::milliseconds{5100U});
+    const ControllerTelemetryMeasurement interrupted_measurement{
+        "fixture.interrupted", 99.0, "C", SensorQualityStatus::Ok, "2026-11-18T10:00:00Z"};
+    const ControllerTelemetrySnapshotPayload interrupted_payload{&interrupted_measurement, 1U};
+    const auto interrupted_envelope = peer_envelope(ControllerMessageType::TelemetrySnapshot, 10U);
+    std::array<std::uint8_t, kControllerCodecMaximumFrameSize> interrupted_frame{};
+    const auto interrupted_encoded = encode_controller_message(
+        interrupted_envelope, ControllerMessagePayload{interrupted_payload},
+        interrupted_frame.data(), interrupted_frame.size());
+    const std::size_t interrupted_split = interrupted_encoded.frame_size / 2U;
+    expect(interrupted_encoded.status == ControllerCodecStatus::Success &&
+               interrupted_split > 0U &&
+               send_peer_message_fragment(peer, pty.master, interrupted_envelope,
+                   ControllerMessagePayload{interrupted_payload}, 0U, interrupted_split),
+           "sends only the first part of a telemetry frame before peer loss");
     e2e_service.poll();
+    expect(e2e_service.status().state == ControllerLinkServiceState::Established &&
+               e2e_service.status().rejected_frames == 0U &&
+               e2e_service.telemetry_snapshot().sequence_number() == 2U,
+           "does not dispatch or replace telemetry from an incomplete frame");
+    peer.reset();
+    e2e_service.poll();
+    if (e2e_service.status().state != ControllerLinkServiceState::LinkLost) {
+        std::this_thread::sleep_for(std::chrono::milliseconds{5100U});
+        e2e_service.poll();
+    }
     expect(e2e_service.status().state == ControllerLinkServiceState::LinkLost &&
                !e2e_service.status().tls_authenticated &&
                !e2e_service.status().protocol_established &&
+               e2e_service.telemetry_snapshot().sequence_number() == 2U &&
                e2e_service.authenticated_pair_identity().empty(),
-           "heartbeat timeout closes the stale TLS session and clears authenticated state");
+           "disconnect during an incomplete transfer loses the session and retains only the last complete snapshot");
 
     std::this_thread::sleep_for(std::chrono::milliseconds{2100U});
     e2e_service.poll();

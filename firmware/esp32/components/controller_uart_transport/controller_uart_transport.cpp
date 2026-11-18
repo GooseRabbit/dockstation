@@ -1,4 +1,5 @@
 #include "controller_uart_transport.hpp"
+#include "controller_uart_event_queue_policy.hpp"
 
 #include <climits>
 #include <cstdint>
@@ -11,7 +12,6 @@ namespace {
 
 constexpr int kMaximumReceiveBufferSize = 64 * 1024;
 constexpr int kUartEventQueueLength = 8;
-constexpr std::size_t kMaximumEventsPerPoll = 8U;
 
 [[nodiscard]] bool valid_config(const ControllerUartConfig& config) noexcept {
     const int port_number = static_cast<int>(config.port);
@@ -152,44 +152,47 @@ bool ControllerUartTransport::poll_transport_events() noexcept {
         last_fault_ = ControllerUartFault::InvalidState;
         return false;
     }
-
-    for (std::size_t count = 0U; count < kMaximumEventsPerPoll; ++count) {
-        uart_event_t event{};
-        if (xQueueReceive(event_queue_, &event, 0) != pdTRUE) {
+    const auto drained = drain_controller_uart_event_batch(
+        [this](ControllerUartEventKind& kind) noexcept {
+            uart_event_t event{};
+            if (xQueueReceive(event_queue_, &event, 0) != pdTRUE) return false;
+            switch (event.type) {
+                case UART_FIFO_OVF: kind = ControllerUartEventKind::FifoOverflow; break;
+                case UART_BUFFER_FULL: kind = ControllerUartEventKind::ReceiveBufferFull; break;
+                case UART_FRAME_ERR: kind = ControllerUartEventKind::FrameError; break;
+                case UART_PARITY_ERR: kind = ControllerUartEventKind::ParityError; break;
+                case UART_BREAK: kind = ControllerUartEventKind::BreakDetected; break;
+                case UART_DATA: kind = ControllerUartEventKind::Data; break;
+                default: kind = ControllerUartEventKind::Informational; break;
+            }
             return true;
-        }
-
-        switch (event.type) {
-            case UART_FIFO_OVF:
-                last_error_ = ESP_ERR_INVALID_RESPONSE;
-                last_fault_ = ControllerUartFault::FifoOverflow;
-                return false;
-            case UART_BUFFER_FULL:
-                last_error_ = ESP_ERR_INVALID_SIZE;
-                last_fault_ = ControllerUartFault::ReceiveBufferFull;
-                return false;
-            case UART_FRAME_ERR:
-                last_error_ = ESP_ERR_INVALID_RESPONSE;
-                last_fault_ = ControllerUartFault::FrameError;
-                return false;
-            case UART_PARITY_ERR:
-                last_error_ = ESP_ERR_INVALID_CRC;
-                last_fault_ = ControllerUartFault::ParityError;
-                return false;
-            case UART_BREAK:
-                last_error_ = ESP_ERR_INVALID_RESPONSE;
-                last_fault_ = ControllerUartFault::BreakDetected;
-                return false;
-            default:
-                // UART_DATA and informational events leave bytes in the RX
-                // ring buffer; receive_callback() drains them without waiting.
-                break;
-        }
+        },
+        [this]() noexcept { return uxQueueMessagesWaiting(event_queue_) > 0U; });
+    switch (drained.fault) {
+        case ControllerUartEventFault::None:
+            return drained.status != ControllerUartEventDrainStatus::Fault;
+        case ControllerUartEventFault::FifoOverflow:
+            last_error_ = ESP_ERR_INVALID_RESPONSE;
+            last_fault_ = ControllerUartFault::FifoOverflow;
+            break;
+        case ControllerUartEventFault::ReceiveBufferFull:
+            last_error_ = ESP_ERR_INVALID_SIZE;
+            last_fault_ = ControllerUartFault::ReceiveBufferFull;
+            break;
+        case ControllerUartEventFault::FrameError:
+            last_error_ = ESP_ERR_INVALID_RESPONSE;
+            last_fault_ = ControllerUartFault::FrameError;
+            break;
+        case ControllerUartEventFault::ParityError:
+            last_error_ = ESP_ERR_INVALID_CRC;
+            last_fault_ = ControllerUartFault::ParityError;
+            break;
+        case ControllerUartEventFault::BreakDetected:
+            last_error_ = ESP_ERR_INVALID_RESPONSE;
+            last_fault_ = ControllerUartFault::BreakDetected;
+            break;
     }
-
-    // Work is bounded per runtime poll. The caller checks the remaining queue
-    // and defers TLS/ControllerLink processing until a later poll if needed.
-    return true;
+    return false;
 }
 
 bool ControllerUartTransport::has_pending_transport_events() const noexcept {

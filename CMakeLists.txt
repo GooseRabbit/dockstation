@@ -568,6 +568,16 @@ if(BUILD_TESTING)
     add_test(NAME controller_link_reconnect_backoff
         COMMAND test_controller_link_reconnect_backoff)
 
+    add_executable(test_controller_uart_event_queue_policy
+        verification/repka_gateway/test_controller_uart_event_queue_policy.cpp
+    )
+    target_include_directories(test_controller_uart_event_queue_policy PRIVATE
+        firmware/esp32/components/controller_uart_transport/include
+    )
+    dockstation_apply_compile_policy(test_controller_uart_event_queue_policy)
+    add_test(NAME controller_uart_event_queue_policy
+        COMMAND test_controller_uart_event_queue_policy)
+
     add_executable(test_lid_limit_switch_tracker
         firmware/esp32/components/controller_lid_limit_switches/lid_limit_switch_tracker.cpp
         verification/repka_gateway/test_lid_limit_switch_tracker.cpp
@@ -786,6 +796,7 @@ if(BUILD_TESTING)
                     test_controller_transport_manager
                     test_controller_subsystem_status_event_projector
                     test_controller_link_service
+                    test_controller_uart_event_queue_policy
                     test_controller_telemetry_snapshot
                     test_dht22_frame_decoder
                     test_controller_psk_credential_store
@@ -867,6 +878,9 @@ if(BUILD_TESTING)
                 -fsanitize=address,undefined
             )
             target_link_options(test_controller_link_service PRIVATE
+                -fsanitize=address,undefined
+            )
+            target_link_options(test_controller_uart_event_queue_policy PRIVATE
                 -fsanitize=address,undefined
             )
             target_link_options(test_controller_telemetry_snapshot PRIVATE

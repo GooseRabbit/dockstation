@@ -309,8 +309,21 @@ int main() {
                command_decoded.status == ControllerCodecStatus::Success,
            "command request round-trips through the production ControllerCodec");
     const auto command_event = session.handle_message(decoded_command, "t-command");
-    expect(command_event.status == ControllerLinkPeerSessionStatus::Success && command_event.event == ControllerLinkPeerSessionEvent::CommandRequested,
-           "accepts a command request as pending");
+    expect(command_event.status == ControllerLinkPeerSessionStatus::Success &&
+               command_event.event == ControllerLinkPeerSessionEvent::CommandRequested &&
+               session.pending_command() == std::optional<ControllerCommandType>{ControllerCommandType::OpenLid},
+           "accepts a command request as one pending command");
+    const auto duplicate_command = session.handle_message(decoded_command, "t-duplicate");
+    expect(duplicate_command.status == ControllerLinkPeerSessionStatus::SequenceNotIncreasing &&
+               session.pending_command() == std::optional<ControllerCommandType>{ControllerCommandType::OpenLid},
+           "rejects an exact command retransmission with the original sequence without replacing the pending command");
+    const auto second_command_message = make_message(
+        ControllerMessageType::CommandRequest, "repka-01", "repka-boot-02", 3U, {1U, 1U},
+        ControllerMessagePayload{ControllerCommandRequestPayload{ControllerCommandType::CloseLid}});
+    const auto second_command = session.handle_message(second_command_message, "t-second-command");
+    expect(second_command.status == ControllerLinkPeerSessionStatus::InvalidState &&
+               session.pending_command() == std::optional<ControllerCommandType>{ControllerCommandType::OpenLid},
+           "rejects a second distinct command while the first remains pending");
     const auto command_result = session.make_command_result(ControllerCommandType::OpenLid, ControllerCommandResultStatus::Accepted, "PENDING", "t-result");
     expect(command_result.status == ControllerLinkPeerSessionStatus::Success && command_result.outbound_message.type == ControllerMessageType::CommandResult,
            "returns an accepted-not-completed command result");
