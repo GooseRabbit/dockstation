@@ -4,6 +4,7 @@
 #include <cerrno>
 #include <cstdint>
 #include <cstdlib>
+#include <chrono>
 #include <cstring>
 #include <iostream>
 #include <string>
@@ -369,6 +370,19 @@ int main() {
         (void)::flock(lock_fd, LOCK_UN);
         (void)::close(lock_fd);
     }
+
+    Pty stalled_peer;
+    expect(stalled_peer.open(), "creates PTY for stalled TLS peer deadline test");
+    ControllerTransportManager timed_manager(std::chrono::milliseconds{1});
+    expect(timed_manager.start(stalled_peer.slave.c_str(), credentials).status ==
+               ControllerTransportStatus::Started,
+           "starts TLS client with a short deterministic handshake deadline");
+    (void)timed_manager.poll();
+    ::usleep(5000U);
+    const auto timed_out = timed_manager.poll();
+    expect(timed_out.status == ControllerTransportStatus::TlsHandshakeTimeout &&
+               !timed_manager.is_started() && timed_manager.is_failed(),
+           "fails and releases UART/TLS when peer never completes TLS handshake");
 
     ControllerTransportManager manager;
     const auto started = manager.start(pty.slave.c_str(), credentials);
