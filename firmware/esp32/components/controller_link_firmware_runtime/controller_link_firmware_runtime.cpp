@@ -190,7 +190,8 @@ void ControllerLinkFirmwareRuntime::poll(std::string_view sent_at) noexcept {
         return;
     }
 
-    peer_service_.poll(sent_at);
+    const std::uint64_t poll_time_ms = monotonic_microseconds() / 1000U;
+    peer_service_.poll(sent_at, poll_time_ms);
     const auto peer_status = peer_service_.status();
     if (peer_status.messages_received != last_peer_message_count_) {
         last_peer_message_count_ = peer_status.messages_received;
@@ -267,12 +268,18 @@ bool ControllerLinkFirmwareRuntime::send_telemetry_snapshot(
 bool ControllerLinkFirmwareRuntime::send_station_state_snapshot(
     std::string_view sent_at) noexcept {
     return running_ && !uart_.has_pending_transport_events() &&
-        peer_service_.send_station_state_snapshot(sent_at);
+        peer_service_.send_station_state_snapshot(
+            sent_at, monotonic_microseconds() / 1000U);
+}
+
+void ControllerLinkFirmwareRuntime::configure_input_freshness(
+    ControllerStationInputFreshnessConfig config) noexcept {
+    peer_service_.configure_input_freshness(config);
 }
 
 void ControllerLinkFirmwareRuntime::set_safety_inputs(
     const ControllerStationSafetyInputs& inputs) noexcept {
-    peer_service_.set_safety_inputs(inputs);
+    peer_service_.set_safety_inputs(inputs, monotonic_microseconds() / 1000U);
 }
 
 void ControllerLinkFirmwareRuntime::configure_lid_limit_switches(

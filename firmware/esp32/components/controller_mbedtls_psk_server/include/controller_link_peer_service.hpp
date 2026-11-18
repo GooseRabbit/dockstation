@@ -72,7 +72,7 @@ public:
 
     // One bounded event-loop step. sent_at is non-empty validated text used
     // when responding to HELLO with HELLO_ACK.
-    void poll(std::string_view sent_at) noexcept;
+    void poll(std::string_view sent_at, std::uint64_t monotonic_time_ms) noexcept;
 
     [[nodiscard]] bool snapshot_request_pending() const noexcept {
         return snapshot_request_pending_;
@@ -85,8 +85,13 @@ public:
         std::string_view sent_at) noexcept;
     // Publishes logical station state with UNKNOWN quality for unavailable
     // physical inputs; it never invents sensor or actuator readings.
-    [[nodiscard]] bool send_station_state_snapshot(std::string_view sent_at) noexcept;
-    void set_safety_inputs(const ControllerStationSafetyInputs& inputs) noexcept;
+    [[nodiscard]] bool send_station_state_snapshot(
+        std::string_view sent_at, std::uint64_t monotonic_time_ms) noexcept;
+    void configure_input_freshness(
+        ControllerStationInputFreshnessConfig config) noexcept;
+    void set_safety_inputs(
+        const ControllerStationSafetyInputs& inputs,
+        std::uint64_t monotonic_time_ms) noexcept;
     // Future actuator code may call this only after physical completion feedback.
     void acknowledge_pending_command() noexcept;
 
@@ -153,6 +158,7 @@ private:
     ControllerStationState station_state_{};
     ControllerStationSafetyInputAdapter safety_input_adapter_{};
     int last_mbedtls_error_{0};
+    std::uint64_t monotonic_time_ms_{0U};
 };
 
 }  // namespace dockstation::firmware::esp32

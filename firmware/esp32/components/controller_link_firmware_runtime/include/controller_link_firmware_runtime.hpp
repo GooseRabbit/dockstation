@@ -68,6 +68,8 @@ public:
         const hardware::interfaces::ControllerTelemetrySnapshotPayload& snapshot,
         std::string_view sent_at) noexcept;
     [[nodiscard]] bool send_station_state_snapshot(std::string_view sent_at) noexcept;
+    void configure_input_freshness(
+        ControllerStationInputFreshnessConfig config) noexcept;
     void set_safety_inputs(const ControllerStationSafetyInputs& inputs) noexcept;
     void configure_lid_limit_switches(LidLimitSwitchConfig config) noexcept;
     void update_lid_limit_switch_samples(

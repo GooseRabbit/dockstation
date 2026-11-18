@@ -386,3 +386,35 @@ The polling task now answers snapshot requests with logical station-state
 telemetry. Its unknown input qualities are intentional. DHT22 sampling and lid
 limit-switch debounce are still not connected to GPIO, and the actual board
 profile remains default-off until physical acceptance.
+
+
+## Safety-input freshness
+
+The station-state layer now tracks the monotonic sample time separately for lid
+position, the complete motion-feedback set, safety-stop feedback and workspace
+confirmation. Motion/safety/workspace values are updated through
+`set_safety_inputs`; lid position has its own update path so forwarding a
+cached lid value cannot refresh its age. A value is usable only while its explicitly configured maximum
+age has not elapsed. The boundary is inclusive: age equal to the configured
+limit is still fresh; the first millisecond beyond it is stale. A zero limit
+means that the input class is not trusted at all.
+
+Freshness windows are supplied through
+`ControllerStationInputFreshnessConfig`. They intentionally default to zero:
+no polling rate, debounce interval or sensor response guarantee has yet been
+validated on the physical prototype, so firmware must not invent a timeout.
+Changing the freshness configuration invalidates prior samples and clears a
+pending command. Each input source must report again under the new configuration.
+
+Telemetry distinguishes never-received/unknown values (`UNKNOWN`,
+`SensorQualityStatus::Unknown`) from expired values (`STALE`,
+`SensorQualityStatus::Stale`). Normal commands are rejected when a previously
+received safety-stop, motion, lid or workspace sample has expired. Stop
+requests remain admissible. A new valid sample restores eligibility.
+
+All timestamps are monotonic milliseconds from the same ESP32 boot clock; they
+are not UTC and must never be compared with Repka or wall-clock timestamps.
+GPIO acquisition is still not connected. This layer validates age only after
+a caller supplies a sample; it does not prove that a caller actually sampled
+the electrical input at that time. The hardware integration must timestamp
+samples at acquisition, not when forwarding cached values.

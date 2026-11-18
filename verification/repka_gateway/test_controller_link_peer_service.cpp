@@ -335,7 +335,7 @@ void run_peer_service(
          attempt < 12000U &&
          !result.stop_requested.load(std::memory_order_acquire);
          ++attempt) {
-        service.poll("1700000000000");
+        service.poll("1700000000000", 1700000000U);
         const auto status = service.status();
         result.last_messages_received.store(status.messages_received,
                                              std::memory_order_release);
@@ -433,7 +433,7 @@ void run_peer_service(
                     result.error.store(-102, std::memory_order_release);
                     break;
                 }
-            } else if (!service.send_station_state_snapshot("1700000000400")) {
+            } else if (!service.send_station_state_snapshot("1700000000400", 1700000000U)) {
                 result.error.store(-103, std::memory_order_release);
                 break;
             }

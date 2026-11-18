@@ -95,7 +95,10 @@ bool ControllerLinkPeerService::restart_transport(
     return true;
 }
 
-void ControllerLinkPeerService::poll(std::string_view sent_at) noexcept {
+void ControllerLinkPeerService::poll(
+    std::string_view sent_at,
+    std::uint64_t monotonic_time_ms) noexcept {
+    monotonic_time_ms_ = monotonic_time_ms;
     if (state_ == ControllerLinkPeerServiceState::TlsHandshake) {
         const auto progress = tls_server_.advance_handshake();
         if (progress == ControllerMbedTlsHandshakeProgress::NeedRead ||
@@ -193,7 +196,7 @@ bool ControllerLinkPeerService::handle_command_request(
         fail();
         return false;
     }
-    const auto decision = station_state_.request_command(mapped_command);
+    const auto decision = station_state_.request_command(mapped_command, monotonic_time_ms_);
     const auto result_status =
         decision.status == ControllerStationCommandDecisionStatus::Allow
             ? ControllerCommandResultStatus::Accepted
@@ -392,19 +395,26 @@ bool ControllerLinkPeerService::send_telemetry_snapshot(
 }
 
 bool ControllerLinkPeerService::send_station_state_snapshot(
-    std::string_view sent_at) noexcept {
+    std::string_view sent_at,
+    std::uint64_t monotonic_time_ms) noexcept {
     std::array<hardware::interfaces::ControllerTelemetryMeasurement, 8U>
         measurements{};
     const std::size_t count =
-        station_state_.build_telemetry(measurements, sent_at);
+        station_state_.build_telemetry(measurements, sent_at, monotonic_time_ms);
     const hardware::interfaces::ControllerTelemetrySnapshotPayload snapshot{
         measurements.data(), count};
     return send_telemetry_snapshot(snapshot, sent_at);
 }
 
+void ControllerLinkPeerService::configure_input_freshness(
+    ControllerStationInputFreshnessConfig config) noexcept {
+    station_state_.configure_input_freshness(config);
+}
+
 void ControllerLinkPeerService::set_safety_inputs(
-    const ControllerStationSafetyInputs& inputs) noexcept {
-    station_state_.set_safety_inputs(inputs);
+    const ControllerStationSafetyInputs& inputs,
+    std::uint64_t monotonic_time_ms) noexcept {
+    station_state_.set_safety_inputs(inputs, monotonic_time_ms);
 }
 
 void ControllerLinkPeerService::acknowledge_pending_command() noexcept {
@@ -432,7 +442,7 @@ void ControllerLinkPeerService::configure_lid_limit_switches(
         !config.open_limit.configured && !config.closed_limit.configured
             ? LidPositionStatus::NotConfigured
             : LidPositionStatus::Unknown;
-    station_state_.set_safety_inputs(current);
+    station_state_.reset_lid_position(current.lid_position);
 }
 
 void ControllerLinkPeerService::update_lid_limit_switch_samples(
@@ -440,8 +450,9 @@ void ControllerLinkPeerService::update_lid_limit_switch_samples(
     std::optional<bool> closed_line_high,
     std::uint64_t monotonic_time_ms) noexcept {
     const auto current = station_state_.snapshot().safety;
-    station_state_.set_safety_inputs(safety_input_adapter_.update(
-        current, open_line_high, closed_line_high, monotonic_time_ms));
+    const auto updated = safety_input_adapter_.update(
+        current, open_line_high, closed_line_high, monotonic_time_ms);
+    station_state_.update_lid_position(updated.lid_position, monotonic_time_ms);
 }
 
 ControllerLinkPeerServiceStatus ControllerLinkPeerService::status() const noexcept {
