@@ -6,8 +6,10 @@ namespace dockstation::firmware::esp32 {
 namespace {
 
 using hardware::interfaces::ControllerCodecStatus;
+using hardware::interfaces::ControllerCommandResultStatus;
 using hardware::interfaces::ControllerLinkPeerSessionEvent;
 using hardware::interfaces::ControllerLinkPeerSessionStatus;
+using hardware::interfaces::ControllerMessageType;
 
 constexpr std::size_t kMaximumInboundReadsPerPoll = 4U;
 constexpr std::size_t kMaximumFramesPerPoll = 4U;
