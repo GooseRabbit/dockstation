@@ -88,7 +88,9 @@ replay history therefore survive reconnects. Retry delays are 1, 2, 4, 8, 16
 and then 30 seconds, capped at 30 seconds; a fully established logical session
 resets the delay to one second. TLS plus HELLO handshake has a three-second
 deadline, and an established peer must provide a valid message within five
-seconds.
+seconds. The Repka-side Linux transport independently applies a ten-second
+monotonic deadline to its initial TLS handshake; expiry tears down both UART
+and TLS state so the link service can enter its normal reconnect backoff.
 
 Until physical sensor acquisition exists, an accepted `REQUEST_SNAPSHOT` is
 answered with a valid zero-measurement `TELEMETRY_SNAPSHOT`. The protocol
