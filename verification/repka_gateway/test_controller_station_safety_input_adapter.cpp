@@ -17,7 +17,9 @@ int main(){
     inputs.platform_motion_active=true;
     auto result=adapter.update(inputs,true,false,0U);
     expect(result.lid_position==LidPositionStatus::NotConfigured,"unconfigured end-stops fail closed as NOT_CONFIGURED");
-    expect(result.platform_motion_active,"adapter preserves unrelated safety inputs");
+    expect(result.platform_motion_active.has_value() &&
+               *result.platform_motion_active,
+           "adapter preserves unrelated, explicitly active safety inputs");
 
     adapter.configure(config());
     result=adapter.update(inputs,true,true,100U);
