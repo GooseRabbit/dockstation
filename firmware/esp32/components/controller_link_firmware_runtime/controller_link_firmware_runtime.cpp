@@ -1,5 +1,8 @@
 #include "controller_link_firmware_runtime.hpp"
 
+#include "esp_log.h"
+#include "esp_timer.h"
+
 namespace dockstation::firmware::esp32 {
 namespace {
 
