@@ -247,3 +247,41 @@ def test_qml_log_panel_is_fixed_height_selectable_and_keeps_recordings_separate(
             root.close()
         engine.deleteLater()
         app.processEvents()
+
+
+def test_qml_bridge_explains_controller_uart_busy_without_hiding_link_state():
+    bridge = QmlOperatorBridge()
+    try:
+        bridge.model.apply_diagnostics({
+            "controller_link": {
+                "status": "LINK_LOST",
+                "state": "LINK_LOST",
+                "tls_authenticated": False,
+                "protocol_established": False,
+                "telemetry_snapshots_received": 0,
+                "error_messages_received": 0,
+                "rejected_frames": 0,
+                "error_code": "CONTROLLER_UART_DEVICE_BUSY",
+            }
+        })
+        assert bridge.controllerLinkSummary == (
+            "UART занят другим процессом. Gateway будет повторять подключение автоматически."
+        )
+
+        bridge.model.apply_diagnostics({
+            "controller_link": {
+                "status": "LINK_LOST",
+                "state": "LINK_LOST",
+                "tls_authenticated": False,
+                "protocol_established": False,
+                "telemetry_snapshots_received": 0,
+                "error_messages_received": 0,
+                "rejected_frames": 0,
+                "error_code": "CONTROLLER_UART_OPEN_FAILED",
+            }
+        })
+        assert bridge.controllerLinkSummary == (
+            "Связь с ESP32 потеряна. Код: CONTROLLER_UART_OPEN_FAILED."
+        )
+    finally:
+        bridge.shutdown()
