@@ -48,6 +48,10 @@ public:
     // errors and BREAK invalidate the protected byte stream.
     [[nodiscard]] bool poll_transport_events() noexcept;
 
+    // True when the bounded event drain left queued work for the next poll.
+    // The runtime must defer TLS processing until this queue is drained.
+    [[nodiscard]] bool has_pending_transport_events() const noexcept;
+
     [[nodiscard]] bool is_open() const noexcept { return driver_installed_; }
     [[nodiscard]] esp_err_t last_error() const noexcept { return last_error_; }
     [[nodiscard]] uart_port_t port() const noexcept { return port_; }

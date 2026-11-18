@@ -30,4 +30,4 @@ jobs:
           esp_idf_version: v5.5.6
           target: esp32
           path: firmware/esp32
-          command: idf.py build
+          command: idf.py build && idf.py size && idf.py size-components

@@ -149,9 +149,14 @@ bool ControllerUartTransport::poll_transport_events() noexcept {
         }
     }
 
-    // Work is bounded per runtime poll. Any remaining events are checked
-    // before the next TLS/ControllerLink event-loop step.
+    // Work is bounded per runtime poll. The caller checks the remaining queue
+    // and defers TLS/ControllerLink processing until a later poll if needed.
     return true;
+}
+
+bool ControllerUartTransport::has_pending_transport_events() const noexcept {
+    return driver_installed_ && event_queue_ != nullptr &&
+        uxQueueMessagesWaiting(event_queue_) > 0U;
 }
 
 int ControllerUartTransport::send_callback(

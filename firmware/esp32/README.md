@@ -302,3 +302,32 @@ default partition table has no production-provisioned `nvs_keys` partition.
 Thus the gated read-only provider cannot load real pair credentials in the
 current unprovisioned build. Do not enable security eFuses, generate NVS keys
 or treat the CI image as a provisioning image.
+
+
+## Firmware size and runtime memory diagnostics
+
+The ESP32 GitHub Actions job runs `idf.py size` and
+`idf.py size-components` immediately after the successful build. The CI log
+therefore records the linked image's Flash/section usage and the component
+breakdown for each firmware build. These are static build measurements; they
+do not measure runtime heap use.
+
+After the physical hardware profile and credentials are deliberately enabled,
+the ControllerLink FreeRTOS task logs runtime memory diagnostics at task start
+and every 60 seconds:
+
+- free 8-bit-capable heap;
+- largest contiguous 8-bit-capable heap block;
+- minimum-ever free heap since boot;
+- current task stack high-water mark (ESP-IDF reports bytes).
+
+The periodic readings are intended to capture the steady-state and reconnect
+behaviour on the actual board. They do not yet constitute a measured TLS
+handshake peak on hardware; compare the minimum-free-heap value before, during
+and after authenticated connection attempts.
+
+UART event handling is bounded to eight queued events per runtime poll. If
+the queue still contains events after that bounded drain, the runtime defers
+the TLS/ControllerLink step until a later poll has inspected the remaining
+events. This prevents TLS from consuming bytes while older UART overflow or
+framing/parity events are still waiting in the event queue.

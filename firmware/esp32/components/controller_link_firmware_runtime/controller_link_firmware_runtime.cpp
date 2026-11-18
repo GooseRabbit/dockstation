@@ -176,6 +176,13 @@ void ControllerLinkFirmwareRuntime::poll(std::string_view sent_at) noexcept {
         return;
     }
 
+    // Preserve UART event ordering under bursts: a bounded drain may leave
+    // events queued. Do not let TLS consume RX bytes until the next poll has
+    // inspected those events for overflow/framing/parity errors.
+    if (uart_.has_pending_transport_events()) {
+        return;
+    }
+
     peer_service_.poll(sent_at);
     const auto peer_status = peer_service_.status();
     if (peer_status.messages_received != last_peer_message_count_) {

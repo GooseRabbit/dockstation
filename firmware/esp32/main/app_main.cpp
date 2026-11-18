@@ -1,6 +1,7 @@
 #include <cstdio>
 
 #include "esp_err.h"
+#include "esp_heap_caps.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -43,6 +44,28 @@ dockstation::firmware::esp32::ControllerLinkFirmwareRuntime
 
 constexpr std::uint32_t kControllerLinkTaskStackSizeBytes = 12U * 1024U;
 constexpr UBaseType_t kControllerLinkTaskPriority = tskIDLE_PRIORITY + 3U;
+
+constexpr std::uint64_t kMemoryReportIntervalMs = 60000U;
+
+void log_runtime_memory(const char* phase) noexcept {
+    const std::size_t free_heap = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+    const std::size_t largest_block =
+        heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+    const std::size_t minimum_free_heap =
+        heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT);
+    // ESP-IDF's FreeRTOS port reports this high-water mark in bytes.
+    const UBaseType_t stack_high_water_bytes =
+        uxTaskGetStackHighWaterMark(nullptr);
+
+    ESP_LOGI(
+        kTag,
+        "Memory[%s]: heap_free=%u B heap_largest_block=%u B heap_min_free=%u B task_stack_high_water=%u B",
+        phase,
+        static_cast<unsigned>(free_heap),
+        static_cast<unsigned>(largest_block),
+        static_cast<unsigned>(minimum_free_heap),
+        static_cast<unsigned>(stack_high_water_bytes));
+}
 
 void log_startup_blockers(
     const dockstation::hardware::interfaces::ControllerLinkStartupReadiness&
@@ -130,6 +153,9 @@ void controller_link_polling_task(void*) {
         ESP_LOGI(kTag, "ControllerLink runtime started; waiting for authenticated peer session");
     }
 
+    log_runtime_memory("task-start");
+    std::uint64_t last_memory_report_ms = monotonic_milliseconds();
+
     constexpr TickType_t requested_delay = pdMS_TO_TICKS(10U);
     constexpr TickType_t poll_delay =
         requested_delay == 0U ? 1U : requested_delay;
@@ -208,6 +234,12 @@ void controller_link_polling_task(void*) {
             } else {
                 ESP_LOGI(kTag, "ControllerLink reconnect attempt started");
             }
+        }
+
+        if (now_ms >= last_memory_report_ms &&
+            now_ms - last_memory_report_ms >= kMemoryReportIntervalMs) {
+            log_runtime_memory("periodic");
+            last_memory_report_ms = now_ms;
         }
 
         vTaskDelay(poll_delay);
