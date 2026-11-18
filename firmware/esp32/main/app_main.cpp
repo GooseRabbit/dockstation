@@ -146,9 +146,10 @@ void controller_link_polling_task(void*) {
         log_startup_blockers(status.startup_readiness);
         ESP_LOGW(
             kTag,
-            "ControllerLink startup failed; retry in %u ms (UART: %s, TLS: %d)",
+            "ControllerLink startup failed; retry in %u ms (UART: %s, UART fault: %s, TLS: %d)",
             static_cast<unsigned>(delay_ms),
             esp_err_to_name(status.last_uart_error),
+            dockstation::firmware::esp32::controller_uart_fault_name(status.last_uart_fault),
             status.peer.last_mbedtls_error);
     } else {
         ESP_LOGI(kTag, "ControllerLink runtime started; waiting for authenticated peer session");
@@ -205,9 +206,10 @@ void controller_link_polling_task(void*) {
                     reconnect_backoff.schedule_after_failure(now_ms);
                 ESP_LOGW(
                     kTag,
-                    "ControllerLink disconnected; recovery retry in %u ms (UART: %s, TLS: %d)",
+                    "ControllerLink disconnected; recovery retry in %u ms (UART: %s, UART fault: %s, TLS: %d)",
                     static_cast<unsigned>(delay_ms),
                     esp_err_to_name(runtime_status.last_uart_error),
+                    dockstation::firmware::esp32::controller_uart_fault_name(runtime_status.last_uart_fault),
                     runtime_status.peer.last_mbedtls_error);
             }
         } else if (reconnect_backoff.retry_due(now_ms)) {
@@ -228,9 +230,10 @@ void controller_link_polling_task(void*) {
                 const auto status = g_controller_link_runtime.status();
                 ESP_LOGW(
                     kTag,
-                    "ControllerLink reconnect attempt failed; retry in %u ms (UART: %s, TLS: %d)",
+                    "ControllerLink reconnect attempt failed; retry in %u ms (UART: %s, UART fault: %s, TLS: %d)",
                     static_cast<unsigned>(delay_ms),
                     esp_err_to_name(status.last_uart_error),
+                    dockstation::firmware::esp32::controller_uart_fault_name(status.last_uart_fault),
                     status.peer.last_mbedtls_error);
             } else {
                 ESP_LOGI(kTag, "ControllerLink reconnect attempt started");
