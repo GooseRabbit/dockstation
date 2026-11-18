@@ -196,3 +196,15 @@
 ## 8. Подтверждённый host CI
 
 На 2026-11-13 единый workflow Linux full verification, прогон [43499328759](https://github.com/GooseRabbit/dockstation/actions/runs/43499328759), прошёл полностью на Ubuntu 24.04 x86_64: Linux CMake build, 10/10 CTest с ASan/UBSan, 31/31 C++ host unit/contract программ, Python compileall, 130/130 Python pytest (Operator, Gateway, QML и integration), проверка editable QML package/entry point и все shell syntax/behavior checks. В число новых проверок входит запуск C++ Gateway отдельным процессом, проверка health/diagnostics существующим Operator API validator, 404/405 и завершение SIGTERM. Это подтверждает host-проверки Ubuntu x86_64; не заменяет ручную проверку Windows/SSH/VM, целевую ARM64/Repka Pi 5 и аппаратную интеграцию.
+
+## Дополнение: ESP32 — локальная политика команд
+
+'controller_station_logic' содержит чистую прикладную политику разрешения
+станционных команд. Она получает только подтверждённые состояния датчиков и
+активных операций и возвращает 'ALLOW' либо машинную причину отказа. GPIO,
+UART/TLS и исполнительные драйверы в этот компонент не входят.
+
+Проверена host CTest для открытия/закрытия крышки, очистки, поворота
+платформы, конфликтующих движений, неизвестного положения крышки и
+безопасной остановки. Это не является подтверждением физического привода.
+

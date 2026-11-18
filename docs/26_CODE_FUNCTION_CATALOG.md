@@ -1406,3 +1406,16 @@ Repka использует `controller_local_id` и `controller_peer_id` из с
 ## Дополнение: ESP32 TLS DRBG entropy
 
 `ControllerMbedTlsPskServer::initialize()` temporarily enables the ESP32 SAR-ADC entropy source before `mbedtls_ctr_drbg_seed()` and disables it immediately afterward. This ensures the Mbed TLS entropy callback runs while the ESP32 RNG has an active true-entropy source; calling the RNG after app startup with neither RF nor SAR-ADC entropy enabled provides pseudo-random output. Initialization/reconnect must not race with ADC, I²S or RF users. See `firmware/esp32/README.md` and [ESP-IDF v5.5 RNG documentation](https://docs.espressif.com/projects/esp-idf/en/v5.5-rc1/esp32/api-reference/system/random.html).
+
+## Дополнение: ESP32 — прикладная политика команд
+
+| Функция / тип | Назначение |
+|---|---|
+| 'ControllerStationCommandType' (firmware/esp32/components/controller_station_logic/include/controller_station_command_policy.hpp) | Минимальный transport-independent каталог станционных команд: крышка, очистка, платформа и остановка движения. Не является окончательным wire-format. |
+| 'ControllerStationSafetyInputs' | Передаёт в локальную политику только необходимые состояния крышки, движения, очистки, рабочей зоны и safety-stop. |
+| 'evaluate_controller_station_command(...)' | Возвращает 'ALLOW' либо точную причину локального запрета; не управляет GPIO и не подтверждает физическое исполнение. Неизвестные условия не считаются разрешением. |
+
+Host CTest 'controller_station_command_policy' проверяет основные разрешённые
+и запрещённые сценарии. Интеграция с реальным ControllerLink command frame,
+ESP32 GPIO и исполнительными устройствами остаётся следующей задачей.
+
