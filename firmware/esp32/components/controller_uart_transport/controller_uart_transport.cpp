@@ -100,7 +100,7 @@ bool ControllerUartTransport::open(const ControllerUartConfig& config) noexcept 
         UART_PIN_NO_CHANGE);
     if (result != ESP_OK) {
         last_error_ = result;
-        last_fault_ = ControllerUartFault::DriverInstallFailed;
+        last_fault_ = ControllerUartFault::DriverConfigurationFailed;
         return false;
     }
 
@@ -117,6 +117,7 @@ bool ControllerUartTransport::open(const ControllerUartConfig& config) noexcept 
     if (result != ESP_OK) {
         event_queue_ = nullptr;
         last_error_ = result;
+        last_fault_ = ControllerUartFault::DriverInstallFailed;
         return false;
     }
 
