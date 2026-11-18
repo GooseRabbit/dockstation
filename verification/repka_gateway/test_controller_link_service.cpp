@@ -1013,6 +1013,12 @@ int main() {
     (void)std::remove((database_path + "-shm").c_str());
 #endif
 
+    const std::string psk_bytes{
+        reinterpret_cast<const char*>(credentials.psk.data()),
+        credentials.psk.size()};
+    const std::string identity_bytes{
+        reinterpret_cast<const char*>(credentials.identity.data()),
+        credentials.identity.size()};
     test_credentials = nullptr;
     credentials.clear();
 
@@ -1054,12 +1060,6 @@ int main() {
     expect(log_contents.find("DHT22 read failed") == std::string::npos &&
                log_contents.find("I2C timeout") == std::string::npos,
            "free-form controller error descriptions are excluded from the shared journal");
-    const std::string psk_bytes{
-        reinterpret_cast<const char*>(credentials.psk.data()),
-        credentials.psk.size()};
-    const std::string identity_bytes{
-        reinterpret_cast<const char*>(credentials.identity.data()),
-        credentials.identity.size()};
     expect(log_contents.find(psk_bytes) == std::string::npos &&
                log_contents.find(identity_bytes) == std::string::npos,
            "ephemeral PSK and identity bytes never appear in the ControllerLink journal");
