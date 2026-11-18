@@ -664,6 +664,21 @@ bool run_complete_peer_service_flow() {
     (void)::shutdown(sockets[0], SHUT_RDWR);
     ::close(sockets[0]);
     server_thread.join();
+    if (!accepted_command_valid || !rejected_command_valid ||
+        !disconnect_command_valid) {
+        std::cerr << "ControllerLink command diagnostic: sent="
+                  << accepted_command_sent
+                  << ", received=" << accepted_command_received
+                  << ", accepted_valid=" << accepted_command_valid
+                  << ", rejected_sent=" << rejected_command_sent
+                  << ", rejected_received=" << rejected_command_received
+                  << ", rejected_valid=" << rejected_command_valid
+                  << ", disconnect_sent=" << disconnect_command_sent
+                  << ", disconnect_received=" << disconnect_command_received
+                  << ", disconnect_valid=" << disconnect_command_valid
+                  << ", peer_error=" << server_result.error.load(
+                         std::memory_order_acquire) << '\\n';
+    }
     expect(server_result.command_pending_cleared_after_disconnect.load(
                std::memory_order_acquire),
            "peer service clears pending command when the authenticated transport is lost");
