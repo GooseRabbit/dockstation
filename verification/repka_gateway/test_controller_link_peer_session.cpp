@@ -291,14 +291,24 @@ int main() {
                result.outbound_message.sequence_number == 4U,
            "accepts a new peer boot while preserving this controller boot ID and transmit sequence");
 
-    const auto command_envelope = make_envelope(ControllerMessageType::CommandRequest, 4U);
-    const ControllerMessagePayload command_payload{ControllerCommandRequestPayload{ControllerCommandType::OpenLid}};
-    const auto command_frame = encode(command_envelope, command_payload);
+    const ControllerMessagePayload command_payload{
+        ControllerCommandRequestPayload{ControllerCommandType::OpenLid}};
+    const auto command_message = make_message(
+        ControllerMessageType::CommandRequest, "repka-01", "repka-boot-02",
+        2U, {1U, 1U}, command_payload);
+    std::array<std::uint8_t, kControllerCodecMaximumFrameSize> command_frame{};
+    const auto command_encoded = encode_controller_message(
+        command_message.envelope, command_message.payload,
+        command_frame.data(), command_frame.size());
     ControllerCodecDecodeStorage command_storage{};
-    ControllerCodecDecodedMessage command_message{};
-    expect(decode_controller_message(command_frame.data(), command_frame.size(), command_storage, command_message).status == ControllerCodecStatus::Success,
-           "decodes a command request for the peer session");
-    const auto command_event = session.handle_message(command_message, "t-command");
+    ControllerCodecDecodedMessage decoded_command{};
+    const auto command_decoded = decode_controller_message(
+        command_frame.data(), command_encoded.frame_size,
+        command_storage, decoded_command);
+    expect(command_encoded.status == ControllerCodecStatus::Success &&
+               command_decoded.status == ControllerCodecStatus::Success,
+           "command request round-trips through the production ControllerCodec");
+    const auto command_event = session.handle_message(decoded_command, "t-command");
     expect(command_event.status == ControllerLinkPeerSessionStatus::Success && command_event.event == ControllerLinkPeerSessionEvent::CommandRequested,
            "accepts a command request as pending");
     const auto command_result = session.make_command_result(ControllerCommandType::OpenLid, ControllerCommandResultStatus::Accepted, "PENDING", "t-result");
