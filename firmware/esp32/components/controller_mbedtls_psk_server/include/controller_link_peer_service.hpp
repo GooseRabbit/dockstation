@@ -10,6 +10,7 @@
 #include "hardware/interfaces/controller_frame_stream_decoder.hpp"
 #include "hardware/interfaces/controller_link_peer_session.hpp"
 #include "controller_station_state.hpp"
+#include "controller_station_safety_input_adapter.hpp"
 
 namespace dockstation::firmware::esp32 {
 
@@ -88,6 +89,13 @@ public:
                    hardware::interfaces::kControllerLinkSessionProofSize>&
             output) noexcept;
 
+    // Hardware integration supplies sampled electrical levels here. The
+    // adapter debounces them before they can affect command safety decisions.
+    void update_lid_limit_switch_samples(
+        std::optional<bool> open_line_high,
+        std::optional<bool> closed_line_high,
+        std::uint64_t monotonic_time_ms) noexcept;
+
     [[nodiscard]] ControllerLinkPeerServiceStatus status() const noexcept;
     void stop() noexcept;
 
@@ -132,6 +140,7 @@ private:
     bool logical_session_established_{false};
     bool snapshot_request_pending_{false};
     ControllerStationState station_state_{};
+    ControllerStationSafetyInputAdapter safety_input_adapter_{};
     int last_mbedtls_error_{0};
 };
 
