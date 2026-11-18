@@ -677,7 +677,7 @@ bool run_complete_peer_service_flow() {
                   << ", disconnect_received=" << disconnect_command_received
                   << ", disconnect_valid=" << disconnect_command_valid
                   << ", peer_error=" << server_result.error.load(
-                         std::memory_order_acquire) << '\\n';
+                         std::memory_order_acquire) << '\n';
     }
     expect(server_result.command_pending_cleared_after_disconnect.load(
                std::memory_order_acquire),
