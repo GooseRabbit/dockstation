@@ -18,7 +18,9 @@ enum class ControllerMessageType : std::uint8_t {
     Heartbeat,
     RequestSnapshot,
     TelemetrySnapshot,
-    Error
+    Error,
+    CommandRequest,
+    CommandResult
 };
 
 struct ControllerProtocolVersion {
@@ -75,6 +77,8 @@ struct ControllerMessageValidationResult {
         case ControllerMessageType::RequestSnapshot:
         case ControllerMessageType::TelemetrySnapshot:
         case ControllerMessageType::Error:
+        case ControllerMessageType::CommandRequest:
+        case ControllerMessageType::CommandResult:
             return true;
         case ControllerMessageType::Unknown:
             return false;
@@ -147,6 +151,56 @@ struct ControllerTelemetryMeasurement {
 
 // The array and all strings/values are caller-owned. A zero-count snapshot is
 // permitted, but it does not imply that any unreported sensor is healthy.
+enum class ControllerCommandType : std::uint8_t {
+    OpenLid = 1U,
+    CloseLid = 2U,
+    StartCleaning = 3U,
+    StopCleaning = 4U,
+    RotatePlatform = 5U,
+    StopMotion = 6U
+};
+
+[[nodiscard]] constexpr bool is_known_controller_command_type(ControllerCommandType command) noexcept {
+    switch (command) {
+        case ControllerCommandType::OpenLid:
+        case ControllerCommandType::CloseLid:
+        case ControllerCommandType::StartCleaning:
+        case ControllerCommandType::StopCleaning:
+        case ControllerCommandType::RotatePlatform:
+        case ControllerCommandType::StopMotion:
+            return true;
+    }
+    return false;
+}
+
+enum class ControllerCommandResultStatus : std::uint8_t {
+    Accepted = 1U,
+    Rejected = 2U,
+    Completed = 3U,
+    Failed = 4U
+};
+
+[[nodiscard]] constexpr bool is_known_controller_command_result_status(ControllerCommandResultStatus status) noexcept {
+    switch (status) {
+        case ControllerCommandResultStatus::Accepted:
+        case ControllerCommandResultStatus::Rejected:
+        case ControllerCommandResultStatus::Completed:
+        case ControllerCommandResultStatus::Failed:
+            return true;
+    }
+    return false;
+}
+
+struct ControllerCommandRequestPayload final {
+    ControllerCommandType command{ControllerCommandType::StopMotion};
+};
+
+struct ControllerCommandResultPayload final {
+    ControllerCommandType command{ControllerCommandType::StopMotion};
+    ControllerCommandResultStatus status{ControllerCommandResultStatus::Accepted};
+    std::string_view reason_code{};
+};
+
 struct ControllerTelemetrySnapshotPayload {
     const ControllerTelemetryMeasurement* measurements{nullptr};
     std::size_t measurement_count{0U};
@@ -197,10 +251,15 @@ struct ControllerErrorPayload {
 using ControllerMessagePayload = std::variant<
     EmptyControllerMessagePayload,
     ControllerTelemetrySnapshotPayload,
-    ControllerErrorPayload>;
+    ControllerErrorPayload,
+    ControllerCommandRequestPayload,
+    ControllerCommandResultPayload>;
 
 enum class ControllerPayloadValidationStatus : std::uint8_t {
     Valid,
+    UnknownCommand,
+    UnknownCommandResultStatus,
+    MissingCommandReason,
     UnknownMessageType,
     PayloadTypeMismatch,
     MissingMeasurementStorage,
@@ -256,6 +315,20 @@ validate_controller_message_payload(
                 ? ControllerPayloadValidationResult{ControllerPayloadValidationStatus::Valid, {}}
                 : ControllerPayloadValidationResult{ControllerPayloadValidationStatus::PayloadTypeMismatch, "payload"};
 
+        case ControllerMessageType::CommandRequest: {
+            const auto* command = std::get_if<ControllerCommandRequestPayload>(&payload);
+            if (command == nullptr) return {ControllerPayloadValidationStatus::PayloadTypeMismatch, "payload"};
+            if (!is_known_controller_command_type(command->command)) return {ControllerPayloadValidationStatus::UnknownCommand, "command"};
+            return {ControllerPayloadValidationStatus::Valid, {}};
+        }
+        case ControllerMessageType::CommandResult: {
+            const auto* result = std::get_if<ControllerCommandResultPayload>(&payload);
+            if (result == nullptr) return {ControllerPayloadValidationStatus::PayloadTypeMismatch, "payload"};
+            if (!is_known_controller_command_type(result->command)) return {ControllerPayloadValidationStatus::UnknownCommand, "command"};
+            if (!is_known_controller_command_result_status(result->status)) return {ControllerPayloadValidationStatus::UnknownCommandResultStatus, "status"};
+            if (result->reason_code.empty()) return {ControllerPayloadValidationStatus::MissingCommandReason, "reason_code"};
+            return {ControllerPayloadValidationStatus::Valid, {}};
+        }
         case ControllerMessageType::TelemetrySnapshot: {
             const auto* snapshot = std::get_if<ControllerTelemetrySnapshotPayload>(&payload);
             if (snapshot == nullptr) {

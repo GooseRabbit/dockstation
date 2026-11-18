@@ -274,6 +274,8 @@ private:
         case ControllerMessageType::RequestSnapshot: wire_type = 4U; break;
         case ControllerMessageType::TelemetrySnapshot: wire_type = 5U; break;
         case ControllerMessageType::Error: wire_type = 6U; break;
+        case ControllerMessageType::CommandRequest: wire_type = 7U; break;
+        case ControllerMessageType::CommandResult: wire_type = 8U; break;
         case ControllerMessageType::Unknown: return false;
     }
     return writer.write_u8(wire_type);
@@ -288,6 +290,8 @@ private:
         case 4U: type = ControllerMessageType::RequestSnapshot; return true;
         case 5U: type = ControllerMessageType::TelemetrySnapshot; return true;
         case 6U: type = ControllerMessageType::Error; return true;
+        case 7U: type = ControllerMessageType::CommandRequest; return true;
+        case 8U: type = ControllerMessageType::CommandResult; return true;
         default: return false;
     }
 }
@@ -480,6 +484,11 @@ private:
     }
 }
 
+[[nodiscard]] bool write_command_type(Writer& writer, ControllerCommandType command) noexcept { return writer.write_u8(static_cast<std::uint8_t>(command)); }
+[[nodiscard]] bool read_command_type(Reader& reader, ControllerCommandType& command) noexcept { std::uint8_t value=0U; if(!reader.read_u8(value)||value<1U||value>6U)return false; command=static_cast<ControllerCommandType>(value); return true; }
+[[nodiscard]] bool write_command_result_status(Writer& writer, ControllerCommandResultStatus status) noexcept { return writer.write_u8(static_cast<std::uint8_t>(status)); }
+[[nodiscard]] bool read_command_result_status(Reader& reader, ControllerCommandResultStatus& status) noexcept { std::uint8_t value=0U; if(!reader.read_u8(value)||value<1U||value>4U)return false; status=static_cast<ControllerCommandResultStatus>(value); return true; }
+
 [[nodiscard]] bool write_payload(Writer& writer,
                                  ControllerMessageType type,
                                  const ControllerMessagePayload& payload,
@@ -491,6 +500,10 @@ private:
         case ControllerMessageType::RequestSnapshot:
             return std::holds_alternative<EmptyControllerMessagePayload>(payload);
 
+        case ControllerMessageType::CommandRequest: { const auto* command=std::get_if<ControllerCommandRequestPayload>(&payload); return command!=nullptr && write_command_type(writer,command->command); }
+        case ControllerMessageType::CommandResult: { const auto* result=std::get_if<ControllerCommandResultPayload>(&payload); return result!=nullptr && write_command_type(writer,result->command) && write_command_result_status(writer,result->status) && writer.write_text(result->reason_code); }
+        case ControllerMessageType::CommandRequest: { ControllerCommandType command{}; if(!read_command_type(reader,command)){status=ControllerCodecStatus::MalformedField;return false;} payload=ControllerCommandRequestPayload{command}; return true; }
+        case ControllerMessageType::CommandResult: { ControllerCommandType command{}; ControllerCommandResultStatus result_status{}; std::string_view reason{}; if(!read_command_type(reader,command)||!read_command_result_status(reader,result_status)||!reader.read_text(reason)){status=ControllerCodecStatus::MalformedField;return false;} payload=ControllerCommandResultPayload{command,result_status,reason}; return true; }
         case ControllerMessageType::TelemetrySnapshot: {
             const auto* snapshot =
                 std::get_if<ControllerTelemetrySnapshotPayload>(&payload);
