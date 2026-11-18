@@ -39,7 +39,7 @@ struct ControllerStationSafetyInputs final {
 
 struct ControllerStationCommandDecision final {
     ControllerStationCommandDecisionStatus status{
-        ControllerStationCommandDecision::DenyUnknownLidPosition};
+        ControllerStationCommandDecisionStatus::DenyUnknownLidPosition};
     std::string_view reason_code{};
 };
 
