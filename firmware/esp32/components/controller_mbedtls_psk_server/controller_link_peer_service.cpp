@@ -151,6 +151,43 @@ void ControllerLinkPeerService::poll(std::string_view sent_at) noexcept {
     }
 }
 
+
+bool ControllerLinkPeerService::handle_command_request(
+    std::string_view sent_at) noexcept {
+    if (!logical_session_established_ || outbound_frame_size_ != 0U ||
+        !session_.has_value()) {
+        return false;
+    }
+
+    const auto pending = session_->pending_command();
+    if (!pending.has_value()) {
+        fail();
+        return false;
+    }
+
+    const auto decision = station_state_.request_command(
+        static_cast<ControllerStationCommandType>(*pending));
+    const auto result_status =
+        decision.status == ControllerStationCommandDecisionStatus::Allow
+            ? ControllerCommandResultStatus::Accepted
+            : ControllerCommandResultStatus::Rejected;
+
+    const auto result = session_->make_command_result(
+        *pending, result_status,
+        decision.reason_code.empty() ? "COMMAND_REJECTED" : decision.reason_code,
+        sent_at);
+    last_protocol_status_ = result.status;
+    if (result.status != ControllerLinkPeerSessionStatus::Success ||
+        !result.has_outbound_message ||
+        result.outbound_message.type != ControllerMessageType::CommandResult ||
+        !queue_outbound_message(result.outbound_message,
+                                result.outbound_payload, false)) {
+        fail();
+        return false;
+    }
+    return true;
+}
+
 bool ControllerLinkPeerService::process_pending_plaintext(
     std::string_view sent_at) noexcept {
     std::size_t processed_frames = 0U;
@@ -223,6 +260,10 @@ bool ControllerLinkPeerService::process_ready_frame(
         }
         logical_handshake_ack_pending_ = true;
         return true;
+    }
+
+    if (accepted.event == ControllerLinkPeerSessionEvent::CommandRequested) {
+        return handle_command_request(sent_at);
     }
 
     if (accepted.event == ControllerLinkPeerSessionEvent::SnapshotRequested) {
@@ -363,6 +404,7 @@ void ControllerLinkPeerService::stop() noexcept {
     logical_handshake_ack_pending_ = false;
     logical_session_established_ = false;
     snapshot_request_pending_ = false;
+    station_state_.clear_pending_command();
     state_ = ControllerLinkPeerServiceState::Stopped;
 }
 
@@ -376,6 +418,7 @@ void ControllerLinkPeerService::fail() noexcept {
     logical_handshake_ack_pending_ = false;
     logical_session_established_ = false;
     snapshot_request_pending_ = false;
+    station_state_.clear_pending_command();
     state_ = ControllerLinkPeerServiceState::Error;
 }
 
