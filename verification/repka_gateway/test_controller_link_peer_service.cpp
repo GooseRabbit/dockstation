@@ -304,6 +304,8 @@ struct ServerResult final {
     std::atomic<bool> invalid_snapshot_preserved_request{false};
     std::atomic<bool> telemetry_flushed{false};
     std::atomic<bool> empty_snapshot_flushed{false};
+    std::atomic<bool> command_pending_observed{false};
+    std::atomic<bool> command_pending_cleared_after_disconnect{false};
     std::atomic<bool> stop_requested{false};
     std::atomic<int> error{0};
     std::array<std::uint8_t, kControllerLinkSessionProofSize> exporter{};
@@ -330,6 +332,16 @@ void run_peer_service(
          ++attempt) {
         service.poll("1700000000000");
         const auto status = service.status();
+        if (status.command_pending) {
+            result.command_pending_observed.store(true, std::memory_order_release);
+        }
+        if ((status.state == ControllerLinkPeerServiceState::Stopped ||
+             status.state == ControllerLinkPeerServiceState::Error) &&
+            !status.command_pending) {
+            result.command_pending_cleared_after_disconnect.store(
+                true, std::memory_order_release);
+            break;
+        }
 
         if (status.state == ControllerLinkPeerServiceState::Error) {
             result.error.store(
@@ -529,6 +541,77 @@ bool run_complete_peer_service_flow() {
         empty_telemetry_valid =
             snapshot != nullptr && snapshot->measurement_count == 0U;
     }
+    const bool empty_telemetry_consumed =
+        empty_telemetry_received && empty_telemetry_valid && decoder.consume_frame();
+
+    const auto send_command = [&](ControllerCommandType command,
+                                  std::uint64_t sequence,
+                                  std::string_view sent_at) {
+        ControllerMessageEnvelope command_request{};
+        command_request.type = ControllerMessageType::CommandRequest;
+        command_request.protocol_version = ControllerProtocolVersion{1U, 1U};
+        command_request.controller_id = "repka-01";
+        command_request.controller_instance_id = "repka-boot-01";
+        command_request.sequence_number = sequence;
+        command_request.sent_at = sent_at;
+        const ControllerMessagePayload command_payload{
+            ControllerCommandRequestPayload{command}};
+        return write_controller_message(
+            client, sockets[0], command_request, command_payload);
+    };
+
+    const bool accepted_command_sent = empty_telemetry_consumed &&
+        send_command(ControllerCommandType::StopMotion, 4U, "1700000000400");
+    const bool accepted_command_received = accepted_command_sent &&
+        read_controller_message(client, sockets[0], decoder, storage, decoded);
+    const auto* accepted_payload = accepted_command_received
+        ? std::get_if<ControllerCommandResultPayload>(&decoded.payload)
+        : nullptr;
+    const bool accepted_command_valid =
+        accepted_payload != nullptr &&
+        decoded.envelope.type == ControllerMessageType::CommandResult &&
+        decoded.envelope.sequence_number == 4U &&
+        accepted_payload->command == ControllerCommandType::StopMotion &&
+        accepted_payload->status == ControllerCommandResultStatus::Accepted &&
+        accepted_payload->reason_code == "ALLOWED";
+    const bool accepted_command_consumed =
+        accepted_command_valid && decoder.consume_frame();
+
+    const bool rejected_command_sent = accepted_command_consumed &&
+        send_command(ControllerCommandType::OpenLid, 5U, "1700000000500");
+    const bool rejected_command_received = rejected_command_sent &&
+        read_controller_message(client, sockets[0], decoder, storage, decoded);
+    const auto* rejected_payload = rejected_command_received
+        ? std::get_if<ControllerCommandResultPayload>(&decoded.payload)
+        : nullptr;
+    const bool rejected_command_valid =
+        rejected_payload != nullptr &&
+        decoded.envelope.type == ControllerMessageType::CommandResult &&
+        decoded.envelope.sequence_number == 5U &&
+        rejected_payload->command == ControllerCommandType::OpenLid &&
+        rejected_payload->status == ControllerCommandResultStatus::Rejected &&
+        rejected_payload->reason_code == "LID_POSITION_UNKNOWN";
+    const bool rejected_command_consumed =
+        rejected_command_valid && decoder.consume_frame();
+
+    // A final accepted STOP remains pending until the authenticated transport
+    // is lost; the peer service must clear it rather than retain stale intent.
+    const bool disconnect_command_sent = rejected_command_consumed &&
+        send_command(ControllerCommandType::StopMotion, 6U, "1700000000600");
+    const bool disconnect_command_received = disconnect_command_sent &&
+        read_controller_message(client, sockets[0], decoder, storage, decoded);
+    const auto* disconnect_payload = disconnect_command_received
+        ? std::get_if<ControllerCommandResultPayload>(&decoded.payload)
+        : nullptr;
+    const bool disconnect_command_valid =
+        disconnect_payload != nullptr &&
+        decoded.envelope.type == ControllerMessageType::CommandResult &&
+        decoded.envelope.sequence_number == 6U &&
+        disconnect_payload->command == ControllerCommandType::StopMotion &&
+        disconnect_payload->status == ControllerCommandResultStatus::Accepted &&
+        disconnect_payload->reason_code == "ALLOWED";
+    const bool disconnect_command_consumed =
+        disconnect_command_valid && decoder.consume_frame();
 
     std::array<std::uint8_t, kControllerLinkSessionProofSize> client_exporter{};
     const bool client_exported = tls_handshake && client.export_session_proof(
@@ -570,12 +653,20 @@ bool run_complete_peer_service_flow() {
            "responds to REQUEST_SNAPSHOT with the caller-supplied TELEMETRY_SNAPSHOT");
     expect(empty_telemetry_valid && server_empty_snapshot_flushed,
            "accepts and transmits an explicitly empty snapshot without inventing measurements");
-
-    server_result.stop_requested.store(true, std::memory_order_release);
+    expect(accepted_command_valid,
+           "TLS peer accepts a fail-safe STOP command and returns ACCEPTED/PENDING");
+    expect(rejected_command_valid,
+           "TLS peer rejects a normal command with unknown lid position and returns its exact reason");
+    expect(disconnect_command_valid &&
+               server_result.command_pending_observed.load(std::memory_order_acquire),
+           "accepted command remains pending without claiming physical completion");
     client.close();
     (void)::shutdown(sockets[0], SHUT_RDWR);
     ::close(sockets[0]);
     server_thread.join();
+    expect(server_result.command_pending_cleared_after_disconnect.load(
+               std::memory_order_acquire),
+           "peer service clears pending command when the authenticated transport is lost");
     (void)::shutdown(sockets[1], SHUT_RDWR);
     ::close(sockets[1]);
 
@@ -592,6 +683,11 @@ bool run_complete_peer_service_flow() {
             std::memory_order_acquire) &&
         telemetry_valid && server_telemetry_flushed &&
         empty_telemetry_valid && server_empty_snapshot_flushed &&
+        accepted_command_valid && rejected_command_valid &&
+        disconnect_command_valid &&
+        server_result.command_pending_observed.load(std::memory_order_acquire) &&
+        server_result.command_pending_cleared_after_disconnect.load(
+            std::memory_order_acquire) &&
         server_result.error.load(std::memory_order_acquire) == 0;
 }
 
