@@ -197,11 +197,11 @@ void ControllerLinkFirmwareRuntime::poll(std::string_view sent_at) noexcept {
                          kControllerHeartbeatTimeoutUs);
 
     if (handshake_timed_out || heartbeat_timed_out) {
-        ESP_LOGW(
-            kTag,
-            handshake_timed_out
-                ? "ControllerLink TLS/HELLO handshake timed out"
-                : "ControllerLink peer heartbeat timed out");
+        if (handshake_timed_out) {
+            ESP_LOGW(kTag, "ControllerLink TLS/HELLO handshake timed out");
+        } else {
+            ESP_LOGW(kTag, "ControllerLink peer heartbeat timed out");
+        }
         peer_service_.stop();
         const esp_err_t transport_error = uart_.last_error();
         uart_.close();
