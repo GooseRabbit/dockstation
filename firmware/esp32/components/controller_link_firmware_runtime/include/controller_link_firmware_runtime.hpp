@@ -70,7 +70,11 @@ public:
     [[nodiscard]] bool send_station_state_snapshot(std::string_view sent_at) noexcept;
     void configure_input_freshness(
         ControllerStationInputFreshnessConfig config) noexcept;
-    void set_safety_inputs(const ControllerStationSafetyInputs& inputs) noexcept;
+    // Timestamp must be captured when the physical input bundle is sampled,
+    // not when a cached value is forwarded by a caller.
+    void set_safety_inputs(
+        const ControllerStationSafetyInputs& inputs,
+        std::uint64_t sample_time_ms) noexcept;
     void configure_lid_limit_switches(LidLimitSwitchConfig config) noexcept;
     void update_lid_limit_switch_samples(
         std::optional<bool> open_line_high,

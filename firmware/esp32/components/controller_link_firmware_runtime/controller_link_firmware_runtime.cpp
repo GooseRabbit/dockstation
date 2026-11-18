@@ -278,8 +278,9 @@ void ControllerLinkFirmwareRuntime::configure_input_freshness(
 }
 
 void ControllerLinkFirmwareRuntime::set_safety_inputs(
-    const ControllerStationSafetyInputs& inputs) noexcept {
-    peer_service_.set_safety_inputs(inputs, monotonic_microseconds() / 1000U);
+    const ControllerStationSafetyInputs& inputs,
+    std::uint64_t sample_time_ms) noexcept {
+    peer_service_.set_safety_inputs(inputs, sample_time_ms);
 }
 
 void ControllerLinkFirmwareRuntime::configure_lid_limit_switches(
