@@ -95,6 +95,7 @@ ControllerLinkSessionResult ControllerLinkSession::start(
     last_outbound_message_ms_ = now_ms;
     return make_outbound(ControllerMessageType::Hello,
                          ControllerLinkSessionEvent::HelloRequired,
+                         ControllerMessagePayload{EmptyControllerMessagePayload{}},
                          now_ms, sent_at);
 }
 
@@ -110,7 +111,28 @@ ControllerLinkSessionResult ControllerLinkSession::request_snapshot(
     }
     return make_outbound(ControllerMessageType::RequestSnapshot,
                          ControllerLinkSessionEvent::SnapshotRequestReady,
+                         ControllerMessagePayload{EmptyControllerMessagePayload{}},
                          now_ms, sent_at);
+}
+
+
+ControllerLinkSessionResult ControllerLinkSession::request_command(
+    ControllerCommandType command, std::uint64_t now_ms,
+    std::string_view sent_at) noexcept {
+    if (!configured_) {
+        return make_result(ControllerLinkSessionStatus::InvalidConfiguration,
+                           ControllerLinkSessionEvent::None);
+    }
+    if (state_ != ControllerLinkSessionState::Established ||
+        !is_known_controller_command_type(command)) {
+        return make_result(ControllerLinkSessionStatus::InvalidState,
+                           ControllerLinkSessionEvent::None);
+    }
+    return make_outbound(
+        ControllerMessageType::CommandRequest,
+        ControllerLinkSessionEvent::CommandRequestReady,
+        ControllerMessagePayload{ControllerCommandRequestPayload{command}},
+        now_ms, sent_at);
 }
 
 ControllerLinkSessionResult ControllerLinkSession::poll(
@@ -150,6 +172,7 @@ ControllerLinkSessionResult ControllerLinkSession::poll(
                                  heartbeat_interval_ms_)) {
                 return make_outbound(ControllerMessageType::Heartbeat,
                                      ControllerLinkSessionEvent::HeartbeatDue,
+                                     ControllerMessagePayload{EmptyControllerMessagePayload{}},
                                      now_ms, sent_at);
             }
             return make_result(ControllerLinkSessionStatus::Success,
@@ -249,7 +272,8 @@ ControllerLinkSessionResult ControllerLinkSession::handle_message(
 
     if (message.envelope.type != ControllerMessageType::Heartbeat &&
         message.envelope.type != ControllerMessageType::TelemetrySnapshot &&
-        message.envelope.type != ControllerMessageType::Error) {
+        message.envelope.type != ControllerMessageType::Error &&
+        message.envelope.type != ControllerMessageType::CommandResult) {
         return make_result(ControllerLinkSessionStatus::UnexpectedMessage,
                            ControllerLinkSessionEvent::None);
     }
@@ -271,7 +295,9 @@ ControllerLinkSessionResult ControllerLinkSession::handle_message(
         ControllerLinkSessionStatus::Success,
         message.envelope.type == ControllerMessageType::Heartbeat
             ? ControllerLinkSessionEvent::PeerHeartbeatReceived
-            : ControllerLinkSessionEvent::PeerMessageReceived);
+            : (message.envelope.type == ControllerMessageType::CommandResult
+                   ? ControllerLinkSessionEvent::CommandResultReceived
+                   : ControllerLinkSessionEvent::PeerMessageReceived));
 }
 
 ControllerLinkSessionResult ControllerLinkSession::make_result(
@@ -283,6 +309,7 @@ ControllerLinkSessionResult ControllerLinkSession::make_result(
 ControllerLinkSessionResult ControllerLinkSession::make_outbound(
     ControllerMessageType type,
     ControllerLinkSessionEvent event,
+    const ControllerMessagePayload& payload,
     std::uint64_t now_ms,
     std::string_view sent_at) noexcept {
     if (sent_at.empty() || !is_valid_controller_wire_text(sent_at)) {
@@ -318,6 +345,7 @@ ControllerLinkSessionResult ControllerLinkSession::make_outbound(
     result.state = state_;
     result.has_outbound_message = true;
     result.outbound_message = envelope;
+    result.outbound_payload = payload;
     return result;
 }
 
