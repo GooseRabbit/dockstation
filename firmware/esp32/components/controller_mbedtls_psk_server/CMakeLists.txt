@@ -5,6 +5,9 @@ idf_component_register(
         "../../../../src/hardware/interfaces/controller_codec.cpp"
         "../../../../src/hardware/interfaces/controller_frame_stream_decoder.cpp"
         "../../../../src/hardware/interfaces/controller_link_peer_session.cpp"
+        "../../../../firmware/esp32/components/controller_station_logic/controller_station_command_policy.cpp"
+        "../../../../firmware/esp32/components/controller_station_logic/controller_station_state.cpp"
+        "../../../../firmware/esp32/components/controller_lid_limit_switches/lid_limit_switch_tracker.cpp"
     INCLUDE_DIRS "include" "../../../../src"
     REQUIRES mbedtls bootloader_support
 )
