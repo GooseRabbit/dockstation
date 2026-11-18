@@ -301,6 +301,13 @@ int main() {
                is_known_controller_error_severity(ControllerErrorSeverity::Critical),
            "recognizes only the defined ERROR severity values");
 
+    const ControllerCommandRequestPayload request{ControllerCommandType::OpenLid};
+    expect(validate_controller_message_payload(ControllerMessageType::CommandRequest, request).status == ControllerPayloadValidationStatus::Valid,
+           "accepts a valid command request");
+    const ControllerCommandResultPayload result{ControllerCommandType::OpenLid, ControllerCommandResultStatus::Accepted, "PENDING"};
+    expect(validate_controller_message_payload(ControllerMessageType::CommandResult, result).status == ControllerPayloadValidationStatus::Valid,
+           "accepts a pending command result");
+
     std::cout << "Checks: " << checks << ", failures: " << failures << '\n';
     return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
