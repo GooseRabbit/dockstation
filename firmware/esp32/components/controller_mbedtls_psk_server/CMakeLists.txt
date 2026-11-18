@@ -12,8 +12,8 @@ idf_component_register(
     INCLUDE_DIRS
         "include"
         "../../../../src"
-        "../../controller_station_logic/include"
-        "../../controller_lid_limit_switches/include"
+        "../controller_station_logic/include"
+        "../controller_lid_limit_switches/include"
     REQUIRES mbedtls bootloader_support
 )
 
