@@ -12,6 +12,27 @@ using hardware::interfaces::ControllerLinkPeerSessionStatus;
 constexpr std::size_t kMaximumInboundReadsPerPoll = 4U;
 constexpr std::size_t kMaximumFramesPerPoll = 4U;
 
+[[nodiscard]] bool map_command(
+    hardware::interfaces::ControllerCommandType command,
+    ControllerStationCommandType& mapped) noexcept {
+    switch (command) {
+        case hardware::interfaces::ControllerCommandType::OpenLid:
+            mapped = ControllerStationCommandType::OpenLid; return true;
+        case hardware::interfaces::ControllerCommandType::CloseLid:
+            mapped = ControllerStationCommandType::CloseLid; return true;
+        case hardware::interfaces::ControllerCommandType::StartCleaning:
+            mapped = ControllerStationCommandType::StartCleaning; return true;
+        case hardware::interfaces::ControllerCommandType::StopCleaning:
+            mapped = ControllerStationCommandType::StopCleaning; return true;
+        case hardware::interfaces::ControllerCommandType::RotatePlatform:
+            mapped = ControllerStationCommandType::RotatePlatform; return true;
+        case hardware::interfaces::ControllerCommandType::StopMotion:
+            mapped = ControllerStationCommandType::StopMotion; return true;
+    }
+    return false;
+}
+
+
 }  // namespace
 
 ControllerLinkPeerService::~ControllerLinkPeerService() {
@@ -165,8 +186,12 @@ bool ControllerLinkPeerService::handle_command_request(
         return false;
     }
 
-    const auto decision = station_state_.request_command(
-        static_cast<ControllerStationCommandType>(*pending));
+    ControllerStationCommandType mapped_command{};
+    if (!map_command(*pending, mapped_command)) {
+        fail();
+        return false;
+    }
+    const auto decision = station_state_.request_command(mapped_command);
     const auto result_status =
         decision.status == ControllerStationCommandDecisionStatus::Allow
             ? ControllerCommandResultStatus::Accepted
