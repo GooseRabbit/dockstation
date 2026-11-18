@@ -48,6 +48,7 @@ public:
 
     [[nodiscard]] bool is_configured() const noexcept { return configured_; }
     [[nodiscard]] ControllerLinkPeerSessionState state() const noexcept { return state_; }
+    [[nodiscard]] std::optional<ControllerCommandType> pending_command() const noexcept { return command_requested_; }
     [[nodiscard]] ControllerLinkPeerSessionResult start() noexcept;
     [[nodiscard]] ControllerLinkPeerSessionResult handle_message(
         const ControllerCodecDecodedMessage& message, std::string_view sent_at) noexcept;
