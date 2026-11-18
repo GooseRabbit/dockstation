@@ -88,6 +88,12 @@ public:
     void detach_message_handler(
         ControllerLinkMessageHandler& handler) noexcept;
 
+    // Requests a station command only after both authenticated sessions are
+    // established. This is a transport seam: callers must obtain safety
+    // permission before invoking it; this method does not bypass SafetyManager.
+    [[nodiscard]] bool request_command(
+        hardware::interfaces::ControllerCommandType command) noexcept;
+
     // These values are available only while the authenticated TLS and
     // ControllerLink sessions are both Established. The pair identity is
     // copied from the local credential actually used by the TLS client.
@@ -117,7 +123,8 @@ private:
     void attempt_transport_start(std::uint64_t now_ms) noexcept;
     void fail_transport(const char* error_code, std::uint64_t now_ms) noexcept;
     [[nodiscard]] bool queue_outbound_message(
-        const hardware::interfaces::ControllerMessageEnvelope& envelope) noexcept;
+        const hardware::interfaces::ControllerMessageEnvelope& envelope,
+        const hardware::interfaces::ControllerMessagePayload& payload) noexcept;
     [[nodiscard]] bool flush_outbound_message() noexcept;
     [[nodiscard]] bool process_plaintext(
         const std::uint8_t* bytes, std::size_t byte_count,
