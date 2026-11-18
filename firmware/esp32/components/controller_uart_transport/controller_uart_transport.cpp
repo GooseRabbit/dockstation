@@ -36,6 +36,25 @@ constexpr std::size_t kMaximumEventsPerPoll = 8U;
 
 }  // namespace
 
+const char* controller_uart_fault_name(ControllerUartFault fault) noexcept {
+    switch (fault) {
+        case ControllerUartFault::None: return "NONE";
+        case ControllerUartFault::InvalidConfiguration: return "INVALID_CONFIGURATION";
+        case ControllerUartFault::DriverConfigurationFailed: return "DRIVER_CONFIGURATION_FAILED";
+        case ControllerUartFault::DriverInstallFailed: return "DRIVER_INSTALL_FAILED";
+        case ControllerUartFault::DriverCloseFailed: return "DRIVER_CLOSE_FAILED";
+        case ControllerUartFault::InvalidState: return "INVALID_STATE";
+        case ControllerUartFault::FifoOverflow: return "FIFO_OVERFLOW";
+        case ControllerUartFault::ReceiveBufferFull: return "RX_BUFFER_FULL";
+        case ControllerUartFault::FrameError: return "FRAME_ERROR";
+        case ControllerUartFault::ParityError: return "PARITY_ERROR";
+        case ControllerUartFault::BreakDetected: return "BREAK_DETECTED";
+        case ControllerUartFault::TransmitFailed: return "TRANSMIT_FAILED";
+        case ControllerUartFault::ReceiveFailed: return "RECEIVE_FAILED";
+    }
+    return "UNKNOWN";
+}
+
 ControllerUartTransport::~ControllerUartTransport() {
     close();
 }
@@ -53,6 +72,7 @@ bool ControllerUartTransport::open(const ControllerUartConfig& config) noexcept 
     }
     if (!is_valid_config(config)) {
         last_error_ = ESP_ERR_INVALID_ARG;
+        last_fault_ = ControllerUartFault::InvalidConfiguration;
         return false;
     }
 
@@ -68,6 +88,7 @@ bool ControllerUartTransport::open(const ControllerUartConfig& config) noexcept 
     esp_err_t result = uart_param_config(config.port, &uart_config);
     if (result != ESP_OK) {
         last_error_ = result;
+        last_fault_ = ControllerUartFault::DriverConfigurationFailed;
         return false;
     }
 
@@ -79,6 +100,7 @@ bool ControllerUartTransport::open(const ControllerUartConfig& config) noexcept 
         UART_PIN_NO_CHANGE);
     if (result != ESP_OK) {
         last_error_ = result;
+        last_fault_ = ControllerUartFault::DriverInstallFailed;
         return false;
     }
 
@@ -101,6 +123,7 @@ bool ControllerUartTransport::open(const ControllerUartConfig& config) noexcept 
     port_ = config.port;
     driver_installed_ = true;
     last_error_ = ESP_OK;
+    last_fault_ = ControllerUartFault::None;
     return true;
 }
 
@@ -111,6 +134,7 @@ void ControllerUartTransport::close() noexcept {
             // Retain ownership state so a later close() can retry; never
             // pretend the callback's transport context is already gone.
             last_error_ = result;
+            last_fault_ = ControllerUartFault::DriverCloseFailed;
             return;
         }
     }
@@ -118,11 +142,13 @@ void ControllerUartTransport::close() noexcept {
     event_queue_ = nullptr;
     port_ = UART_NUM_MAX;
     last_error_ = ESP_OK;
+    last_fault_ = ControllerUartFault::None;
 }
 
 bool ControllerUartTransport::poll_transport_events() noexcept {
     if (!driver_installed_ || event_queue_ == nullptr) {
         last_error_ = ESP_ERR_INVALID_STATE;
+        last_fault_ = ControllerUartFault::InvalidState;
         return false;
     }
 
@@ -134,13 +160,24 @@ bool ControllerUartTransport::poll_transport_events() noexcept {
 
         switch (event.type) {
             case UART_FIFO_OVF:
-            case UART_BUFFER_FULL:
-            case UART_FRAME_ERR:
-            case UART_PARITY_ERR:
-            case UART_BREAK:
-                // A byte may have been lost or corrupted. Do not continue
-                // the authenticated stream and risk parsing a damaged record.
                 last_error_ = ESP_ERR_INVALID_RESPONSE;
+                last_fault_ = ControllerUartFault::FifoOverflow;
+                return false;
+            case UART_BUFFER_FULL:
+                last_error_ = ESP_ERR_INVALID_SIZE;
+                last_fault_ = ControllerUartFault::ReceiveBufferFull;
+                return false;
+            case UART_FRAME_ERR:
+                last_error_ = ESP_ERR_INVALID_RESPONSE;
+                last_fault_ = ControllerUartFault::FrameError;
+                return false;
+            case UART_PARITY_ERR:
+                last_error_ = ESP_ERR_INVALID_CRC;
+                last_fault_ = ControllerUartFault::ParityError;
+                return false;
+            case UART_BREAK:
+                last_error_ = ESP_ERR_INVALID_RESPONSE;
+                last_fault_ = ControllerUartFault::BreakDetected;
                 return false;
             default:
                 // UART_DATA and informational events leave bytes in the RX
@@ -187,6 +224,7 @@ int ControllerUartTransport::send_callback(
     }
 
     transport->last_error_ = ESP_FAIL;
+    transport->last_fault_ = ControllerUartFault::TransmitFailed;
     return MBEDTLS_ERR_SSL_INTERNAL_ERROR;
 }
 
@@ -220,6 +258,7 @@ int ControllerUartTransport::receive_callback(
     }
 
     transport->last_error_ = ESP_FAIL;
+    transport->last_fault_ = ControllerUartFault::ReceiveFailed;
     return MBEDTLS_ERR_SSL_INTERNAL_ERROR;
 }
 
