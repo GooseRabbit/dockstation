@@ -3,6 +3,21 @@
 namespace dockstation::firmware::esp32 {
 namespace {
 
+constexpr char kTag[] = "DockStationRuntime";
+constexpr std::uint64_t kControllerHandshakeTimeoutUs = 3000000U;
+constexpr std::uint64_t kControllerHeartbeatTimeoutUs = 5000000U;
+
+[[nodiscard]] std::uint64_t monotonic_microseconds() noexcept {
+    const std::int64_t value = esp_timer_get_time();
+    return value > 0 ? static_cast<std::uint64_t>(value) : 0U;
+}
+
+[[nodiscard]] bool elapsed_at_least(
+    std::uint64_t now_us, std::uint64_t since_us,
+    std::uint64_t interval_us) noexcept {
+    return now_us >= since_us && (now_us - since_us) >= interval_us;
+}
+
 template <std::size_t Size>
 [[nodiscard]] bool contains_nonzero(
     const std::array<std::uint8_t, Size>& bytes) noexcept {
@@ -96,6 +111,7 @@ bool ControllerLinkFirmwareRuntime::start(
     }
 
     last_uart_error_ = ESP_OK;
+    reset_connection_liveness();
     running_ = true;
     state_ = ControllerLinkFirmwareRuntimeState::Running;
     return true;
@@ -132,6 +148,7 @@ bool ControllerLinkFirmwareRuntime::restart_transport(
     }
 
     last_uart_error_ = ESP_OK;
+    reset_connection_liveness();
     running_ = true;
     state_ = ControllerLinkFirmwareRuntimeState::Running;
     return true;
@@ -157,7 +174,43 @@ void ControllerLinkFirmwareRuntime::poll(std::string_view sent_at) noexcept {
     }
 
     peer_service_.poll(sent_at);
-    const auto peer_state = peer_service_.status().state;
+    const auto peer_status = peer_service_.status();
+    if (peer_status.messages_received != last_peer_message_count_) {
+        last_peer_message_count_ = peer_status.messages_received;
+        last_peer_activity_at_us_ = monotonic_microseconds();
+    }
+
+    const std::uint64_t now_us = monotonic_microseconds();
+    const bool handshake_pending =
+        peer_status.state == ControllerLinkPeerServiceState::TlsHandshake ||
+        peer_status.state == ControllerLinkPeerServiceState::AwaitingHello;
+    const bool handshake_timed_out =
+        handshake_pending &&
+        elapsed_at_least(now_us, connection_started_at_us_,
+                         kControllerHandshakeTimeoutUs);
+    const bool heartbeat_timed_out =
+        peer_status.state == ControllerLinkPeerServiceState::Established &&
+        elapsed_at_least(now_us, last_peer_activity_at_us_,
+                         kControllerHeartbeatTimeoutUs);
+
+    if (handshake_timed_out || heartbeat_timed_out) {
+        ESP_LOGW(
+            kTag,
+            handshake_timed_out
+                ? "ControllerLink TLS/HELLO handshake timed out"
+                : "ControllerLink peer heartbeat timed out");
+        peer_service_.stop();
+        const esp_err_t transport_error = uart_.last_error();
+        uart_.close();
+        last_uart_error_ = transport_error != ESP_OK
+            ? transport_error
+            : uart_.last_error();
+        running_ = false;
+        state_ = ControllerLinkFirmwareRuntimeState::Failed;
+        return;
+    }
+
+    const auto peer_state = peer_status.state;
     if (peer_state == ControllerLinkPeerServiceState::Error ||
         peer_state == ControllerLinkPeerServiceState::Stopped) {
         // The peer service has already closed TLS and retained its diagnostic.
@@ -172,6 +225,12 @@ void ControllerLinkFirmwareRuntime::poll(std::string_view sent_at) noexcept {
             ? ControllerLinkFirmwareRuntimeState::Failed
             : ControllerLinkFirmwareRuntimeState::Stopped;
     }
+}
+
+void ControllerLinkFirmwareRuntime::reset_connection_liveness() noexcept {
+    connection_started_at_us_ = monotonic_microseconds();
+    last_peer_activity_at_us_ = connection_started_at_us_;
+    last_peer_message_count_ = peer_service_.status().messages_received;
 }
 
 bool ControllerLinkFirmwareRuntime::snapshot_request_pending() const noexcept {
@@ -210,6 +269,9 @@ void ControllerLinkFirmwareRuntime::stop() noexcept {
     }
     uart_.close();
     last_uart_error_ = uart_.last_error();
+    connection_started_at_us_ = 0U;
+    last_peer_activity_at_us_ = 0U;
+    last_peer_message_count_ = 0U;
     running_ = false;
     // Do not report a clean stop while the UART driver is still owned after
     // uart_driver_delete() failed. A later stop()/restart may retry the close.

@@ -514,6 +514,16 @@ if(BUILD_TESTING)
     dockstation_apply_compile_policy(test_dht22_sampling_scheduler)
     add_test(NAME dht22_sampling_scheduler COMMAND test_dht22_sampling_scheduler)
 
+    add_executable(test_controller_link_reconnect_backoff
+        verification/repka_gateway/test_controller_link_reconnect_backoff.cpp
+    )
+    target_include_directories(test_controller_link_reconnect_backoff PRIVATE
+        firmware/esp32/components/controller_link_firmware_runtime/include
+    )
+    dockstation_apply_compile_policy(test_controller_link_reconnect_backoff)
+    add_test(NAME controller_link_reconnect_backoff
+        COMMAND test_controller_link_reconnect_backoff)
+
     add_executable(test_lid_limit_switch_tracker
         firmware/esp32/components/controller_lid_limit_switches/lid_limit_switch_tracker.cpp
         verification/repka_gateway/test_lid_limit_switch_tracker.cpp

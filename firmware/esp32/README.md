@@ -77,12 +77,18 @@ controller IDs, and run the common startup-readiness evaluator. It never
 generates, repairs, writes, rotates or erases credentials. Any failed load
 clears secret output and leaves ControllerLink NOT_CONFIGURED.
 
-When preflight succeeds, `app_main` creates one dedicated FreeRTOS task. That
-task starts and exclusively owns `ControllerLinkFirmwareRuntime`, then polls
-the non-blocking UART/TLS/protocol state machine every 10 ms (or one scheduler
-tick if the configured tick rate requires it). A failed runtime is stopped in
-TLS-before-UART order and the task exits; automatic reconnect/recovery is not
-implemented yet.
+When preflight succeeds, `app_main` creates one dedicated FreeRTOS task.
+That task exclusively owns `ControllerLinkFirmwareRuntime` and polls the
+non-blocking UART/TLS/protocol state machine every 10 ms (or one scheduler tick
+if the configured tick rate requires it). The task stays alive after a
+transient failure: it closes TLS before UART, reloads pair credentials through
+the already initialized read-only encrypted-NVS provider, and retries the
+transport on the same peer-session object. The boot instance ID and sequence /
+replay history therefore survive reconnects. Retry delays are 1, 2, 4, 8, 16
+and then 30 seconds, capped at 30 seconds; a fully established logical session
+resets the delay to one second. TLS plus HELLO handshake has a three-second
+deadline, and an established peer must provide a valid message within five
+seconds.
 
 Until physical sensor acquisition exists, an accepted `REQUEST_SNAPSHOT` is
 answered with a valid zero-measurement `TELEMETRY_SNAPSHOT`. The protocol
@@ -96,6 +102,12 @@ The checked-in profile still has `hardware_profile_confirmed=false` and unset
 UART GPIOs. Therefore the normal image still returns before NVS and never
 creates this task. The link-only acceptance hook is forced into the ELF for
 compile/link coverage but is not executed.
+
+The Mbed TLS server reseeds its per-connection DRBG when TLS is
+reinitialized. On the current ESP32 scaffold this briefly enables the SAR-ADC
+entropy source. Do not add concurrent ADC, I2S or RF users without coordinating
+that entropy-source window; current DHT22/limit-switch scaffolding does not use
+those peripherals.
 
 The default Mbed TLS configuration enables the required TLS 1.3 server,
 PSK-Ephemeral key exchange, AES-128-GCM/SHA-256, P-256 and keying-material
@@ -222,7 +234,7 @@ Not implemented by this scaffold:
 
 - a provisioning writer/utility for PSK, PSK identity or stable controller IDs;
 - board-specific UART pin assignment or a running UART connection;
-- automatic ControllerLink reconnect/recovery policy;
+- physical acceptance of ControllerLink reconnect/recovery over the actual UART wiring;
 - physical DHT22 GPIO/timing acquisition and publication of real sensor measurements; the decoder, adapter and sampling policy are present, but no sensor pins are assigned;
 - GPIO acquisition/pin assignment for the lid limit switches, motor control or hardware interlocks; the pure lid limit-switch state tracker exists but is not connected to hardware;
 - enabling/configuring Flash Encryption, Secure Boot policy or OTA update;

@@ -1098,13 +1098,14 @@ Host-проверка: `verification/repka_gateway/test_controller_link_startup_
 | Функция / тип | Назначение |
 |---|---|
 | `ControllerLinkFirmwareRuntime::start()` | Принимает `ControllerLinkFirmwareRuntimeStartConfig`; проверяет hardware_profile_confirmed, чистую проверку UART config, ненулевые PSK/identity, generated provider, отсутствие конфликта local instance ID, protocol major больше нуля и валидные разные local/peer IDs. Любой blocker возвращает false до UART open. После preflight inject-ит boot UUIDv4 в peer config, затем открывает UART и запускает TLS/peer service. |
-| `ControllerLinkFirmwareRuntime::poll()` | Сначала проверяет bounded UART event queue; при overflow/frame/parity/BREAK закрывает peer TLS service, затем UART и переводит runtime в Failed. При штатном I/O выполняет один bounded шаг peer service и закрывает UART после TLS при Error/Stopped. |
+| `ControllerLinkFirmwareRuntime::poll()` | Сначала проверяет bounded UART event queue; при overflow/frame/parity/BREAK закрывает peer TLS service, затем UART и переводит runtime в Failed. При штатном I/O выполняет один bounded шаг peer service; завершает соединение при трёхсекундном TLS/HELLO handshake timeout или пятсекундном отсутствии сообщений от установленного peer, затем закрывает TLS до UART. |
 | `ControllerLinkFirmwareRuntime::restart_transport()` | Повторно открывает сохранённый UART profile и запускает новый TLS handshake на прежнем peer-session object; boot instance ID, local transmit sequence и peer replay history не меняются. |
 | `ControllerLinkFirmwareRuntime::send_telemetry_snapshot()` | Передаёт только caller-supplied typed measurements после принятого REQUEST_SNAPSHOT; не читает датчики и не создаёт фиктивные значения. |
 | `ControllerLinkFirmwareRuntime::export_authenticated_session_proof()` | Делегирует exporter proof только работающему peer service, который дополнительно требует полного TLS handshake и отправленного HELLO_ACK. |
 | `ControllerLinkFirmwareRuntime::stop()` | Останавливает TLS/peer service до удаления UART driver, на который указывает Mbed TLS BIO context. |
+| `ControllerLinkReconnectBackoff` | Чистая retry policy одного owner task: 1/2/4/8/16/30 секунд, cap 30 секунд; таймер монотонный, после успешной логической сессии сбрасывается. Проверяется отдельным host CTest. |
 
-Компонент — композиционный слой, не отдельный RTOS task: вызывающий firmware application сам задаёт частоту `poll()`, monotonic scheduling, timestamp, credential provider, instance ID и сбор физических измерений. Он не запускается автоматически из `app_main`, пока точный board pin profile и secure credential provider не утверждены.
+Компонент — композиционный слой, не отдельный RTOS task: единственный owner task в `app_main` задаёт частоту `poll()`, monotonic timestamp, credential reload и retry scheduling. После потери связи повторно используется тот же peer-session object, а PSK/identity перечитываются через read-only encrypted-NVS provider. Checked-in профиль остаётся default-off и не запускает runtime до подтверждения точной платы/pin profile и наличия provisioned encrypted NVS.
 
 ### firmware/esp32/components/controller_uart_transport/include/controller_uart_transport.hpp / controller_uart_transport.cpp
 

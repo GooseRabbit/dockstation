@@ -8,6 +8,7 @@
 #include "controller_psk_nvs_credential_store.hpp"
 #include "controller_instance_id_provider.hpp"
 #include "controller_link_firmware_runtime.hpp"
+#include "controller_link_reconnect_backoff.hpp"
 #include "controller_uart_transport.hpp"
 #include "hardware/interfaces/controller_link_startup_readiness.hpp"
 #include "hardware/interfaces/controller_stable_identity.hpp"
@@ -33,6 +34,8 @@ dockstation::hardware::interfaces::ControllerStableIdPair
 
 // Credentials stay in static storage only until the runtime copies them into
 // the TLS server. The polling task clears this buffer immediately afterward.
+dockstation::firmware::esp32::ControllerPskNvsCredentialStore
+    g_controller_credential_store{};
 dockstation::firmware::esp32::ControllerMbedTlsPskCredentials
     g_controller_link_credentials{};
 dockstation::firmware::esp32::ControllerLinkFirmwareRuntime
@@ -88,75 +91,123 @@ void log_startup_blockers(
     }
 }
 
-void controller_link_polling_task(void*) {
-    if (!g_controller_link_runtime.start(
-            g_controller_link_start_config,
-            g_controller_link_credentials,
-            g_controller_instance_id)) {
-        const auto runtime_status = g_controller_link_runtime.status();
-        log_startup_blockers(runtime_status.startup_readiness);
-        ESP_LOGE(
-            kTag,
-            "ControllerLink runtime start failed (UART: %s, TLS: %d)",
-            esp_err_to_name(runtime_status.last_uart_error),
-            runtime_status.peer.last_mbedtls_error);
-        g_controller_link_credentials.clear();
-        g_controller_link_runtime.stop();
-        vTaskDelete(nullptr);
-        return;
-    }
+[[nodiscard]] std::uint64_t monotonic_milliseconds() noexcept {
+    const std::int64_t value = esp_timer_get_time();
+    return value > 0 ? static_cast<std::uint64_t>(value) / 1000U : 0U;
+}
 
-    // The TLS server copied the fixed-size PSK and identity into its own
-    // protected storage; erase the startup copy immediately.
+[[nodiscard]] bool start_or_restart_controller_link() noexcept {
+    const auto peer_state = g_controller_link_runtime.status().peer.state;
+    const bool started =
+        peer_state == dockstation::firmware::esp32::
+                          ControllerLinkPeerServiceState::NotConfigured
+            ? g_controller_link_runtime.start(
+                  g_controller_link_start_config,
+                  g_controller_link_credentials,
+                  g_controller_instance_id)
+            : g_controller_link_runtime.restart_transport(
+                  g_controller_link_credentials);
     g_controller_link_credentials.clear();
-    ESP_LOGI(kTag, "ControllerLink polling task started");
+    return started;
+}
+
+void controller_link_polling_task(void*) {
+    using dockstation::firmware::esp32::ControllerLinkReconnectBackoff;
+
+    ControllerLinkReconnectBackoff reconnect_backoff{};
+    if (!start_or_restart_controller_link()) {
+        const auto delay_ms =
+            reconnect_backoff.schedule_after_failure(monotonic_milliseconds());
+        const auto status = g_controller_link_runtime.status();
+        log_startup_blockers(status.startup_readiness);
+        ESP_LOGW(
+            kTag,
+            "ControllerLink startup failed; retry in %u ms (UART: %s, TLS: %d)",
+            static_cast<unsigned>(delay_ms),
+            esp_err_to_name(status.last_uart_error),
+            status.peer.last_mbedtls_error);
+    } else {
+        ESP_LOGI(kTag, "ControllerLink runtime started; waiting for authenticated peer session");
+    }
 
     constexpr TickType_t requested_delay = pdMS_TO_TICKS(10U);
     constexpr TickType_t poll_delay =
         requested_delay == 0U ? 1U : requested_delay;
 
     for (;;) {
-        // UTC synchronization is not configured. This is a monotonic marker
-        // in microseconds since boot, not a calendar timestamp.
-        char sent_at[32]{};
-        const int written = std::snprintf(
-            sent_at, sizeof(sent_at), "mono_us_%lld",
-            static_cast<long long>(esp_timer_get_time()));
-        if (written <= 0 ||
-            static_cast<std::size_t>(written) >= sizeof(sent_at)) {
-            ESP_LOGE(kTag, "Could not format ControllerLink monotonic time");
-            g_controller_link_runtime.stop();
-            vTaskDelete(nullptr);
-            return;
-        }
+        const std::uint64_t now_ms = monotonic_milliseconds();
+        auto runtime_status = g_controller_link_runtime.status();
 
-        const std::string_view sent_at_view{
-            sent_at, static_cast<std::size_t>(written)};
-        g_controller_link_runtime.poll(sent_at_view);
-
-        if (g_controller_link_runtime.snapshot_request_pending()) {
-            // Until physical acquisition is connected, return no measurements
-            // instead of fabricating values, identifiers or quality statuses.
-            const dockstation::hardware::interfaces::
-                ControllerTelemetrySnapshotPayload no_measurements{};
-            static_cast<void>(
-                g_controller_link_runtime.send_telemetry_snapshot(
-                    no_measurements, sent_at_view));
-        }
-
-        const auto runtime_status = g_controller_link_runtime.status();
-        if (runtime_status.state !=
+        if (runtime_status.state ==
             dockstation::firmware::esp32::
                 ControllerLinkFirmwareRuntimeState::Running) {
-            ESP_LOGE(
-                kTag,
-                "ControllerLink polling stopped (state=%u, UART: %s, TLS: %d)",
-                static_cast<unsigned>(runtime_status.state),
-                esp_err_to_name(runtime_status.last_uart_error),
-                runtime_status.peer.last_mbedtls_error);
-            g_controller_link_runtime.stop();
-            vTaskDelete(nullptr);
-            return;
+            char sent_at[32]{};
+            const int written = std::snprintf(
+                sent_at, sizeof(sent_at), "mono_us_%lld",
+                static_cast<long long>(esp_timer_get_time()));
+            if (written <= 0 ||
+                static_cast<std::size_t>(written) >= sizeof(sent_at)) {
+                ESP_LOGE(kTag, "Could not format ControllerLink monotonic time");
+                g_controller_link_runtime.stop();
+                runtime_status = g_controller_link_runtime.status();
+            } else {
+                const std::string_view sent_at_view{
+                    sent_at, static_cast<std::size_t>(written)};
+                g_controller_link_runtime.poll(sent_at_view);
+
+                if (g_controller_link_runtime.snapshot_request_pending()) {
+                    const dockstation::hardware::interfaces::
+                        ControllerTelemetrySnapshotPayload no_measurements{};
+                    static_cast<void>(
+                        g_controller_link_runtime.send_telemetry_snapshot(
+                            no_measurements, sent_at_view));
+                }
+                runtime_status = g_controller_link_runtime.status();
+            }
+
+            if (runtime_status.peer.state ==
+                dockstation::firmware::esp32::
+                    ControllerLinkPeerServiceState::Established) {
+                reconnect_backoff.reset();
+            }
+
+            if (runtime_status.state !=
+                dockstation::firmware::esp32::
+                    ControllerLinkFirmwareRuntimeState::Running) {
+                const auto delay_ms =
+                    reconnect_backoff.schedule_after_failure(now_ms);
+                ESP_LOGW(
+                    kTag,
+                    "ControllerLink disconnected; recovery retry in %u ms (UART: %s, TLS: %d)",
+                    static_cast<unsigned>(delay_ms),
+                    esp_err_to_name(runtime_status.last_uart_error),
+                    runtime_status.peer.last_mbedtls_error);
+            }
+        } else if (reconnect_backoff.retry_due(now_ms)) {
+            reconnect_backoff.begin_attempt();
+
+            if (!g_controller_credential_store.load(
+                    g_controller_link_credentials)) {
+                g_controller_link_credentials.clear();
+                const auto delay_ms =
+                    reconnect_backoff.schedule_after_failure(now_ms);
+                ESP_LOGW(
+                    kTag,
+                    "ControllerLink credentials could not be reloaded from protected NVS; retry in %u ms",
+                    static_cast<unsigned>(delay_ms));
+            } else if (!start_or_restart_controller_link()) {
+                const auto delay_ms =
+                    reconnect_backoff.schedule_after_failure(now_ms);
+                const auto status = g_controller_link_runtime.status();
+                ESP_LOGW(
+                    kTag,
+                    "ControllerLink reconnect attempt failed; retry in %u ms (UART: %s, TLS: %d)",
+                    static_cast<unsigned>(delay_ms),
+                    esp_err_to_name(status.last_uart_error),
+                    status.peer.last_mbedtls_error);
+            } else {
+                ESP_LOGI(kTag, "ControllerLink reconnect attempt started");
+            }
         }
 
         vTaskDelay(poll_delay);
@@ -196,8 +247,7 @@ extern "C" void app_main(void) {
 
     // Read only pre-provisioned credentials from an existing encrypted NVS
     // partition. The store never generates, repairs, writes or rotates keys.
-    dockstation::firmware::esp32::ControllerPskNvsCredentialStore
-        credential_store{};
+    auto& credential_store = g_controller_credential_store;
     if (!credential_store.initialize()) {
         ESP_LOGW(
             kTag,

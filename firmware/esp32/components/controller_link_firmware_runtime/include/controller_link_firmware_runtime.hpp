@@ -80,9 +80,13 @@ private:
     ControllerLinkFirmwareRuntimeState state_{
         ControllerLinkFirmwareRuntimeState::NotConfigured};
     esp_err_t last_uart_error_{ESP_OK};
+    std::uint64_t connection_started_at_us_{0U};
+    std::uint64_t last_peer_activity_at_us_{0U};
+    std::uint64_t last_peer_message_count_{0U};
     bool peer_session_created_{false};
     bool running_{false};
     hardware::interfaces::ControllerLinkStartupReadiness last_startup_readiness_{};
+    void reset_connection_liveness() noexcept;
 };
 
 }  // namespace dockstation::firmware::esp32
