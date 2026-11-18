@@ -9,6 +9,7 @@
 #include "controller_mbedtls_psk_server.hpp"
 #include "hardware/interfaces/controller_frame_stream_decoder.hpp"
 #include "hardware/interfaces/controller_link_peer_session.hpp"
+#include "controller_station_state.hpp"
 
 namespace dockstation::firmware::esp32 {
 
@@ -93,6 +94,7 @@ public:
 private:
     [[nodiscard]] bool process_pending_plaintext(
         std::string_view sent_at) noexcept;
+    [[nodiscard]] bool handle_command_request(std::string_view sent_at) noexcept;
     [[nodiscard]] bool process_ready_frame(
         std::string_view sent_at) noexcept;
     [[nodiscard]] bool queue_outbound_message(
@@ -129,6 +131,7 @@ private:
     bool logical_handshake_ack_pending_{false};
     bool logical_session_established_{false};
     bool snapshot_request_pending_{false};
+    ControllerStationState station_state_{};
     int last_mbedtls_error_{0};
 };
 
