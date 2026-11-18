@@ -657,7 +657,7 @@ bool run_complete_peer_service_flow() {
            "TLS peer accepts a fail-safe STOP command and returns ACCEPTED/PENDING");
     expect(rejected_command_valid,
            "TLS peer rejects a normal command with unknown lid position and returns its exact reason");
-    expect(disconnect_command_valid &&
+    expect(disconnect_command_valid && disconnect_command_consumed &&
                server_result.command_pending_observed.load(std::memory_order_acquire),
            "accepted command remains pending without claiming physical completion");
     client.close();
@@ -684,7 +684,7 @@ bool run_complete_peer_service_flow() {
         telemetry_valid && server_telemetry_flushed &&
         empty_telemetry_valid && server_empty_snapshot_flushed &&
         accepted_command_valid && rejected_command_valid &&
-        disconnect_command_valid &&
+        disconnect_command_valid && disconnect_command_consumed &&
         server_result.command_pending_observed.load(std::memory_order_acquire) &&
         server_result.command_pending_cleared_after_disconnect.load(
             std::memory_order_acquire) &&
