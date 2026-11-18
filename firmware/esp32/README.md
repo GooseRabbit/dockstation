@@ -316,9 +316,9 @@ After the physical hardware profile and credentials are deliberately enabled,
 the ControllerLink FreeRTOS task logs runtime memory diagnostics at task start
 and every 60 seconds:
 
-- free 8-bit-capable heap;
-- largest contiguous 8-bit-capable heap block;
-- minimum-ever free heap since boot;
+- free internal 8-bit-capable heap;
+- largest contiguous internal 8-bit-capable heap block;
+- minimum-ever free internal heap since boot;
 - current task stack high-water mark (ESP-IDF reports bytes).
 
 The periodic readings are intended to capture the steady-state and reconnect

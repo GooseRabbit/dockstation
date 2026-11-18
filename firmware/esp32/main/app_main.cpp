@@ -49,11 +49,11 @@ constexpr UBaseType_t kControllerLinkTaskPriority = tskIDLE_PRIORITY + 3U;
 constexpr std::uint64_t kMemoryReportIntervalMs = 60000U;
 
 void log_runtime_memory(const char* phase) noexcept {
-    const std::size_t free_heap = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+    const std::size_t free_heap = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     const std::size_t largest_block =
-        heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+        heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     const std::size_t minimum_free_heap =
-        heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT);
+        heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     // ESP-IDF's FreeRTOS port reports this high-water mark in bytes.
     const UBaseType_t stack_high_water_bytes =
         uxTaskGetStackHighWaterMark(nullptr);
