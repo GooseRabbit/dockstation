@@ -193,6 +193,10 @@ ControllerLinkPeerSessionResult ControllerLinkPeerSession::handle_message(
 
     last_peer_sequence_ = *message.envelope.sequence_number;
     if (message.envelope.type == ControllerMessageType::CommandRequest) {
+        if (command_requested_.has_value()) {
+            return make_result(ControllerLinkPeerSessionStatus::InvalidState,
+                               ControllerLinkPeerSessionEvent::None);
+        }
         const auto* command = std::get_if<ControllerCommandRequestPayload>(&message.payload);
         if (command == nullptr) return make_result(ControllerLinkPeerSessionStatus::InvalidMessage, ControllerLinkPeerSessionEvent::None);
         command_requested_ = command->command;
