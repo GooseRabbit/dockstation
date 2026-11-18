@@ -148,6 +148,7 @@ constexpr char kHexDigits[] = "0123456789abcdef";
     return status == ControllerTransportStatus::Disconnected ||
            status == ControllerTransportStatus::PeerClosed ||
            status == ControllerTransportStatus::TlsFailed ||
+           status == ControllerTransportStatus::TlsHandshakeTimeout ||
            status == ControllerTransportStatus::TransportFailed ||
            status == ControllerTransportStatus::InvalidArgument;
 }
