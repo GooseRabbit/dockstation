@@ -173,7 +173,8 @@ ControllerLinkPeerSessionResult ControllerLinkPeerSession::handle_message(
     }
 
     if (message.envelope.type != ControllerMessageType::Heartbeat &&
-        message.envelope.type != ControllerMessageType::RequestSnapshot) {
+        message.envelope.type != ControllerMessageType::RequestSnapshot &&
+        message.envelope.type != ControllerMessageType::CommandRequest) {
         return make_result(ControllerLinkPeerSessionStatus::UnexpectedMessage,
                            ControllerLinkPeerSessionEvent::None);
     }
@@ -191,6 +192,12 @@ ControllerLinkPeerSessionResult ControllerLinkPeerSession::handle_message(
     }
 
     last_peer_sequence_ = *message.envelope.sequence_number;
+    if (message.envelope.type == ControllerMessageType::CommandRequest) {
+        const auto* command = std::get_if<ControllerCommandRequestPayload>(&message.payload);
+        if (command == nullptr) return make_result(ControllerLinkPeerSessionStatus::InvalidMessage, ControllerLinkPeerSessionEvent::None);
+        command_requested_ = command->command;
+        return make_result(ControllerLinkPeerSessionStatus::Success, ControllerLinkPeerSessionEvent::CommandRequested);
+    }
     if (message.envelope.type == ControllerMessageType::RequestSnapshot) {
         snapshot_requested_ = true;
         return make_result(ControllerLinkPeerSessionStatus::Success,
@@ -198,6 +205,32 @@ ControllerLinkPeerSessionResult ControllerLinkPeerSession::handle_message(
     }
     return make_result(ControllerLinkPeerSessionStatus::Success,
                        ControllerLinkPeerSessionEvent::PeerHeartbeatReceived);
+}
+
+
+ControllerLinkPeerSessionResult ControllerLinkPeerSession::make_command_result(
+    ControllerCommandType command, ControllerCommandResultStatus status,
+    std::string_view reason_code, std::string_view sent_at) noexcept {
+    if (!configured_ || state_ != ControllerLinkPeerSessionState::Established ||
+        !command_requested_.has_value() || command_requested_.value() != command) {
+        return make_result(ControllerLinkPeerSessionStatus::InvalidState,
+                           ControllerLinkPeerSessionEvent::None);
+    }
+    if (!is_known_controller_command_result_status(status) || reason_code.empty() ||
+        !is_valid_controller_wire_text(reason_code) || !valid_timestamp(sent_at)) {
+        return make_result(ControllerLinkPeerSessionStatus::InvalidMessage,
+                           ControllerLinkPeerSessionEvent::None);
+    }
+    const ControllerMessagePayload payload{
+        ControllerCommandResultPayload{command, status, reason_code}};
+    auto result = make_outbound(ControllerMessageType::CommandResult,
+                                ControllerLinkPeerSessionEvent::None,
+                                payload, sent_at);
+    if (result.status == ControllerLinkPeerSessionStatus::Success &&
+        result.has_outbound_message) {
+        command_requested_.reset();
+    }
+    return result;
 }
 
 ControllerLinkPeerSessionResult
@@ -288,6 +321,7 @@ ControllerLinkPeerSessionResult ControllerLinkPeerSession::make_outbound(
 void ControllerLinkPeerSession::stop() noexcept {
     state_ = ControllerLinkPeerSessionState::Stopped;
     snapshot_requested_ = false;
+    command_requested_.reset();
 }
 
 }  // namespace dockstation::hardware::interfaces
