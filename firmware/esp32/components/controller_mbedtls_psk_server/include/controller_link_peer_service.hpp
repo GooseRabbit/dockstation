@@ -29,6 +29,7 @@ struct ControllerLinkPeerServiceStatus final {
     bool tls_authenticated{false};
     bool protocol_established{false};
     bool snapshot_request_pending{false};
+    bool command_pending{false};
     bool outbound_message_pending{false};
     std::uint64_t messages_received{0U};
     std::uint64_t telemetry_snapshots_sent{0U};
