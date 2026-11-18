@@ -92,6 +92,7 @@ bool ControllerLinkFirmwareRuntime::start(
     uart_config_ = startup_config.uart;
     if (!uart_.open(uart_config_)) {
         last_uart_error_ = uart_.last_error();
+        last_uart_fault_ = uart_.last_fault();
         state_ = ControllerLinkFirmwareRuntimeState::Failed;
         return false;
     }
@@ -108,12 +109,14 @@ bool ControllerLinkFirmwareRuntime::start(
     peer_session_created_ = true;
     if (!peer_started) {
         last_uart_error_ = uart_.last_error();
+        last_uart_fault_ = uart_.last_fault();
         uart_.close();
         state_ = ControllerLinkFirmwareRuntimeState::Failed;
         return false;
     }
 
     last_uart_error_ = ESP_OK;
+    last_uart_fault_ = ControllerUartFault::None;
     reset_connection_liveness();
     running_ = true;
     state_ = ControllerLinkFirmwareRuntimeState::Running;
@@ -134,6 +137,7 @@ bool ControllerLinkFirmwareRuntime::restart_transport(
 
     if (!uart_.open(uart_config_)) {
         last_uart_error_ = uart_.last_error();
+        last_uart_fault_ = uart_.last_fault();
         state_ = ControllerLinkFirmwareRuntimeState::Failed;
         return false;
     }
@@ -145,12 +149,14 @@ bool ControllerLinkFirmwareRuntime::restart_transport(
         &ControllerUartTransport::receive_callback);
     if (!restarted) {
         last_uart_error_ = uart_.last_error();
+        last_uart_fault_ = uart_.last_fault();
         uart_.close();
         state_ = ControllerLinkFirmwareRuntimeState::Failed;
         return false;
     }
 
     last_uart_error_ = ESP_OK;
+    last_uart_fault_ = ControllerUartFault::None;
     reset_connection_liveness();
     running_ = true;
     state_ = ControllerLinkFirmwareRuntimeState::Running;
@@ -164,6 +170,7 @@ void ControllerLinkFirmwareRuntime::poll(std::string_view sent_at) noexcept {
 
     if (!uart_.poll_transport_events()) {
         const esp_err_t transport_error = uart_.last_error();
+        last_uart_fault_ = uart_.last_fault();
         // An overrun or malformed UART frame invalidates the protected stream.
         // Destroy TLS before closing its injected UART callback context.
         peer_service_.stop();
@@ -211,6 +218,7 @@ void ControllerLinkFirmwareRuntime::poll(std::string_view sent_at) noexcept {
         }
         peer_service_.stop();
         const esp_err_t transport_error = uart_.last_error();
+        last_uart_fault_ = uart_.last_fault();
         uart_.close();
         last_uart_error_ = transport_error != ESP_OK
             ? transport_error
@@ -226,6 +234,7 @@ void ControllerLinkFirmwareRuntime::poll(std::string_view sent_at) noexcept {
         // The peer service has already closed TLS and retained its diagnostic.
         // Do not call stop() again; close only the UART transport it used.
         const esp_err_t transport_error = uart_.last_error();
+        last_uart_fault_ = uart_.last_fault();
         uart_.close();
         last_uart_error_ = transport_error != ESP_OK
             ? transport_error
@@ -270,7 +279,8 @@ ControllerLinkFirmwareRuntimeStatus ControllerLinkFirmwareRuntime::status() cons
         state_,
         last_uart_error_,
         peer_service_.status(),
-        last_startup_readiness_
+        last_startup_readiness_,
+        last_uart_fault_
     };
 }
 
@@ -280,6 +290,9 @@ void ControllerLinkFirmwareRuntime::stop() noexcept {
         peer_service_.stop();
     }
     uart_.close();
+    if (uart_.last_fault() != ControllerUartFault::None) {
+        last_uart_fault_ = uart_.last_fault();
+    }
     last_uart_error_ = uart_.last_error();
     connection_started_at_us_ = 0U;
     last_peer_activity_at_us_ = 0U;
