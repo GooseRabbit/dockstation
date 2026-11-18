@@ -11,6 +11,25 @@
 
 namespace dockstation::firmware::esp32 {
 
+enum class ControllerUartFault : std::uint8_t {
+    None,
+    InvalidConfiguration,
+    DriverConfigurationFailed,
+    DriverInstallFailed,
+    DriverCloseFailed,
+    InvalidState,
+    FifoOverflow,
+    ReceiveBufferFull,
+    FrameError,
+    ParityError,
+    BreakDetected,
+    TransmitFailed,
+    ReceiveFailed
+};
+
+[[nodiscard]] const char* controller_uart_fault_name(
+    ControllerUartFault fault) noexcept;
+
 // UART2 is the logical port candidate from DEC-062. The FCC manual associated
 // with HiLetgo FCC ID 2A54N-ESP32 documents GPIO17/TX2 and GPIO16/RX2; this is
 // only a candidate pin map. GPIOs intentionally remain unset until the exact
@@ -54,6 +73,7 @@ public:
 
     [[nodiscard]] bool is_open() const noexcept { return driver_installed_; }
     [[nodiscard]] esp_err_t last_error() const noexcept { return last_error_; }
+    [[nodiscard]] ControllerUartFault last_fault() const noexcept { return last_fault_; }
     [[nodiscard]] uart_port_t port() const noexcept { return port_; }
 
     // Compatible with mbedtls_ssl_send_t / mbedtls_ssl_recv_t callbacks.
@@ -66,6 +86,7 @@ public:
 private:
     uart_port_t port_{UART_NUM_MAX};
     esp_err_t last_error_{ESP_OK};
+    ControllerUartFault last_fault_{ControllerUartFault::None};
     bool driver_installed_{false};
     QueueHandle_t event_queue_{nullptr};
 };
