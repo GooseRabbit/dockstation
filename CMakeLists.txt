@@ -514,6 +514,19 @@ if(BUILD_TESTING)
     dockstation_apply_compile_policy(test_dht22_sampling_scheduler)
     add_test(NAME dht22_sampling_scheduler COMMAND test_dht22_sampling_scheduler)
 
+    add_executable(test_controller_station_state
+        firmware/esp32/components/controller_station_logic/controller_station_command_policy.cpp
+        firmware/esp32/components/controller_station_logic/controller_station_state.cpp
+        verification/repka_gateway/test_controller_station_state.cpp
+    )
+    target_include_directories(test_controller_station_state PRIVATE
+        firmware/esp32/components/controller_station_logic/include
+        firmware/esp32/components/controller_lid_limit_switches/include
+        ${PROJECT_SOURCE_DIR}/src
+    )
+    dockstation_apply_compile_policy(test_controller_station_state)
+    add_test(NAME controller_station_state COMMAND test_controller_station_state)
+
     add_executable(test_controller_station_command_policy
         firmware/esp32/components/controller_station_logic/controller_station_command_policy.cpp
         verification/repka_gateway/test_controller_station_command_policy.cpp
