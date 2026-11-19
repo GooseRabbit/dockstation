@@ -102,6 +102,10 @@ package="$OUTPUT_DIR/dockstation-gateway_${VERSION}_arm64.deb"
 dpkg-deb --root-owner-group --build "$PACKAGE_ROOT" "$package"
 dpkg-deb --info "$package"
 dpkg-deb --contents "$package"
-sha256sum "$package" > "$package.sha256"
-sha256sum --check --strict "$package.sha256"
+(
+    cd "$OUTPUT_DIR"
+    package_name="$(basename "$package")"
+    sha256sum "$package_name" > "$package_name.sha256"
+    sha256sum --check --strict "$package_name.sha256"
+)
 echo "Created $package"
