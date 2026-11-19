@@ -928,6 +928,7 @@ ApplicationWindow {
                             columnSpacing: 16
                             rowSpacing: 16
                             Repeater {
+                                objectName: "climate.sensor-repeater"
                                 model: bridge.climateSensors
                                 delegate: Panel {
                                     required property var modelData

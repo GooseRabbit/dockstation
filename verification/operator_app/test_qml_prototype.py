@@ -104,9 +104,9 @@ def test_qml_prototype_loads_with_the_seven_approved_tabs():
         assert climate_page is not None
         roots[0].setProperty("currentTab", 1)
         app.processEvents()
-        assert roots[0].findChild(QObject, "climate.dht22_1") is not None
-        assert roots[0].findChild(QObject, "climate.dht22_2") is not None
-        assert roots[0].findChild(QObject, "climate.dht22_1.temperature") is not None
+        climate_repeater = roots[0].findChild(QObject, "climate.sensor-repeater")
+        assert climate_repeater is not None
+        assert climate_repeater.property("count") == 2
 
         cover_status = roots[0].findChild(QObject, "sensor.cover-status")
         assert cover_status is not None, "Lid position must have its own panel."
