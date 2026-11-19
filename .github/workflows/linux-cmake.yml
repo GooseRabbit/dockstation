@@ -506,7 +506,7 @@ jobs:
         id: attest-arm64-deb
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:
-          subject-path: ${{ env.DOCKSTATION_DEB_PATH }}
+          subject-path: ${{ runner.temp }}/dockstation-deb/build/*.deb
 
       - name: Download and verify signed Debian package provenance
         env:
@@ -664,6 +664,27 @@ jobs:
           path: ${{ runner.temp }}/dockstation-arm64/signed/*
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish signed ARM64 Debian package in workflow summary
+        env:
+          DEB_URL: ${{ steps.upload-signed-arm64-deb.outputs.artifact-url }}
+          DEB_ATTESTATION_URL: ${{ steps.attest-arm64-deb.outputs.attestation-url }}
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          deb="$(find "$RUNNER_TEMP/dockstation-deb/signed" -maxdepth 1 -type f -name '*.deb' -print -quit)"
+          deb_sha256="$(awk '{ print $1 }' "$deb.sha256")"
+          {
+            printf '%s\\n' "## DockStation Gateway ARM64 — Debian package"
+            printf '%s\\n' ""
+            printf '%s\\n' "- Source commit: $SOURCE_COMMIT"
+            printf '%s\\n' "- Download signed package: $DEB_URL"
+            printf '%s\\n' "- GitHub attestation record: $DEB_ATTESTATION_URL"
+            printf '%s\\n' "- Package: $(basename "$deb")"
+            printf '%s\\n' "- SHA-256: $deb_sha256"
+            printf '%s\\n' "- Package contains the read-only C++ Gateway and systemd units; no ESP32 firmware is included."
+            printf '%s\\n' "- Target Repka OS ABI compatibility remains a release gate."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish signed ARM64 bundle and provenance in workflow summary
         env:
