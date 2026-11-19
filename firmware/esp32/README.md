@@ -205,9 +205,14 @@ blocks further reads until explicit reinitialization.
 
 The scheduler itself remains a pure policy component and does not read GPIO,
 generate sensor timing, power a sensor, create a FreeRTOS task or run a timer.
-The firmware polling task invokes the GPIO reader only for explicitly
-configured pins. Both checked-in sensor pins remain unset, so the normal image
-reports both channels as NOT_CONFIGURED. The decoder, adapter and scheduler
+The firmware runtime polling task owns both DHT22 channels and invokes the GPIO
+reader only for explicitly configured pins. This task is started even when the
+physical ControllerLink profile or protected credentials are unavailable; in
+that mode it continues the independent sensor lifecycle without opening NVS,
+UART or TLS. Both checked-in sensor pins remain unset, so the normal image
+reports both channels as NOT_CONFIGURED. Sensor samples are not transmitted to
+Repka while ControllerLink is NOT_CONFIGURED; end-to-end transport is the next
+integration step. The decoder, adapter and scheduler
 are built by ESP-IDF and checked by the host CTest targets `dht22_frame_decoder`,
 `dht22_telemetry_adapter` and `dht22_sampling_scheduler`; these tests do
 not prove physical sensor operation or acquisition timing.
