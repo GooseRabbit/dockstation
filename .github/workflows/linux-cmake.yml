@@ -412,6 +412,60 @@ jobs:
           fi
           (cd "$artifacts" && sha256sum --check --strict "$(basename "$deb").sha256")
 
+      - name: Exercise Debian package install, upgrade, remove, and purge
+        run: |
+          set -euo pipefail
+          deb="$(find "$RUNNER_TEMP/dockstation-deb/artifacts" -maxdepth 1 -type f -name '*.deb' -print -quit)"
+          test -s "$deb"
+
+          policy="/usr/sbin/policy-rc.d"
+          policy_backup="$RUNNER_TEMP/policy-rc.d.backup"
+          had_policy=false
+          if [[ -e "$policy" ]]; then
+            sudo cp -a "$policy" "$policy_backup"
+            had_policy=true
+          fi
+          cleanup_package_test() {
+            if [[ "$had_policy" == true ]]; then
+              sudo mv -f "$policy_backup" "$policy"
+            else
+              sudo rm -f "$policy"
+            fi
+            sudo rm -f /var/lib/dockstation/package-test-marker
+            sudo rmdir /var/lib/dockstation 2>/dev/null || true
+            sudo userdel dockstation 2>/dev/null || true
+            sudo groupdel dockstation 2>/dev/null || true
+          }
+          trap cleanup_package_test EXIT
+
+          # Prevent package maintainer scripts from starting a service on the CI host.
+          printf '%s\\n' '#!/bin/sh' 'exit 101' | sudo tee "$policy" >/dev/null
+          sudo chmod 0755 "$policy"
+
+          sudo dpkg -i "$deb"
+          [[ "$(sudo dpkg-query -W -f='${Status}' dockstation-gateway)" == "install ok installed" ]]
+          sudo test -f /etc/dockstation/gateway.conf
+          sudo test -d /var/lib/dockstation
+          sudo getent passwd dockstation >/dev/null
+          sudo getent group dockstation >/dev/null
+          sudo systemctl is-enabled dockstation-gateway.service
+
+          printf '%s\\n' 'local_setting=preserve-on-upgrade' | sudo tee -a /etc/dockstation/gateway.conf >/dev/null
+          printf '%s\\n' 'preserve-me' | sudo tee /var/lib/dockstation/package-test-marker >/dev/null
+          sudo dpkg -i "$deb"
+          sudo grep -Fqx 'local_setting=preserve-on-upgrade' /etc/dockstation/gateway.conf
+          sudo grep -Fqx 'preserve-me' /var/lib/dockstation/package-test-marker
+
+          sudo dpkg --remove dockstation-gateway
+          sudo test -f /etc/dockstation/gateway.conf
+          sudo test -f /var/lib/dockstation/package-test-marker
+          sudo test ! -e /usr/bin/dockstation_linux_bootstrap
+
+          sudo dpkg --purge dockstation-gateway
+          sudo test ! -e /etc/dockstation/gateway.conf
+          sudo test -f /var/lib/dockstation/package-test-marker
+          sudo test ! -e /usr/lib/systemd/system/dockstation-gateway.service
+
       - name: Upload ARM64 build output for signing job
         id: upload-arm64-build-bundle
         uses: actions/upload-artifact@v7
