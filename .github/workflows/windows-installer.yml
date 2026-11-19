@@ -57,8 +57,13 @@ jobs:
         shell: pwsh
         run: |
           $env:QT_QPA_PLATFORM = "offscreen"
+          $env:DOCKSTATION_SMOKE_LOG = Join-Path $env:RUNNER_TEMP "DockStationOperator-smoke.log"
+          Remove-Item $env:DOCKSTATION_SMOKE_LOG -ErrorAction SilentlyContinue
           & "dist/DockStationOperator/DockStationOperator.exe" --smoke-test
           if ($LASTEXITCODE -ne 0) {
+            if (Test-Path $env:DOCKSTATION_SMOKE_LOG) {
+              Get-Content $env:DOCKSTATION_SMOKE_LOG
+            }
             throw "Packaged QML application failed its startup smoke test."
           }
 
