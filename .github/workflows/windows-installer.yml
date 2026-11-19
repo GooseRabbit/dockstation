@@ -97,6 +97,13 @@ jobs:
           & $exe --smoke-test
           if ($LASTEXITCODE -ne 0) { throw "Installed application smoke test failed." }
 
+          # Re-run the installer into the same location as an upgrade/reinstall check.
+          $upgrade = Start-Process -FilePath $env:INSTALLER_PATH -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DIR=$installRoot") -Wait -PassThru
+          if ($upgrade.ExitCode -ne 0) { throw "Upgrade/reinstall failed: $($upgrade.ExitCode)" }
+          if (-not (Test-Path $profileFile)) {
+            throw "Upgrade unexpectedly removed user station data."
+          }
+
           $uninstaller = Join-Path $installRoot "unins000.exe"
           $remove = Start-Process -FilePath $uninstaller -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART") -Wait -PassThru
           if ($remove.ExitCode -ne 0) { throw "Uninstall failed: $($remove.ExitCode)" }
