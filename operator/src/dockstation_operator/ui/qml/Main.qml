@@ -928,52 +928,29 @@ ApplicationWindow {
                             columnSpacing: 16
                             rowSpacing: 16
                             Repeater {
-                                model: bridge.climateSensors
+                                model: ["Датчик №1 · DHT22", "Датчик №2 · DHT22"]
                                 delegate: Panel {
-                                    required property var modelData
-                                    objectName: "climate." + modelData.sensor_id
+                                    required property string modelData
                                     Layout.fillWidth: true
                                     implicitHeight: 254
                                     ColumnLayout {
                                         anchors.fill: parent
                                         anchors.margins: 20
                                         spacing: 8
-                                        Text {
-                                            text: modelData.title
-                                            color: root.primaryText
-                                            font.pixelSize: 16
-                                            font.bold: true
-                                        }
+                                        Text { text: modelData; color: root.primaryText; font.pixelSize: 16; font.bold: true }
                                         RowLayout {
                                             Layout.fillWidth: true
                                             Layout.alignment: Qt.AlignHCenter
-                                            MetricGauge {
-                                                objectName: "climate." + modelData.sensor_id + ".temperature"
-                                                caption: "Температура"
-                                                value: modelData.temperature_value
-                                                unit: "°C"
-                                                note: modelData.temperature_note
-                                                available: modelData.temperature_available
-                                                progress: modelData.temperature_progress
-                                            }
-                                            MetricGauge {
-                                                objectName: "climate." + modelData.sensor_id + ".humidity"
-                                                caption: "Влажность"
-                                                value: modelData.humidity_value
-                                                unit: "%"
-                                                note: modelData.humidity_note
-                                                available: modelData.humidity_available
-                                                progress: modelData.humidity_progress
-                                            }
+                                            MetricGauge { caption: "Температура"; value: "—"; unit: "°C"; note: "Нет данных от API"; available: false }
+                                            MetricGauge { caption: "Влажность"; value: "—"; unit: "%"; note: "Нет данных от API"; available: false }
                                         }
                                     }
                                 }
                             }
                         }
                         Text {
-                            objectName: "climate.telemetry-summary"
                             Layout.fillWidth: true
-                            text: bridge.controllerTelemetrySummary
+                            text: "Текущий Gateway API не публикует показания физических датчиков. Значения не подменяются демонстрационными данными."
                             color: root.muted
                             wrapMode: Text.WordWrap
                         }

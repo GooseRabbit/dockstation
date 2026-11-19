@@ -133,12 +133,18 @@ void test_controller_telemetry_serialization() {
     using dockstation::hardware::interfaces::ControllerTelemetrySnapshotPayload;
     using dockstation::hardware::interfaces::SensorQualityStatus;
 
-    const std::array<ControllerTelemetryMeasurement, 5U> measurements{{
+    const std::array<ControllerTelemetryMeasurement, 9U> measurements{{
         {"dht22-01.temperature", 23.75, "degC", SensorQualityStatus::Ok, "m-001"},
         {"dht22-01.humidity", std::uint64_t{61U}, "%", SensorQualityStatus::Stale, "m-002"},
         {"sensor.count", std::int64_t{-7}, "count", SensorQualityStatus::Ok, "m-005"},
         {"cover.closed", true, "bool", SensorQualityStatus::Unknown, "m-003"},
         {"sensor.note", std::string_view{"probe\"ok"}, "text", SensorQualityStatus::Invalid, "m-004"},
+        {"dht22_1.temperature", 21.7, "°C", SensorQualityStatus::Ok, "mono_us_100"},
+        {"dht22_1.humidity", 46.2, "%", SensorQualityStatus::Ok, "mono_us_100"},
+        {"dht22_2.temperature", std::string_view{"NOT_CONFIGURED"}, "status",
+         SensorQualityStatus::NotConfigured, "mono_us_100"},
+        {"dht22_2.humidity", std::string_view{"NOT_CONFIGURED"}, "status",
+         SensorQualityStatus::NotConfigured, "mono_us_100"},
     }};
     ControllerCodecDecodedMessage decoded{};
     decoded.envelope.type = ControllerMessageType::TelemetrySnapshot;
@@ -166,6 +172,12 @@ void test_controller_telemetry_serialization() {
     assert(payload.find("\"value_type\":\"BOOLEAN\",\"value\":true") != std::string::npos);
     assert(payload.find("probe\\\"ok") != std::string::npos);
     assert(payload.find("\"quality_status\":\"STALE\"") != std::string::npos);
+    assert(payload.find("\"sensor_id\":\"dht22_1.temperature\"") != std::string::npos);
+    assert(payload.find("\"sensor_id\":\"dht22_1.humidity\"") != std::string::npos);
+    assert(payload.find("\"sensor_id\":\"dht22_2.temperature\"") != std::string::npos);
+    assert(payload.find("\"sensor_id\":\"dht22_2.humidity\"") != std::string::npos);
+    assert(payload.find("\"quality_status\":\"NOT_CONFIGURED\"") != std::string::npos);
+    assert(payload.find("\"value\":\"NOT_CONFIGURED\"") != std::string::npos);
 
     dockstation::platform::linux_platform::ControllerLinkServiceStatus linked{};
     linked.tls_authenticated = true;
