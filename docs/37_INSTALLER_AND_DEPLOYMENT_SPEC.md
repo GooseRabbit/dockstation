@@ -24,7 +24,7 @@ It does not contain:
 - SSH private keys, passwords, known_hosts files, station profiles, or other user data;
 - a copy of OpenSSH. Windows OpenSSH Client is an operating-system capability and must be present separately.
 
-Target: Windows 10/11 x64. The installer must not require Python to be installed on the target PC. It must not silently enable/install Windows optional features or weaken SSH host-key checking.
+Target: Windows 10/11 x64. The installer must not require Python to be installed on the target PC. It must not silently enable/install Windows optional features or weaken SSH host-key checking. The initial CI artifact is not Authenticode-signed because no code-signing certificate has been configured; GitHub build provenance, if enabled, is not a substitute for Windows publisher signing and SmartScreen may show an unknown-publisher warning.
 
 ### Repka package (.deb)
 
