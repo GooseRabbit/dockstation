@@ -86,7 +86,10 @@ public:
     // Publishes logical station state with UNKNOWN quality for unavailable
     // physical inputs; it never invents sensor or actuator readings.
     [[nodiscard]] bool send_station_state_snapshot(
-        std::string_view sent_at, std::uint64_t monotonic_time_ms) noexcept;
+        std::string_view sent_at,
+        std::uint64_t monotonic_time_ms,
+        const hardware::interfaces::ControllerTelemetryMeasurement* additional_measurements = nullptr,
+        std::size_t additional_measurement_count = 0U) noexcept;
     void configure_input_freshness(
         ControllerStationInputFreshnessConfig config) noexcept;
     void set_safety_inputs(

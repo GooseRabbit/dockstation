@@ -1,7 +1,12 @@
+#include <array>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
+#include <string_view>
 
+#include "driver/gpio.h"
 #include "esp_err.h"
+#include "esp_rom_sys.h"
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -12,6 +17,10 @@
 #include "controller_link_firmware_runtime.hpp"
 #include "controller_link_reconnect_backoff.hpp"
 #include "controller_uart_transport.hpp"
+#include "dht22_frame_decoder.hpp"
+#include "dht22_sampling_scheduler.hpp"
+#include "dht22_telemetry_adapter.hpp"
+#include "dht22_gpio_reader.hpp"
 #include "hardware/interfaces/controller_link_startup_readiness.hpp"
 #include "hardware/interfaces/controller_stable_identity.hpp"
 
@@ -120,6 +129,119 @@ void log_startup_blockers(
     return value > 0 ? static_cast<std::uint64_t>(value) / 1000U : 0U;
 }
 
+
+// DHT22 pins intentionally remain unset until the actual wiring is confirmed.
+// Each sensor has its own scheduler and last valid sample.
+struct Dht22Channel final {
+    gpio_num_t pin{GPIO_NUM_NC};
+    dockstation::firmware::esp32::Dht22SamplingScheduler scheduler{};
+    dockstation::firmware::esp32::Dht22DecodedReading reading{};
+    bool has_reading{false};
+    std::uint64_t measured_at_us{0U};
+    char measured_at[32]{};
+};
+
+std::array<Dht22Channel, 2U> g_dht22_channels{};
+
+void initialize_dht22_channels() noexcept {
+    const std::uint64_t now_ms = monotonic_milliseconds();
+    for (auto& channel : g_dht22_channels) {
+        if (channel.pin != GPIO_NUM_NC && GPIO_IS_VALID_GPIO(channel.pin)) {
+            channel.scheduler.initialize(now_ms);
+        }
+    }
+    ESP_LOGI(kTag, "DHT22 channels configured: sensor1=%s sensor2=%s",
+        g_dht22_channels[0].pin == GPIO_NUM_NC ? "NOT_CONFIGURED" : "CONFIGURED",
+        g_dht22_channels[1].pin == GPIO_NUM_NC ? "NOT_CONFIGURED" : "CONFIGURED");
+}
+
+void poll_dht22_channels() noexcept {
+    const std::uint64_t now_ms = monotonic_milliseconds();
+    for (std::size_t index = 0U; index < g_dht22_channels.size(); ++index) {
+        auto& channel = g_dht22_channels[index];
+        if (channel.pin == GPIO_NUM_NC || !GPIO_IS_VALID_GPIO(channel.pin)) {
+            continue;
+        }
+        if (channel.scheduler.try_begin_read(now_ms).status !=
+            dockstation::firmware::esp32::Dht22SamplingStatus::Ready) {
+            continue;
+        }
+
+        dockstation::firmware::esp32::Dht22DecodedReading reading{};
+        if (dockstation::firmware::esp32::read_dht22_gpio(channel.pin, reading) !=
+            dockstation::firmware::esp32::Dht22GpioReadStatus::Success) {
+            continue;
+        }
+
+        channel.reading = reading;
+        channel.has_reading = true;
+        channel.measured_at_us = static_cast<std::uint64_t>(esp_timer_get_time());
+        const int written = std::snprintf(
+            channel.measured_at, sizeof(channel.measured_at), "mono_us_%llu",
+            static_cast<unsigned long long>(channel.measured_at_us));
+        if (written <= 0 || static_cast<std::size_t>(written) >= sizeof(channel.measured_at)) {
+            channel.has_reading = false;
+            channel.measured_at[0] = '\\0';
+        }
+    }
+}
+
+std::size_t build_dht22_telemetry(
+    std::uint64_t now_us,
+    std::string_view request_timestamp,
+    std::array<dockstation::hardware::interfaces::ControllerTelemetryMeasurement, 4U>& output) noexcept {
+    using namespace dockstation::firmware::esp32;
+    using dockstation::hardware::interfaces::ControllerSensorValue;
+    using dockstation::hardware::interfaces::SensorQualityStatus;
+
+    output = {};
+    std::size_t count = 0U;
+    for (std::size_t index = 0U; index < g_dht22_channels.size(); ++index) {
+        const auto& channel = g_dht22_channels[index];
+        const char* const sensor_prefix = index == 0U ? "dht22_1" : "dht22_2";
+        const std::string_view measured_at =
+            channel.has_reading ? std::string_view{channel.measured_at} : request_timestamp;
+
+        if (channel.pin == GPIO_NUM_NC || !GPIO_IS_VALID_GPIO(channel.pin)) {
+            output[count++] = {index == 0U ? "dht22_1.temperature" : "dht22_2.temperature",
+                ControllerSensorValue{std::string_view{"NOT_CONFIGURED"}}, "status",
+                SensorQualityStatus::NotConfigured, measured_at};
+            output[count++] = {index == 0U ? "dht22_1.humidity" : "dht22_2.humidity",
+                ControllerSensorValue{std::string_view{"NOT_CONFIGURED"}}, "status",
+                SensorQualityStatus::NotConfigured, measured_at};
+            continue;
+        }
+
+        if (!channel.has_reading) {
+            output[count++] = {index == 0U ? "dht22_1.temperature" : "dht22_2.temperature",
+                ControllerSensorValue{std::string_view{"UNAVAILABLE"}}, "status",
+                SensorQualityStatus::Unavailable, measured_at};
+            output[count++] = {index == 0U ? "dht22_1.humidity" : "dht22_2.humidity",
+                ControllerSensorValue{std::string_view{"UNAVAILABLE"}}, "status",
+                SensorQualityStatus::Unavailable, measured_at};
+            continue;
+        }
+
+        std::array<dockstation::hardware::interfaces::ControllerTelemetryMeasurement, 2U> pair{};
+        const auto quality = now_us >= channel.measured_at_us &&
+            now_us - channel.measured_at_us > 5000000U
+                ? SensorQualityStatus::Stale : SensorQualityStatus::Ok;
+        const std::string_view temperature_id =
+            index == 0U ? "dht22_1.temperature" : "dht22_2.temperature";
+        const std::string_view humidity_id =
+            index == 0U ? "dht22_1.humidity" : "dht22_2.humidity";
+        if (make_dht22_telemetry_measurements(
+                channel.reading, temperature_id, humidity_id,
+                measured_at, quality, pair) ==
+            Dht22TelemetryBuildStatus::Success) {
+            output[count++] = pair[0];
+            output[count++] = pair[1];
+        }
+        (void)sensor_prefix;
+    }
+    return count;
+}
+
 [[nodiscard]] bool start_or_restart_controller_link() noexcept {
     const auto peer_state = g_controller_link_runtime.status().peer.state;
     const bool started =
@@ -139,6 +261,7 @@ void controller_link_polling_task(void*) {
     using dockstation::firmware::esp32::ControllerLinkReconnectBackoff;
 
     ControllerLinkReconnectBackoff reconnect_backoff{};
+    initialize_dht22_channels();
     if (!start_or_restart_controller_link()) {
         const auto delay_ms =
             reconnect_backoff.schedule_after_failure(monotonic_milliseconds());
@@ -164,6 +287,7 @@ void controller_link_polling_task(void*) {
 
     for (;;) {
         const std::uint64_t now_ms = monotonic_milliseconds();
+        poll_dht22_channels();
         auto runtime_status = g_controller_link_runtime.status();
 
         if (runtime_status.state ==
@@ -186,9 +310,14 @@ void controller_link_polling_task(void*) {
                 if (g_controller_link_runtime.snapshot_request_pending()) {
                     // Publish logical station state. Unconfigured physical
                     // inputs are explicitly UNKNOWN; no values are fabricated.
+                    std::array<dockstation::hardware::interfaces::ControllerTelemetryMeasurement, 4U>
+                        sensor_measurements{};
+                    const std::size_t sensor_count = build_dht22_telemetry(
+                        static_cast<std::uint64_t>(esp_timer_get_time()),
+                        sent_at_view, sensor_measurements);
                     static_cast<void>(
                         g_controller_link_runtime.send_station_state_snapshot(
-                            sent_at_view));
+                            sent_at_view, sensor_measurements.data(), sensor_count));
                 }
                 runtime_status = g_controller_link_runtime.status();
             }

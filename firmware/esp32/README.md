@@ -190,6 +190,10 @@ or infer freshness. The timestamp format remains the existing open protocol
 decision. Returned string views refer to caller-owned storage, which must stay
 valid while the measurements are used.
 
+The component now also contains an ESP-IDF GPIO acquisition adapter. It drives the configured open-drain data pin low for 1.1 ms, releases it, captures the 40 data-bit high pulses with bounded edge waits, and passes the resulting five-byte frame through the existing checksum/range decoder. The reader returns explicit NOT_CONFIGURED, GPIO, timeout or invalid-frame outcomes; it does not return fabricated values. Use an external 4.7–10 kOhm data-line pull-up. The capture is polling-based and may reject a frame if an interrupt stretches a pulse; a later hardware timing review can replace this small adapter without changing the decoder or telemetry contract.
+
+The firmware defines two independent DHT22 channels. Their GPIO values deliberately remain `GPIO_NUM_NC`; no pins are guessed. Each configured channel has its own sampling scheduler and cached real reading. Sampling attempts are rate-limited independently, and snapshot telemetry reports NOT_CONFIGURED or UNAVAILABLE explicitly until a valid reading exists. Valid values are sent with their acquisition timestamp; values older than five seconds are marked STALE. The existing station-state measurements remain in the same snapshot.
+
 The component also contains a pure `Dht22SamplingScheduler`. Each
 physical sensor uses its own scheduler instance. The caller initializes it
 with the monotonic timestamp when sensor power was applied and calls
@@ -240,7 +244,7 @@ Not implemented by this scaffold:
 - a provisioning writer/utility for PSK, PSK identity or stable controller IDs;
 - board-specific UART pin assignment or a running UART connection;
 - physical acceptance of ControllerLink reconnect/recovery over the actual UART wiring;
-- physical DHT22 GPIO/timing acquisition and publication of real sensor measurements; the decoder, adapter and sampling policy are present, but no sensor pins are assigned;
+- physical DHT22 acceptance on the actual board; the GPIO reader and telemetry path are implemented, but both sensor GPIOs remain unset and no real sensor has yet been tested;
 - GPIO acquisition/pin assignment for the lid limit switches, motor control or hardware interlocks; the pure lid limit-switch state tracker exists but is not connected to hardware;
 - enabling/configuring Flash Encryption, Secure Boot policy or OTA update;
 - production partition/Flash sizing and final board profile.

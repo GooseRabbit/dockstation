@@ -266,10 +266,13 @@ bool ControllerLinkFirmwareRuntime::send_telemetry_snapshot(
 }
 
 bool ControllerLinkFirmwareRuntime::send_station_state_snapshot(
-    std::string_view sent_at) noexcept {
+    std::string_view sent_at,
+    const hardware::interfaces::ControllerTelemetryMeasurement* additional_measurements,
+    std::size_t additional_measurement_count) noexcept {
     return running_ && !uart_.has_pending_transport_events() &&
         peer_service_.send_station_state_snapshot(
-            sent_at, monotonic_microseconds() / 1000U);
+            sent_at, monotonic_microseconds() / 1000U,
+            additional_measurements, additional_measurement_count);
 }
 
 void ControllerLinkFirmwareRuntime::configure_input_freshness(

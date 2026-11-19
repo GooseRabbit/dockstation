@@ -398,9 +398,15 @@ bool ControllerLinkPeerService::send_station_state_snapshot(
     std::string_view sent_at,
     std::uint64_t monotonic_time_ms) noexcept {
     std::array<hardware::interfaces::ControllerTelemetryMeasurement, 8U>
+        station_measurements{};
+    const std::size_t station_count =
+        station_state_.build_telemetry(station_measurements, sent_at, monotonic_time_ms);
+    std::array<hardware::interfaces::ControllerTelemetryMeasurement,
+               kStationMeasurementCapacity + kAdditionalMeasurementCapacity>
         measurements{};
-    const std::size_t count =
-        station_state_.build_telemetry(measurements, sent_at, monotonic_time_ms);
+    for (std::size_t index = 0U; index < station_count; ++index) {
+        measurements[index] = station_measurements[index];
+    }
     const hardware::interfaces::ControllerTelemetrySnapshotPayload snapshot{
         measurements.data(), count};
     return send_telemetry_snapshot(snapshot, sent_at);

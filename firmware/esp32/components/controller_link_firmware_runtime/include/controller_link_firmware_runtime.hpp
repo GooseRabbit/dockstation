@@ -67,7 +67,10 @@ public:
     [[nodiscard]] bool send_telemetry_snapshot(
         const hardware::interfaces::ControllerTelemetrySnapshotPayload& snapshot,
         std::string_view sent_at) noexcept;
-    [[nodiscard]] bool send_station_state_snapshot(std::string_view sent_at) noexcept;
+    [[nodiscard]] bool send_station_state_snapshot(
+        std::string_view sent_at,
+        const hardware::interfaces::ControllerTelemetryMeasurement* additional_measurements = nullptr,
+        std::size_t additional_measurement_count = 0U) noexcept;
     void configure_input_freshness(
         ControllerStationInputFreshnessConfig config) noexcept;
     // Timestamp must be captured when the physical input bundle is sampled,
