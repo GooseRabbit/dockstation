@@ -29,7 +29,12 @@ for required in \
     usr/lib/systemd/system/dockstation-gateway.service \
     usr/lib/systemd/system/dockstation-gateway-uart@.service \
     usr/share/dockstation/gateway.conf.example; do
-    [[ -f "$ROOT/$required" ]] || { echo "Missing staged package payload: $required" >&2; exit 1; }
+    [[ -f "$ROOT/$required" && ! -L "$ROOT/$required" ]] ||
+        { echo "Missing, non-regular, or symlinked staged package payload: $required" >&2; exit 1; }
+done
+for binary in dockstation_linux_bootstrap dockstation-credential-provision dockstation-registry-provision; do
+    [[ -x "$ROOT/usr/bin/$binary" ]] ||
+        { echo "Staged executable is not executable: $binary" >&2; exit 1; }
 done
 
 command -v dpkg-deb >/dev/null
@@ -41,9 +46,19 @@ PACKAGE_ROOT="$(mktemp -d)"
 trap 'rm -rf -- "$PACKAGE_ROOT"' EXIT
 mkdir -p "$OUTPUT_DIR" "$PACKAGE_ROOT/DEBIAN" "$PACKAGE_ROOT/etc/dockstation"
 
-# Copy only the reviewed production payload. Do not package build trees, tests,
-# firmware binaries, keys, local credentials, or host-specific config.
-cp -a "$ROOT/usr" "$PACKAGE_ROOT/"
+# Copy an explicit allow-list only. Do not package extra staged files,
+# build trees, tests, firmware binaries, keys, local credentials, or host config.
+mkdir -p "$PACKAGE_ROOT/usr/bin" "$PACKAGE_ROOT/usr/lib/systemd/system" \
+    "$PACKAGE_ROOT/usr/share/dockstation"
+for binary in dockstation_linux_bootstrap dockstation-credential-provision dockstation-registry-provision; do
+    install -m 0755 "$ROOT/usr/bin/$binary" "$PACKAGE_ROOT/usr/bin/$binary"
+done
+install -m 0644 "$ROOT/usr/lib/systemd/system/dockstation-gateway.service" \
+    "$PACKAGE_ROOT/usr/lib/systemd/system/dockstation-gateway.service"
+install -m 0644 "$ROOT/usr/lib/systemd/system/dockstation-gateway-uart@.service" \
+    "$PACKAGE_ROOT/usr/lib/systemd/system/dockstation-gateway-uart@.service"
+install -m 0644 "$ROOT/usr/share/dockstation/gateway.conf.example" \
+    "$PACKAGE_ROOT/usr/share/dockstation/gateway.conf.example"
 install -m 0644 "$ROOT/usr/share/dockstation/gateway.conf.example" \
     "$PACKAGE_ROOT/etc/dockstation/gateway.conf"
 install -m 0644 packaging/debian/conffiles "$PACKAGE_ROOT/DEBIAN/conffiles"
