@@ -1,0 +1,10 @@
+Package: dockstation-gateway
+Version: @VERSION@
+Section: misc
+Priority: optional
+Architecture: arm64
+Maintainer: DockStation Project
+Depends: @RUNTIME_DEPENDS@, adduser, systemd
+Description: DockStation read-only Linux Gateway
+ C++ Gateway service and local diagnostic API for DockStation Repka stations.
+ This package does not configure physical UART/GPIO or flash ESP32 firmware.
