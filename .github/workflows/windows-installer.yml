@@ -115,7 +115,7 @@ jobs:
             throw "Linux release $($env:RELEASE_TAG) was not created within 50 minutes."
           }
 
-          $installer = Get-ChildItem "$env:RUNNER_TEMP\\dockstation-release" -Filter "*.exe" -Recurse | Select-Object -First 1
+          $installer = Get-ChildItem "$env:RUNNER_TEMP/dockstation-release" -Filter "*.exe" -Recurse | Select-Object -First 1
           if (-not $installer) {
             throw "Windows installer artifact does not contain an .exe file."
           }
