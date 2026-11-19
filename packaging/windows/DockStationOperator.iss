@@ -18,7 +18,7 @@ UninstallDisplayIcon={app}\DockStationOperator.exe
 ArchitecturesAllowed=x64
 ArchitecturesInstallIn64BitMode=x64
 PrivilegesRequired=admin
-OutputDir=..\\..\\artifacts
+OutputDir=..\..\artifacts
 OutputBaseFilename=DockStationOperator-Setup-{#AppVersion}
 Compression=lzma2
 SolidCompression=yes
@@ -28,7 +28,7 @@ RestartApplications=no
 DisableProgramGroupPage=yes
 
 [Files]
-Source: "dist\DockStationOperator\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\..\dist\DockStationOperator\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\DockStation Operator"; Filename: "{app}\DockStationOperator.exe"
