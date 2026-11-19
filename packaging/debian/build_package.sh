@@ -66,14 +66,15 @@ for script in postinst prerm postrm; do
     install -m 0755 "packaging/debian/$script" "$PACKAGE_ROOT/DEBIAN/$script"
 done
 
-# dpkg-shlibdeps derives runtime package dependencies from the actual ARM64 ELF binaries.
-mkdir -p debian
-cp packaging/debian/shlibdeps.control debian/control
-printf 'dockstation-gateway (%s) unstable; urgency=medium\n\n  * CI package build.\n\n -- DockStation Project <noreply@localhost>  Thu, 19 Nov 2026 00:00:00 +0000\n' "$VERSION" > debian/changelog
-cleanup_debian_control() { rm -f debian/control debian/changelog debian/substvars; }
-trap 'cleanup_debian_control; rm -rf -- "$PACKAGE_ROOT"' EXIT
+# dpkg-shlibdeps reads Debian metadata from a temporary work tree so this
+# helper never creates or overwrites a repository-root debian/ directory.
+DEBIAN_METADATA_ROOT="$(mktemp -d)"
+mkdir -p "$DEBIAN_METADATA_ROOT/debian"
+cp packaging/debian/shlibdeps.control "$DEBIAN_METADATA_ROOT/debian/control"
+printf 'dockstation-gateway (%s) unstable; urgency=medium\n\n  * CI package build.\n\n -- DockStation Project <noreply@localhost>  Thu, 19 Nov 2026 00:00:00 +0000\n' "$VERSION" > "$DEBIAN_METADATA_ROOT/debian/changelog"
+trap 'rm -rf -- "$PACKAGE_ROOT" "$DEBIAN_METADATA_ROOT"' EXIT
 
-SHLIBS_OUTPUT="$(dpkg-shlibdeps -O \
+SHLIBS_OUTPUT="$(cd "$DEBIAN_METADATA_ROOT" && dpkg-shlibdeps -O \
     -e"$PACKAGE_ROOT/usr/bin/dockstation_linux_bootstrap" \
     -e"$PACKAGE_ROOT/usr/bin/dockstation-credential-provision" \
     -e"$PACKAGE_ROOT/usr/bin/dockstation-registry-provision")"
@@ -82,8 +83,6 @@ RUNTIME_DEPENDS="$(printf '%s\n' "$SHLIBS_OUTPUT" | sed -n 's/^shlibs:Depends=//
 # Debian 12 uses libssl3; Ubuntu 24.04 uses the t64-renamed libssl3t64.
 # Keep the package installable on either ABI-compatible OpenSSL 3 provider.
 RUNTIME_DEPENDS="$(printf '%s\n' "$RUNTIME_DEPENDS" | sed -E 's/libssl3t64 \(>= ([^)]+)\)/libssl3 (>= \1) | libssl3t64 (>= \1)/g')"
-rm -f debian/control debian/changelog debian/substvars
-
 sed -e "s/@VERSION@/$VERSION/g" \
     -e "s|@RUNTIME_DEPENDS@|$RUNTIME_DEPENDS|g" \
     packaging/debian/control.in > "$PACKAGE_ROOT/DEBIAN/control"
