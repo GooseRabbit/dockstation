@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - chore/flatten-repka-directories
+    tags:
+      - 'v*'
   pull_request:
     branches:
       - main
@@ -14,7 +16,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-and-test:
@@ -78,3 +80,47 @@ jobs:
           path: artifacts/DockStationOperator-Setup-*.exe
           if-no-files-found: error
           retention-days: 30
+
+  publish-windows-release:
+    name: Publish Windows installer to GitHub Release
+    needs: build-and-test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - name: Download Windows installer artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: dockstation-operator-windows-x64-${{ github.sha }}
+          path: ${{ runner.temp }}\\dockstation-release
+
+      - name: Wait for Linux release, then attach Windows installer
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          $deadline = (Get-Date).AddMinutes(50)
+          $releaseFound = $false
+          while ((Get-Date) -lt $deadline) {
+            gh release view $env:RELEASE_TAG --repo $env:REPOSITORY *> $null
+            if ($LASTEXITCODE -eq 0) {
+              $releaseFound = $true
+              break
+            }
+            Start-Sleep -Seconds 20
+          }
+          if (-not $releaseFound) {
+            throw "Linux release $($env:RELEASE_TAG) was not created within 50 minutes."
+          }
+
+          $installer = Get-ChildItem "$env:RUNNER_TEMP\\dockstation-release" -Filter "*.exe" -Recurse | Select-Object -First 1
+          if (-not $installer) {
+            throw "Windows installer artifact does not contain an .exe file."
+          }
+          gh release upload $env:RELEASE_TAG $installer.FullName --repo $env:REPOSITORY
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to upload Windows installer to GitHub Release."
+          }
+
