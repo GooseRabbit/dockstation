@@ -63,7 +63,9 @@ def main() -> int:
         for warning in qml_warnings:
             write_smoke_log(warning)
         if not qml_warnings:
-            write_smoke_log("QQmlApplicationEngine created no root objects and emitted no warnings.")
+            write_smoke_log(
+                "QQmlApplicationEngine created no root objects and emitted no warnings."
+            )
         bridge.shutdown()
         return 1
     if smoke_test:
