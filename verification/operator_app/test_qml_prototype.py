@@ -76,7 +76,7 @@ def test_qml_prototype_loads_with_the_seven_approved_tabs():
                 "measurements": [
                     {"sensor_id": "lid.position", "value_type": "TEXT",
                      "value": "NOT_CONFIGURED", "unit": "status",
-                     "quality_status": "NOT_CONFIGURED", "measured_at": "mono_us_100"},
+                     "quality_status": "NOT_CONFIGURED", "measured_at": "mono_us_1234567"},
                     {"sensor_id": "platform.motion_active", "value_type": "TEXT",
                      "value": "UNKNOWN", "unit": "status",
                      "quality_status": "UNKNOWN", "measured_at": "mono_us_100"},
@@ -116,7 +116,7 @@ def test_qml_prototype_loads_with_the_seven_approved_tabs():
         bridge.viewChanged.emit()
         app.processEvents()
         assert len(bridge.controllerTelemetry) == 12
-        assert bridge.controllerTelemetry[0]["measured_at"] == "0.000 с после запуска ESP32"
+        assert bridge.controllerTelemetry[0]["measured_at"] == "1.235 с после запуска ESP32"
         assert {item["sensor_id"] for item in bridge.controllerTelemetry} >= {
             "lid.position", "command.pending",
             "dht22_1.temperature", "dht22_1.humidity",
