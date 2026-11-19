@@ -1073,11 +1073,11 @@ int main() {
                e2e_service.telemetry_snapshot().sequence_number() == 7U,
            "rejects the replayed sequence, closes the link and retains the last accepted snapshot");
 #if defined(DOCKSTATION_WITH_SQLITE_PERSISTENCE)
-    expect(event_adapter.statistics().authenticated_messages_received == 4U &&
+    expect(event_adapter.statistics().authenticated_messages_received == 5U &&
                event_adapter.statistics().pipeline_invocations == 2U,
            "a replayed sequence never reaches the authenticated event adapter or SSM pipeline");
 #else
-    expect(event_adapter.statistics().authenticated_messages_received == 3U &&
+    expect(event_adapter.statistics().authenticated_messages_received == 4U &&
                event_adapter.statistics().pipeline_invocations == 1U,
            "a replayed sequence never reaches the authenticated event adapter or SSM pipeline");
 #endif
