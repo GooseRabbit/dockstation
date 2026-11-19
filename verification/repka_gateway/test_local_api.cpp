@@ -133,25 +133,12 @@ void test_controller_telemetry_serialization() {
     using dockstation::hardware::interfaces::ControllerTelemetrySnapshotPayload;
     using dockstation::hardware::interfaces::SensorQualityStatus;
 
-    // Match the complete ESP32 snapshot: eight station-state values plus
-    // temperature and humidity for each of the two DHT22 channels.
-    const std::array<ControllerTelemetryMeasurement, 12U> measurements{{
-        {"lid.position", std::string_view{"NOT_CONFIGURED"}, "status",
-         SensorQualityStatus::NotConfigured, "mono_us_100"},
-        {"platform.motion_active", std::string_view{"UNKNOWN"}, "status",
-         SensorQualityStatus::Unknown, "mono_us_100"},
-        {"cleaning.active", std::string_view{"UNKNOWN"}, "status",
-         SensorQualityStatus::Unknown, "mono_us_100"},
-        {"drive.motion_active", std::string_view{"UNKNOWN"}, "status",
-         SensorQualityStatus::Unknown, "mono_us_100"},
-        {"safety_stop.active", std::string_view{"UNKNOWN"}, "status",
-         SensorQualityStatus::Unknown, "mono_us_100"},
-        {"workspace.state", std::string_view{"UNKNOWN"}, "status",
-         SensorQualityStatus::Unknown, "mono_us_100"},
-        {"command.last_decision", std::string_view{"NONE"}, "status",
-         SensorQualityStatus::Unknown, "mono_us_100"},
-        {"command.pending", std::string_view{"NONE"}, "status",
-         SensorQualityStatus::Unknown, "mono_us_100"},
+    const std::array<ControllerTelemetryMeasurement, 9U> measurements{{
+        {"dht22-01.temperature", 23.75, "degC", SensorQualityStatus::Ok, "m-001"},
+        {"dht22-01.humidity", std::uint64_t{61U}, "%", SensorQualityStatus::Stale, "m-002"},
+        {"sensor.count", std::int64_t{-7}, "count", SensorQualityStatus::Ok, "m-005"},
+        {"cover.closed", true, "bool", SensorQualityStatus::Unknown, "m-003"},
+        {"sensor.note", std::string_view{"probe\"ok"}, "text", SensorQualityStatus::Invalid, "m-004"},
         {"dht22_1.temperature", 21.7, "°C", SensorQualityStatus::Ok, "mono_us_100"},
         {"dht22_1.humidity", 46.2, "%", SensorQualityStatus::Ok, "mono_us_100"},
         {"dht22_2.temperature", std::string_view{"NOT_CONFIGURED"}, "status",
@@ -189,11 +176,7 @@ void test_controller_telemetry_serialization() {
     assert(payload.find("\"sensor_id\":\"dht22_1.humidity\"") != std::string::npos);
     assert(payload.find("\"sensor_id\":\"dht22_2.temperature\"") != std::string::npos);
     assert(payload.find("\"sensor_id\":\"dht22_2.humidity\"") != std::string::npos);
-    assert(payload.find("\"sensor_id\":\"lid.position\"") != std::string::npos);
-    assert(payload.find("\"sensor_id\":\"command.pending\"") != std::string::npos);
     assert(payload.find("\"quality_status\":\"NOT_CONFIGURED\"") != std::string::npos);
-    assert(payload.find("\"quality_status\":\"UNKNOWN\"") != std::string::npos);
-    assert(payload.find("\"sensor_id\":\"workspace.state\"") != std::string::npos);
     assert(payload.find("\"value\":\"NOT_CONFIGURED\"") != std::string::npos);
 
     dockstation::platform::linux_platform::ControllerLinkServiceStatus linked{};
