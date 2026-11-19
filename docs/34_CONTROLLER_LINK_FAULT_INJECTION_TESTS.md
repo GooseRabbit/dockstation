@@ -45,3 +45,16 @@ UART event queue policy используется ESP-IDF transport и отдел
 6. RAM/stack во время TLS handshake, обмена и reconnect.
 
 До такой проверки физический транспорт имеет статус NOT_CONFIGURED / NOT VERIFIED. Успешный CI означает только прохождение перечисленных host/build tests.
+
+## 6. Восстановление телеметрии после потери канала и рестарта Gateway
+
+Расширен сквозной host-тест `verification/repka_gateway/test_controller_link_service.cpp`:
+
+1. При потере peer посреди telemetry frame неполный снимок не публикуется; Gateway сохраняет последний полный снимок только как диагностически устаревший.
+2. После нового TLS 1.3 PSK-DHE и HELLO/HELLO_ACK Gateway отправляет REQUEST_SNAPSHOT. Новый снимок заменяет прежний и проверяется по всем четырём DHT22-каналам: два числовых измерения первого датчика и две явные записи NOT_CONFIGURED второго.
+3. Повтор ранее принятого sequence отклоняется; последний полный снимок сохраняется, но общий статус телеметрии становится WARN из-за потерянного authenticated link.
+4. Явная остановка ControllerLinkService очищает process-local snapshot. Повторный start создаёт новый per-process instance ID и не публикует прежние значения.
+5. После нового TLS/HELLO/HELLO_ACK тот же peer продолжает собственную последовательность сообщений, получает REQUEST_SNAPSHOT и передаёт новый DHT22 snapshot. Gateway публикует его в diagnostics со статусом PASS и проверенными новыми числовыми значениями.
+6. Повторная остановка снова очищает process-local snapshot.
+
+Тест использует production `ControllerLinkService`, POSIX PTY и OpenSSL TLS 1.3 PSK-DHE peer. Это проверка lifecycle/recovery на Linux host. Она моделирует stop/start сервиса внутри тестового процесса; не является испытанием фактического systemd process restart, ESP-IDF FreeRTOS task, Mbed TLS peer на физической ESP32 или UART-проводов. Отдельные systemd startup/restart checks остаются в CI, а физическое отключение питания/кабеля и восстановление на паре плат — аппаратной приёмкой.
