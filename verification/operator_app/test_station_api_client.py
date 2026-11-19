@@ -261,7 +261,7 @@ def test_validate_diagnostics_response_accepts_full_twelve_measurement_station_s
 def test_validate_diagnostics_response_accepts_invalid_non_finite_number_as_null():
     payload = valid_diagnostics()
     telemetry = valid_controller_telemetry()
-    telemetry["measurements"][0].update(value=None, quality_status="INVALID")
+    telemetry["measurements"][8].update(value=None, quality_status="INVALID")
     payload["controller_telemetry"] = telemetry
     StationApiClient.validate_diagnostics_response(payload)
 
@@ -269,7 +269,7 @@ def test_validate_diagnostics_response_accepts_invalid_non_finite_number_as_null
 def test_validate_diagnostics_response_rejects_null_number_without_invalid_quality():
     payload = valid_diagnostics()
     telemetry = valid_controller_telemetry()
-    telemetry["measurements"][0].update(value=None, quality_status="OK")
+    telemetry["measurements"][8].update(value=None, quality_status="OK")
     payload["controller_telemetry"] = telemetry
     with pytest.raises(ApiClientError):
         StationApiClient.validate_diagnostics_response(payload)
@@ -287,9 +287,9 @@ def test_validate_diagnostics_response_remains_compatible_without_controller_tel
         lambda telemetry: telemetry.update(status="READY"),
         lambda telemetry: telemetry.update(link_connected="yes"),
         lambda telemetry: telemetry.update(sequence_number=True),
-        lambda telemetry: telemetry["measurements"][0].update(value_type="FLOAT"),
-        lambda telemetry: telemetry["measurements"][0].update(value=float("nan")),
-        lambda telemetry: telemetry["measurements"][0].update(quality_status="PASS"),
+        lambda telemetry: telemetry["measurements"][8].update(value_type="FLOAT"),
+        lambda telemetry: telemetry["measurements"][8].update(value=float("nan")),
+        lambda telemetry: telemetry["measurements"][8].update(quality_status="PASS"),
         lambda telemetry: telemetry.update(received_at_utc="not-a-date"),
     ],
 )
