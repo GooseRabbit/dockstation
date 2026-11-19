@@ -1037,8 +1037,29 @@ int main() {
             e2e_service.telemetry_snapshot().measurement(index, recovered_measurement) &&
             recovered_measurement.sensor_id == expected_sensor_ids[index];
     }
-    expect(recovered_channels_valid,
-           "replaces retained stale telemetry with all four channels from the recovered session");
+    const bool recovered_values_valid =
+        e2e_service.telemetry_snapshot().measurement(0U, recovered_measurement) &&
+        recovered_measurement.sensor_id == "dht22_1.temperature" &&
+        recovered_measurement.quality == SensorQualityStatus::Ok &&
+        std::get_if<double>(&recovered_measurement.value) != nullptr &&
+        *std::get_if<double>(&recovered_measurement.value) == 21.7 &&
+        e2e_service.telemetry_snapshot().measurement(1U, recovered_measurement) &&
+        recovered_measurement.sensor_id == "dht22_1.humidity" &&
+        recovered_measurement.quality == SensorQualityStatus::Ok &&
+        std::get_if<double>(&recovered_measurement.value) != nullptr &&
+        *std::get_if<double>(&recovered_measurement.value) == 46.2 &&
+        e2e_service.telemetry_snapshot().measurement(2U, recovered_measurement) &&
+        recovered_measurement.sensor_id == "dht22_2.temperature" &&
+        recovered_measurement.quality == SensorQualityStatus::NotConfigured &&
+        std::get_if<std::string_view>(&recovered_measurement.value) != nullptr &&
+        *std::get_if<std::string_view>(&recovered_measurement.value) == "NOT_CONFIGURED" &&
+        e2e_service.telemetry_snapshot().measurement(3U, recovered_measurement) &&
+        recovered_measurement.sensor_id == "dht22_2.humidity" &&
+        recovered_measurement.quality == SensorQualityStatus::NotConfigured &&
+        std::get_if<std::string_view>(&recovered_measurement.value) != nullptr &&
+        *std::get_if<std::string_view>(&recovered_measurement.value) == "NOT_CONFIGURED";
+    expect(recovered_channels_valid && recovered_values_valid,
+           "replaces retained stale telemetry with all four DHT22 channels and their exact values/qualities");
 
     // A duplicate peer sequence is rejected by ControllerLinkSession before
     // replacing the last known good telemetry snapshot.
@@ -1075,6 +1096,7 @@ int main() {
     e2e_service.stop();
     expect(!e2e_service.telemetry_snapshot().available(),
            "explicit service stop clears the process-local telemetry snapshot");
+    recovery_peer.reset();
 
     const auto restarted_status = e2e_service.start(config);
     expect(restarted_status.state == ControllerLinkServiceState::TlsHandshake &&
@@ -1146,11 +1168,22 @@ int main() {
             post_restart_snapshot.measurement(index, post_restart_measurement) &&
             post_restart_measurement.sensor_id == expected_sensor_ids[index];
     }
+    const bool post_restart_values_valid =
+        post_restart_snapshot.measurement(0U, post_restart_measurement) &&
+        post_restart_measurement.sensor_id == "dht22_1.temperature" &&
+        post_restart_measurement.quality == SensorQualityStatus::Ok &&
+        std::get_if<double>(&post_restart_measurement.value) != nullptr &&
+        *std::get_if<double>(&post_restart_measurement.value) == 22.1 &&
+        post_restart_snapshot.measurement(1U, post_restart_measurement) &&
+        post_restart_measurement.sensor_id == "dht22_1.humidity" &&
+        post_restart_measurement.quality == SensorQualityStatus::Ok &&
+        std::get_if<double>(&post_restart_measurement.value) != nullptr &&
+        *std::get_if<double>(&post_restart_measurement.value) == 48.3;
     const auto post_restart_link_status = e2e_service.status();
     const auto restart_diagnostics =
         dockstation::communications::serialize_system_diagnostics(
             &post_restart_link_status, nullptr, &post_restart_snapshot);
-    expect(post_restart_channels_valid &&
+    expect(post_restart_channels_valid && post_restart_values_valid &&
                restart_diagnostics.find(
                    "\"controller_telemetry\":{\"status\":\"PASS\"") !=
                    std::string::npos &&
