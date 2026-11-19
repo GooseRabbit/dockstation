@@ -869,3 +869,54 @@ GitHub Actions run 43736420005 завершился SUCCESS на x64 и ARM64. �
 но не заменяет запуск на официальной Repka OS 5. Точный пакетный набор Repka,
 systemd manager lifecycle на плате, UART/console/pinmux, электрические уровни и
 обмен с ESP32 остаются открытыми.
+
+
+## Debian package DockStation Gateway
+
+Первый ARM64 пакет `dockstation-gateway_*.deb` собирается на нативном ARM64
+runner. Он содержит только production C++ Gateway, credential/registry
+provisioner executables, systemd units и начальную конфигурацию. Зависимости
+shared libraries извлекаются из собранных ELF-файлов через `dpkg-shlibdeps`,
+а пакет сопровождается SHA-256 и GitHub build provenance.
+
+Перед установкой на фактическую Repka OS обязательно подтвердите
+`/etc/os-release`, `dpkg --print-architecture`, libc, OpenSSL и SQLite runtime.
+Наличие ARM64 само по себе не подтверждает совместимость с любым образом Repka OS.
+CI artifact не является разрешением на установку в production до проверки
+ABI/dependency floor на целевой системе.
+
+Установка на проверенной Debian/APT-совместимой ARM64 системе:
+
+```sh
+sudo apt install ./dockstation-gateway_VERSION_arm64.deb
+systemctl is-enabled dockstation-gateway.service
+systemctl is-active dockstation-gateway.service
+curl -fsS http://127.0.0.1:8080/api/v1/health
+```
+
+Пакет создаёт системную учётную запись `dockstation`, конфигурацию
+`/etc/dockstation/gateway.conf` и каталог состояния `/var/lib/dockstation`.
+Запускается только базовая read-only служба с `PrivateDevices=true`.
+UART unit устанавливается, но не активируется; физический UART не выбирается.
+Настройки ControllerLink остаются закомментированными.
+
+Обновление выполняется установкой новой версии пакета через APT. Локальный
+conffile и состояние Gateway сохраняются; служба перезапускается package
+lifecycle. Удаление:
+
+```sh
+sudo apt remove dockstation-gateway
+```
+
+останавливает и отключает службу, удаляет package-owned binaries/units, но
+сохраняет конфигурацию и `/var/lib/dockstation`. `apt purge` удаляет conffile
+по правилам dpkg, но также намеренно не удаляет постоянное состояние БД.
+Перед ручным удалением `/var/lib/dockstation` сделайте и проверьте резервную
+копию. Повторная установка использует сохранённое состояние, если конфигурация
+и база не были удалены вручную.
+
+**Первый .deb не включает ESP32 firmware и не прошивает контроллер.** Для
+прошивки потребуется отдельно утверждённый production image, подтверждённый
+Flash/partition profile и безопасное provisioning NVS/PSK/identity. Будущая
+команда `dockstation-esp32-setup` будет запускаться только вручную; обычная
+установка или обновление пакета не должна вызывать прошивку.
