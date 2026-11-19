@@ -394,10 +394,10 @@ jobs:
           test -f "$extracted/usr/lib/systemd/system/dockstation-gateway.service"
           test -f "$extracted/usr/lib/systemd/system/dockstation-gateway-uart@.service"
           test -f "$extracted/etc/dockstation/gateway.conf"
-          grep -Fq 'controller_uart_device=' "$extracted/etc/dockstation/gateway.conf" && {
+          if grep -Eq '^[[:space:]]*controller_uart_device[[:space:]]*=' "$extracted/etc/dockstation/gateway.conf"; then
             echo "Default package config must not select a physical UART." >&2
             exit 1
-          }
+          fi
           grep -Fqx '/etc/dockstation/gateway.conf' "$control/conffiles"
           for script in postinst prerm postrm; do
             sh -n "$control/$script"
