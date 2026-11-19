@@ -421,6 +421,16 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      - name: Upload ARM64 Debian package for signing job
+        uses: actions/upload-artifact@v7
+        with:
+          name: dockstation-repka-pi5-arm64-deb-build-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/dockstation-deb/artifacts/dockstation-gateway_*.deb
+            ${{ runner.temp }}/dockstation-deb/artifacts/dockstation-gateway_*.deb.sha256
+          if-no-files-found: error
+          retention-days: 30
+
   openssl-35-compatibility:
     name: Build and CTest (OpenSSL 3.5 LTS)
     runs-on: ubuntu-26.04
@@ -469,6 +479,81 @@ jobs:
         with:
           name: dockstation-repka-pi5-arm64-build-${{ github.sha }}
           path: ${{ runner.temp }}/dockstation-arm64/build
+
+      - name: Download tested ARM64 Debian package
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: dockstation-repka-pi5-arm64-deb-build-${{ github.sha }}
+          path: ${{ runner.temp }}/dockstation-deb/build
+
+      - name: Verify Debian package version and checksum
+        env:
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          deb="$(find "$RUNNER_TEMP/dockstation-deb/build" -maxdepth 1 -type f -name '*.deb' -print -quit)"
+          test -n "$deb" && test -s "$deb"
+          (
+            cd "$(dirname "$deb")"
+            sha256sum --check --strict "$(basename "$deb").sha256"
+          )
+          expected_version="0.1.0~git${SOURCE_COMMIT:0:12}"
+          [[ "$(dpkg-deb -f "$deb" Version)" == "$expected_version" ]]
+          [[ "$(dpkg-deb -f "$deb" Architecture)" == "arm64" ]]
+          echo "DOCKSTATION_DEB_PATH=$deb" >> "$GITHUB_ENV"
+
+      - name: Create signed Debian package provenance
+        id: attest-arm64-deb
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-path: ${{ env.DOCKSTATION_DEB_PATH }}
+
+      - name: Download and verify signed Debian package provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_COMMIT: ${{ github.sha }}
+          SOURCE_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          deb="$DOCKSTATION_DEB_PATH"
+          signed_dir="$RUNNER_TEMP/dockstation-deb/signed"
+          provenance_dir="$RUNNER_TEMP/dockstation-deb/provenance"
+          mkdir -p "$signed_dir" "$provenance_dir"
+          (
+            cd "$provenance_dir"
+            gh attestation download "$deb" --repo GooseRabbit/dockstation
+          )
+          mapfile -t bundles < <(find "$provenance_dir" -maxdepth 1 -type f -name '*.jsonl' -print)
+          [[ "${#bundles[@]}" -eq 1 ]] || {
+            echo "ERROR: expected exactly one Debian package attestation bundle." >&2
+            exit 1
+          }
+          deb_name="$(basename "$deb")"
+          cp -- "$deb" "$signed_dir/$deb_name"
+          cp -- "$deb.sha256" "$signed_dir/$deb_name.sha256"
+          cp -- "${bundles[0]}" "$signed_dir/$deb_name.attestation.jsonl"
+          (
+            cd "$signed_dir"
+            sha256sum --check --strict "$deb_name.sha256"
+          )
+          verify_policy=(
+            --repo GooseRabbit/dockstation
+            --signer-workflow GooseRabbit/dockstation/.github/workflows/linux-cmake.yml
+            --source-ref "$SOURCE_REF"
+            --source-digest "$SOURCE_COMMIT"
+            --deny-self-hosted-runners
+          )
+          gh attestation verify "$deb" "${verify_policy[@]}"
+          gh attestation verify "$deb" --bundle "$signed_dir/$deb_name.attestation.jsonl" "${verify_policy[@]}"
+
+      - name: Upload signed ARM64 Debian package
+        id: upload-signed-arm64-deb
+        uses: actions/upload-artifact@v7
+        with:
+          name: dockstation-gateway-arm64-deb-${{ github.sha }}
+          path: ${{ runner.temp }}/dockstation-deb/signed/*
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Verify build output and embedded source commit
         env:
