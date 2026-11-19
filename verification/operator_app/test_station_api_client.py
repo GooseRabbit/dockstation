@@ -240,6 +240,17 @@ def test_validate_diagnostics_response_accepts_controller_telemetry():
     StationApiClient.validate_diagnostics_response(payload)
 
 
+def test_validate_diagnostics_response_accepts_retained_snapshot_after_controller_link_loss():
+    payload = valid_diagnostics()
+    telemetry = valid_controller_telemetry()
+    telemetry.update(status="WARN", link_connected=False)
+    payload["controller_telemetry"] = telemetry
+
+    # Gateway intentionally retains the last accepted snapshot while reporting
+    # that the live ESP32 link is down. Operator decides its display freshness.
+    StationApiClient.validate_diagnostics_response(payload)
+
+
 def test_validate_diagnostics_response_accepts_full_twelve_measurement_station_snapshot():
     payload = valid_diagnostics()
     telemetry = valid_controller_telemetry()
