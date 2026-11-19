@@ -1,0 +1,43 @@
+#!/bin/sh
+set -eu
+
+case "${1:-}" in
+    configure)
+        if ! getent group dockstation >/dev/null 2>&1; then
+            addgroup --system dockstation
+        fi
+
+        if getent passwd dockstation >/dev/null 2>&1; then
+            primary_group="$(id -gn dockstation)"
+            [ "$primary_group" = dockstation ] || {
+                echo "dockstation user exists with unexpected primary group: $primary_group" >&2
+                exit 1
+            }
+        else
+            adduser --system --ingroup dockstation --no-create-home \
+                --home /nonexistent --shell /usr/sbin/nologin dockstation
+        fi
+
+        install -d -o root -g dockstation -m 0750 /etc/dockstation
+        [ -f /etc/dockstation/gateway.conf ] || {
+            echo "DockStation configuration file is missing after package unpack." >&2
+            exit 1
+        }
+        chown root:dockstation /etc/dockstation/gateway.conf
+        chmod 0640 /etc/dockstation/gateway.conf
+        install -d -o dockstation -g dockstation -m 0700 /var/lib/dockstation
+
+        if command -v systemctl >/dev/null 2>&1; then
+            systemctl daemon-reload
+        fi
+        deb-systemd-helper enable dockstation-gateway.service >/dev/null || true
+
+        if [ -n "${2:-}" ]; then
+            deb-systemd-invoke try-restart dockstation-gateway.service
+        else
+            deb-systemd-invoke start dockstation-gateway.service
+        fi
+        ;;
+esac
+
+exit 0
