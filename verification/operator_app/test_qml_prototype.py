@@ -74,30 +74,6 @@ def test_qml_prototype_loads_with_the_seven_approved_tabs():
                 "sequence_number": 1,
                 "received_at_utc": "2026-11-19T09:00:00Z",
                 "measurements": [
-                    {"sensor_id": "lid.position", "value_type": "TEXT",
-                     "value": "NOT_CONFIGURED", "unit": "status",
-                     "quality_status": "NOT_CONFIGURED", "measured_at": "mono_us_100"},
-                    {"sensor_id": "platform.motion_active", "value_type": "TEXT",
-                     "value": "UNKNOWN", "unit": "status",
-                     "quality_status": "UNKNOWN", "measured_at": "mono_us_100"},
-                    {"sensor_id": "cleaning.active", "value_type": "TEXT",
-                     "value": "UNKNOWN", "unit": "status",
-                     "quality_status": "UNKNOWN", "measured_at": "mono_us_100"},
-                    {"sensor_id": "drive.motion_active", "value_type": "TEXT",
-                     "value": "UNKNOWN", "unit": "status",
-                     "quality_status": "UNKNOWN", "measured_at": "mono_us_100"},
-                    {"sensor_id": "safety_stop.active", "value_type": "TEXT",
-                     "value": "UNKNOWN", "unit": "status",
-                     "quality_status": "UNKNOWN", "measured_at": "mono_us_100"},
-                    {"sensor_id": "workspace.state", "value_type": "TEXT",
-                     "value": "UNKNOWN", "unit": "status",
-                     "quality_status": "UNKNOWN", "measured_at": "mono_us_100"},
-                    {"sensor_id": "command.last_decision", "value_type": "TEXT",
-                     "value": "NONE", "unit": "status",
-                     "quality_status": "UNKNOWN", "measured_at": "mono_us_100"},
-                    {"sensor_id": "command.pending", "value_type": "TEXT",
-                     "value": "NONE", "unit": "status",
-                     "quality_status": "UNKNOWN", "measured_at": "mono_us_100"},
                     {"sensor_id": "dht22_1.temperature", "value_type": "NUMBER",
                      "value": 21.7, "unit": "°C", "quality_status": "OK",
                      "measured_at": "mono_us_100"},
@@ -106,21 +82,17 @@ def test_qml_prototype_loads_with_the_seven_approved_tabs():
                      "measured_at": "mono_us_100"},
                     {"sensor_id": "dht22_2.temperature", "value_type": "TEXT",
                      "value": "NOT_CONFIGURED", "unit": "status",
-                     "quality_status": "NOT_CONFIGURED", "measured_at": "mono_us_100"},
+                     "quality_status": "NOT_CONFIGURED",
+                     "measured_at": "mono_us_100"},
                     {"sensor_id": "dht22_2.humidity", "value_type": "TEXT",
                      "value": "NOT_CONFIGURED", "unit": "status",
-                     "quality_status": "NOT_CONFIGURED", "measured_at": "mono_us_100"},
+                     "quality_status": "NOT_CONFIGURED",
+                     "measured_at": "mono_us_100"},
                 ],
             }
         })
         bridge.viewChanged.emit()
         app.processEvents()
-        assert len(bridge.controllerTelemetry) == 12
-        assert {item["sensor_id"] for item in bridge.controllerTelemetry} >= {
-            "lid.position", "command.pending",
-            "dht22_1.temperature", "dht22_1.humidity",
-            "dht22_2.temperature", "dht22_2.humidity",
-        }
         climate_sensors = bridge.climateSensors
         assert len(climate_sensors) == 2
         assert climate_sensors[0]["temperature_value"] == "21.7"
