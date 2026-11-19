@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+
+case "${1:-}" in
+    remove|deconfigure)
+        deb-systemd-invoke stop dockstation-gateway.service || true
+        ;;
+esac
+
+exit 0
