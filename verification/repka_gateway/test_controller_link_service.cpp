@@ -755,17 +755,17 @@ int main() {
     const std::string diagnostics_json =
         dockstation::communications::serialize_system_diagnostics(
             &accepted_link_status, nullptr, &snapshot);
-    expect(diagnostics_json.find("\\"sensor_id\\":\\"dht22_1.temperature\\"") !=
+    expect(diagnostics_json.find("\"sensor_id\":\"dht22_1.temperature\"") !=
                std::string::npos &&
-               diagnostics_json.find("\\"sensor_id\\":\\"dht22_1.humidity\\"") !=
+               diagnostics_json.find("\"sensor_id\":\"dht22_1.humidity\"") !=
                std::string::npos &&
-               diagnostics_json.find("\\"sensor_id\\":\\"dht22_2.temperature\\"") !=
+               diagnostics_json.find("\"sensor_id\":\"dht22_2.temperature\"") !=
                std::string::npos &&
-               diagnostics_json.find("\\"sensor_id\\":\\"dht22_2.humidity\\"") !=
+               diagnostics_json.find("\"sensor_id\":\"dht22_2.humidity\"") !=
                std::string::npos &&
-               diagnostics_json.find("\\"value\\":21.5") != std::string::npos &&
-               diagnostics_json.find("\\"value\\":46.25") != std::string::npos &&
-               diagnostics_json.find("\\"quality_status\\":\\"NOT_CONFIGURED\\"") !=
+               diagnostics_json.find("\"value\":21.5") != std::string::npos &&
+               diagnostics_json.find("\"value\":46.25") != std::string::npos &&
+               diagnostics_json.find("\"quality_status\":\"NOT_CONFIGURED\"") !=
                std::string::npos,
            "exposes all four accepted DHT22 measurements and their quality through the Gateway diagnostics JSON");
 
