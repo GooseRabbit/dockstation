@@ -474,8 +474,6 @@ jobs:
           path: |
             ${{ runner.temp }}/dockstation-arm64/artifacts/dockstation-repka-pi5-arm64.tar.gz
             ${{ runner.temp }}/dockstation-arm64/artifacts/dockstation-repka-pi5-arm64.tar.gz.sha256
-            ${{ runner.temp }}/dockstation-deb/artifacts/dockstation-gateway_*.deb
-            ${{ runner.temp }}/dockstation-deb/artifacts/dockstation-gateway_*.deb.sha256
           if-no-files-found: error
           retention-days: 30
 
