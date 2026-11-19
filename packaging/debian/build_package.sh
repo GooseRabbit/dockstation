@@ -79,6 +79,9 @@ SHLIBS_OUTPUT="$(dpkg-shlibdeps -O \
     -e"$PACKAGE_ROOT/usr/bin/dockstation-registry-provision")"
 RUNTIME_DEPENDS="$(printf '%s\n' "$SHLIBS_OUTPUT" | sed -n 's/^shlibs:Depends=//p')"
 [[ -n "$RUNTIME_DEPENDS" ]] || { echo "dpkg-shlibdeps returned no runtime dependencies." >&2; exit 1; }
+# Debian 12 uses libssl3; Ubuntu 24.04 uses the t64-renamed libssl3t64.
+# Keep the package installable on either ABI-compatible OpenSSL 3 provider.
+RUNTIME_DEPENDS="$(printf '%s\\n' "$RUNTIME_DEPENDS" | sed -E 's/libssl3t64 \\(>= ([^)]+)\\)/libssl3 (>= \\1) | libssl3t64 (>= \\1)/g')"
 rm -f debian/control debian/changelog debian/substvars
 
 sed -e "s/@VERSION@/$VERSION/g" \
