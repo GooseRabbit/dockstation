@@ -946,11 +946,19 @@ int main() {
                "\"controller_telemetry\":{\"status\":\"PASS\"") != std::string::npos &&
                diagnostics.find("\"source_controller_id\":\"esp32-01\"") !=
                    std::string::npos &&
-               diagnostics.find("\"sensor_id\":\"fixture.temperature\"") !=
+               diagnostics.find("\"sensor_id\":\"dht22_1.temperature\"") !=
                    std::string::npos &&
-               diagnostics.find("\"value\":21.5") != std::string::npos,
-           "publishes the accepted peer snapshot through the real diagnostics serializer");
-
+               diagnostics.find("\"sensor_id\":\"dht22_1.humidity\"") !=
+                   std::string::npos &&
+               diagnostics.find("\"sensor_id\":\"dht22_2.temperature\"") !=
+                   std::string::npos &&
+               diagnostics.find("\"sensor_id\":\"dht22_2.humidity\"") !=
+                   std::string::npos &&
+               diagnostics.find("\"value\":21.5") != std::string::npos &&
+               diagnostics.find("\"value\":46.25") != std::string::npos &&
+               diagnostics.find("\"quality_status\":\"NOT_CONFIGURED\"") !=
+                   std::string::npos,
+           "publishes both accepted DHT22 channels through the real diagnostics serializer");
     const ControllerTelemetryMeasurement interrupted_measurement{
         "fixture.interrupted", 99.0, "C", SensorQualityStatus::Ok, "2026-11-18T10:00:00Z"};
     const ControllerTelemetrySnapshotPayload interrupted_payload{&interrupted_measurement, 1U};
