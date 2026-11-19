@@ -450,9 +450,30 @@ class QmlOperatorBridge(QObject):
                 "value": value_text,
                 "unit": str(item.get("unit", "")),
                 "quality": quality_labels.get(quality, "Неизвестно"),
-                "measured_at": str(item.get("measured_at", "")),
+                "measured_at": self._format_controller_measurement_time(
+                    item.get("measured_at", "")
+                ),
             })
         return result
+
+    @staticmethod
+    def _format_controller_measurement_time(value: object) -> str:
+        """Render the firmware monotonic timestamp without implying UTC time."""
+        if not isinstance(value, str) or not value:
+            return "Время измерения неизвестно"
+        prefix = "mono_us_"
+        if value.startswith(prefix):
+            raw_microseconds = value[len(prefix):]
+            if raw_microseconds.isdecimal():
+                try:
+                    microseconds = int(raw_microseconds, 10)
+                except ValueError:
+                    return "Время измерения неизвестно"
+                if 0 <= microseconds <= (1 << 63) - 1:
+                    seconds = microseconds / 1_000_000.0
+                    return f"{seconds:.3f} с после запуска ESP32"
+                return "Некорректная метка времени ESP32"
+        return value
 
     @Property("QVariantList", notify=viewChanged)
     def climateSensors(self) -> list[dict[str, object]]:
