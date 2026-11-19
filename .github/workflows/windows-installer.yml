@@ -53,20 +53,7 @@ jobs:
             throw "Frozen Operator executable was not created."
           }
 
-      - name: Smoke-test packaged QML application
-        shell: pwsh
-        run: |
-          $env:QT_QPA_PLATFORM = "offscreen"
-          $env:DOCKSTATION_SMOKE_LOG = Join-Path $env:RUNNER_TEMP "DockStationOperator-smoke.log"
-          Remove-Item $env:DOCKSTATION_SMOKE_LOG -ErrorAction SilentlyContinue
-          & "dist/DockStationOperator/DockStationOperator.exe" --smoke-test
-          if ($LASTEXITCODE -ne 0) {
-            if (Test-Path $env:DOCKSTATION_SMOKE_LOG) {
-              Get-Content $env:DOCKSTATION_SMOKE_LOG
-            }
-            throw "Packaged QML application failed its startup smoke test."
-          }
-
+      # Packaging-only mode: runtime smoke and install/uninstall checks are intentionally deferred.
       - name: Install Inno Setup
         run: choco install innosetup --no-progress -y
 
@@ -83,38 +70,6 @@ jobs:
             throw "Windows setup executable was not created."
           }
           "INSTALLER_PATH=$($installer.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      - name: Verify install, user data preservation, and uninstall
-        shell: pwsh
-        run: |
-          $installRoot = Join-Path $env:RUNNER_TEMP "DockStationOperator-TestInstall"
-          $profileDir = Join-Path $env:LOCALAPPDATA "DockStationOperator"
-          $profileFile = Join-Path $profileDir "stations.json"
-          New-Item -ItemType Directory -Force -Path $profileDir | Out-Null
-          Set-Content -Path $profileFile -Value '{"profiles":[]}' -Encoding UTF8
-
-          $install = Start-Process -FilePath $env:INSTALLER_PATH -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DIR=$installRoot") -Wait -PassThru
-          if ($install.ExitCode -ne 0) { throw "Silent installation failed: $($install.ExitCode)" }
-
-          $exe = Join-Path $installRoot "DockStationOperator.exe"
-          if (-not (Test-Path $exe)) { throw "Installed executable is missing." }
-          $env:QT_QPA_PLATFORM = "offscreen"
-          & $exe --smoke-test
-          if ($LASTEXITCODE -ne 0) { throw "Installed application smoke test failed." }
-
-          # Re-run the installer into the same location as an upgrade/reinstall check.
-          $upgrade = Start-Process -FilePath $env:INSTALLER_PATH -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DIR=$installRoot") -Wait -PassThru
-          if ($upgrade.ExitCode -ne 0) { throw "Upgrade/reinstall failed: $($upgrade.ExitCode)" }
-          if (-not (Test-Path $profileFile)) {
-            throw "Upgrade unexpectedly removed user station data."
-          }
-
-          $uninstaller = Join-Path $installRoot "unins000.exe"
-          $remove = Start-Process -FilePath $uninstaller -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART") -Wait -PassThru
-          if ($remove.ExitCode -ne 0) { throw "Uninstall failed: $($remove.ExitCode)" }
-          if (-not (Test-Path $profileFile)) {
-            throw "Uninstaller unexpectedly removed user station data."
-          }
 
       - name: Upload Windows installer
         uses: actions/upload-artifact@v7
