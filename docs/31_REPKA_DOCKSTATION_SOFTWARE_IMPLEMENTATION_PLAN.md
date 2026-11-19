@@ -1836,7 +1836,7 @@ UART pin map или защищённых ControllerLink credentials больше
 по существующим правилам. Контроллерный транспорт по-прежнему не запускается
 без полного набора аппаратных и credential prerequisites; в режиме
 `NOT_CONFIGURED` сенсорная задача не открывает NVS, UART или TLS.
-Публикация измерений на Repka остаётся следующим отдельным этапом.
+Публикация измерений на Repka и host-level проверка Linux-приёмника выполнены в программной части; результаты и аппаратные ограничения приведены в дополнении 2.46.
 
 
 ## Дополнение 2.46 — host-level проверка приёма двух каналов DHT22 на Repka
@@ -1874,9 +1874,12 @@ Host integration test `verification/repka_gateway/test_controller_link_service.c
 UART-контакты ESP32 остаются неподтверждёнными, а штатный firmware profile —
 default-off.
 
-CI должен подтвердить новый host integration test. Физический обмен и
-доступ службы к выбранному UART на целевой Repka остаются отдельными
-аппаратными проверками.
+GitHub Actions run [44498004192](https://github.com/GooseRabbit/dockstation/actions/runs/44498004192)
+подтвердил сборку и CTest на Linux x86_64, Linux ARM64 и OpenSSL 3.5; CTest,
+ARM64 deployment bundle и проверка его подписанной provenance завершились
+успешно. Полный Linux workflow на момент записи ещё выполняет оставшиеся
+Operator/Python шаги. Физический обмен и доступ службы к выбранному UART на
+целевой Repka остаются отдельными аппаратными проверками.
 
 Изменены `firmware/esp32/main/app_main.cpp` и `firmware/esp32/README.md`.
 Host-тесты декодера, telemetry adapter и scheduler проверяют чистые компоненты;
