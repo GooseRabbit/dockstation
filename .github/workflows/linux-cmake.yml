@@ -352,6 +352,62 @@ jobs:
           bash repka/install_gateway.sh --bundle "$archive"
           grep -Fqx 'operator_setting=preserve-me' "$stage/etc/dockstation/gateway.conf"
 
+      - name: Build and verify native ARM64 Debian package
+        run: |
+          set -euo pipefail
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 update
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 install -y dpkg-dev binutils
+
+          stage="$RUNNER_TEMP/dockstation-deb/root"
+          artifacts="$RUNNER_TEMP/dockstation-deb/artifacts"
+          mkdir -p "$stage" "$artifacts"
+
+          cmake -S . -B build-deb \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTING=OFF \
+            -DDOCKSTATION_ENABLE_SANITIZERS=OFF \
+            -DDOCKSTATION_BUILD_SQLITE_PERSISTENCE=ON \
+            -DCMAKE_INSTALL_PREFIX=/usr
+          cmake --build build-deb --target dockstation_linux_bootstrap dockstation-credential-provision dockstation-registry-provision --parallel 2
+          cmake --build build-deb --target preinstall --parallel 2
+          DESTDIR="$stage" cmake --install build-deb
+
+          version="0.1.0~git${GITHUB_SHA:0:12}"
+          bash packaging/debian/build_package.sh --root "$stage" --output-dir "$artifacts" --version "$version"
+
+          deb="$artifacts/dockstation-gateway_${version}_arm64.deb"
+          test -s "$deb"
+          [[ "$(dpkg-deb -f "$deb" Architecture)" == "arm64" ]]
+          [[ "$(dpkg-deb -f "$deb" Package)" == "dockstation-gateway" ]]
+          depends="$(dpkg-deb -f "$deb" Depends)"
+          grep -Fq 'systemd' <<< "$depends"
+          grep -Fq 'adduser' <<< "$depends"
+
+          extracted="$RUNNER_TEMP/dockstation-deb/extracted"
+          control="$RUNNER_TEMP/dockstation-deb/control"
+          mkdir -p "$extracted" "$control"
+          dpkg-deb --extract "$deb" "$extracted"
+          dpkg-deb --control "$deb" "$control"
+          test -x "$extracted/usr/bin/dockstation_linux_bootstrap"
+          test -x "$extracted/usr/bin/dockstation-credential-provision"
+          test -x "$extracted/usr/bin/dockstation-registry-provision"
+          test -f "$extracted/usr/lib/systemd/system/dockstation-gateway.service"
+          test -f "$extracted/usr/lib/systemd/system/dockstation-gateway-uart@.service"
+          test -f "$extracted/etc/dockstation/gateway.conf"
+          grep -Fq 'controller_uart_device=' "$extracted/etc/dockstation/gateway.conf" && {
+            echo "Default package config must not select a physical UART." >&2
+            exit 1
+          }
+          grep -Fqx '/etc/dockstation/gateway.conf' "$control/conffiles"
+          for script in postinst prerm postrm; do
+            sh -n "$control/$script"
+          done
+          if dpkg-deb --contents "$deb" | grep -Eiq 'esp32|firmware|dockstation-esp32-setup'; then
+            echo "First Debian package must not include or execute ESP32 firmware setup." >&2
+            exit 1
+          fi
+          sha256sum --check --strict "$deb.sha256"
+
       - name: Upload ARM64 build output for signing job
         id: upload-arm64-build-bundle
         uses: actions/upload-artifact@v7
@@ -360,6 +416,8 @@ jobs:
           path: |
             ${{ runner.temp }}/dockstation-arm64/artifacts/dockstation-repka-pi5-arm64.tar.gz
             ${{ runner.temp }}/dockstation-arm64/artifacts/dockstation-repka-pi5-arm64.tar.gz.sha256
+            ${{ runner.temp }}/dockstation-deb/artifacts/dockstation-gateway_*.deb
+            ${{ runner.temp }}/dockstation-deb/artifacts/dockstation-gateway_*.deb.sha256
           if-no-files-found: error
           retention-days: 30
 
