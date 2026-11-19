@@ -624,6 +624,8 @@ int main() {
                peer_message.envelope.type == ControllerMessageType::Hello &&
                peer_message.envelope.controller_id == "repka-01",
            "sends HELLO through TLS after the transport authenticates");
+    const std::string initial_gateway_instance_id{
+        peer_message.envelope.controller_instance_id};
 
     const auto hello_ack = peer_envelope(ControllerMessageType::HelloAck, 1U);
     expect(send_peer_message(peer, pty.master, hello_ack,
@@ -935,7 +937,7 @@ int main() {
     expect(e2e_service.status().state == ControllerLinkServiceState::LinkLost &&
                !e2e_service.status().tls_authenticated &&
                !e2e_service.status().protocol_established &&
-               e2e_service.telemetry_snapshot().sequence_number() == 2U &&
+               e2e_service.telemetry_snapshot().sequence_number() == 7U &&
                e2e_service.authenticated_pair_identity().empty(),
            "disconnect during an incomplete transfer loses the session and retains only the last complete snapshot");
 
@@ -998,6 +1000,46 @@ int main() {
                e2e_service.status().state == ControllerLinkServiceState::Established,
            "reconnect reaches ESTABLISHED and requests a fresh telemetry snapshot");
 
+    const ControllerTelemetryMeasurement recovered_measurements[] = {
+        {"dht22_1.temperature", 21.7, "°C", SensorQualityStatus::Ok, "mono_us_200"},
+        {"dht22_1.humidity", 46.2, "%RH", SensorQualityStatus::Ok, "mono_us_200"},
+        {"dht22_2.temperature", std::string_view{"NOT_CONFIGURED"}, "status",
+         SensorQualityStatus::NotConfigured, "mono_us_200"},
+        {"dht22_2.humidity", std::string_view{"NOT_CONFIGURED"}, "status",
+         SensorQualityStatus::NotConfigured, "mono_us_200"},
+    };
+    const ControllerTelemetrySnapshotPayload recovered_payload{
+        recovered_measurements, sizeof(recovered_measurements) /
+            sizeof(recovered_measurements[0])};
+    const auto recovered_envelope =
+        peer_envelope(ControllerMessageType::TelemetrySnapshot, 7U);
+    expect(send_peer_message(
+               recovery_peer, pty.master, recovered_envelope,
+               ControllerMessagePayload{recovered_payload}),
+           "sends a fresh four-channel DHT22 snapshot after transport recovery");
+    for (std::size_t attempt = 0U;
+         attempt < 64U &&
+         e2e_service.telemetry_snapshot().sequence_number() != 7U;
+         ++attempt) {
+        e2e_service.poll();
+    }
+    ControllerTelemetryMeasurementView recovered_measurement{};
+    bool recovered_channels_valid =
+        e2e_service.telemetry_snapshot().available() &&
+        e2e_service.telemetry_snapshot().sequence_number() == 7U &&
+        e2e_service.telemetry_snapshot().measurement_count() == 4U;
+    const std::array<std::string_view, 4U> expected_sensor_ids{
+        "dht22_1.temperature", "dht22_1.humidity",
+        "dht22_2.temperature", "dht22_2.humidity"};
+    for (std::size_t index = 0U; index < expected_sensor_ids.size(); ++index) {
+        recovered_channels_valid =
+            recovered_channels_valid &&
+            e2e_service.telemetry_snapshot().measurement(index, recovered_measurement) &&
+            recovered_measurement.sensor_id == expected_sensor_ids[index];
+    }
+    expect(recovered_channels_valid,
+           "replaces retained stale telemetry with all four channels from the recovered session");
+
     // A duplicate peer sequence is rejected by ControllerLinkSession before
     // replacing the last known good telemetry snapshot.
     expect(send_peer_message(recovery_peer, pty.master, telemetry_envelope,
@@ -1007,7 +1049,7 @@ int main() {
     expect(e2e_service.status().state == ControllerLinkServiceState::LinkLost &&
                e2e_service.status().rejected_frames == 1U &&
                e2e_service.telemetry_snapshot().available() &&
-               e2e_service.telemetry_snapshot().sequence_number() == 2U,
+               e2e_service.telemetry_snapshot().sequence_number() == 7U,
            "rejects the replayed sequence, closes the link and retains the last accepted snapshot");
 #if defined(DOCKSTATION_WITH_SQLITE_PERSISTENCE)
     expect(event_adapter.statistics().authenticated_messages_received == 4U &&
@@ -1033,6 +1075,91 @@ int main() {
     e2e_service.stop();
     expect(!e2e_service.telemetry_snapshot().available(),
            "explicit service stop clears the process-local telemetry snapshot");
+
+    const auto restarted_status = e2e_service.start(config);
+    expect(restarted_status.state == ControllerLinkServiceState::TlsHandshake &&
+               !e2e_service.telemetry_snapshot().available(),
+           "Gateway service restart starts without reusing the previous process snapshot");
+    TlsPeer gateway_restart_peer;
+    expect(gateway_restart_peer.initialize(credentials),
+           "initializes the ESP32-side TLS peer for Gateway restart recovery");
+    const bool gateway_restart_tls =
+        complete_tls_handshake(e2e_service, gateway_restart_peer, pty.master);
+    expect(gateway_restart_tls && e2e_service.status().tls_authenticated,
+           "Gateway restart establishes a new TLS 1.3 PSK-DHE transport");
+    peer_storage = {};
+    peer_message = {};
+    const bool restart_hello_received =
+        read_service_message(e2e_service, gateway_restart_peer, pty.master,
+                             peer_frame, peer_storage, peer_message) &&
+        peer_message.envelope.type == ControllerMessageType::Hello;
+    expect(restart_hello_received &&
+               peer_message.envelope.controller_instance_id !=
+                   initial_gateway_instance_id,
+           "Gateway restart advertises a new per-process instance identity");
+    const auto gateway_restart_hello_ack =
+        peer_envelope(ControllerMessageType::HelloAck, 8U);
+    expect(send_peer_message(
+               gateway_restart_peer, pty.master, gateway_restart_hello_ack,
+               ControllerMessagePayload{EmptyControllerMessagePayload{}}),
+           "the still-running ESP32 peer continues its outbound sequence after Gateway restart");
+    peer_storage = {};
+    peer_message = {};
+    expect(read_service_message(e2e_service, gateway_restart_peer, pty.master,
+                                peer_frame, peer_storage, peer_message) &&
+               peer_message.envelope.type == ControllerMessageType::RequestSnapshot &&
+               e2e_service.status().state == ControllerLinkServiceState::Established,
+           "Gateway restart completes HELLO/HELLO_ACK and requests a new telemetry snapshot");
+
+    const ControllerTelemetryMeasurement post_restart_measurements[] = {
+        {"dht22_1.temperature", 22.1, "°C", SensorQualityStatus::Ok, "mono_us_300"},
+        {"dht22_1.humidity", 48.3, "%RH", SensorQualityStatus::Ok, "mono_us_300"},
+        {"dht22_2.temperature", std::string_view{"NOT_CONFIGURED"}, "status",
+         SensorQualityStatus::NotConfigured, "mono_us_300"},
+        {"dht22_2.humidity", std::string_view{"NOT_CONFIGURED"}, "status",
+         SensorQualityStatus::NotConfigured, "mono_us_300"},
+    };
+    const ControllerTelemetrySnapshotPayload post_restart_payload{
+        post_restart_measurements, sizeof(post_restart_measurements) /
+            sizeof(post_restart_measurements[0])};
+    const auto post_restart_envelope =
+        peer_envelope(ControllerMessageType::TelemetrySnapshot, 9U);
+    expect(send_peer_message(
+               gateway_restart_peer, pty.master, post_restart_envelope,
+               ControllerMessagePayload{post_restart_payload}),
+           "ESP32 republishes a new DHT22 snapshot after Gateway restart");
+    for (std::size_t attempt = 0U;
+         attempt < 64U &&
+         e2e_service.telemetry_snapshot().sequence_number() != 9U;
+         ++attempt) {
+        e2e_service.poll();
+    }
+    const auto& post_restart_snapshot = e2e_service.telemetry_snapshot();
+    ControllerTelemetryMeasurementView post_restart_measurement{};
+    bool post_restart_channels_valid =
+        post_restart_snapshot.available() &&
+        post_restart_snapshot.sequence_number() == 9U &&
+        post_restart_snapshot.measurement_count() == 4U;
+    for (std::size_t index = 0U; index < expected_sensor_ids.size(); ++index) {
+        post_restart_channels_valid =
+            post_restart_channels_valid &&
+            post_restart_snapshot.measurement(index, post_restart_measurement) &&
+            post_restart_measurement.sensor_id == expected_sensor_ids[index];
+    }
+    const auto post_restart_link_status = e2e_service.status();
+    const auto restart_diagnostics =
+        dockstation::communications::serialize_system_diagnostics(
+            &post_restart_link_status, nullptr, &post_restart_snapshot);
+    expect(post_restart_channels_valid &&
+               restart_diagnostics.find(
+                   "\"controller_telemetry\":{\"status\":\"PASS\"") !=
+                   std::string::npos &&
+               restart_diagnostics.find("\"value\":22.1") != std::string::npos,
+           "publishes fresh post-restart DHT22 telemetry as PASS through Gateway diagnostics");
+
+    e2e_service.stop();
+    expect(!e2e_service.telemetry_snapshot().available(),
+           "a second Gateway stop clears the newly received process-local snapshot");
 
 #if defined(DOCKSTATION_WITH_SQLITE_PERSISTENCE)
     expect(database.close(), "closes the SQLite ingress test database cleanly");
