@@ -133,12 +133,24 @@ void test_controller_telemetry_serialization() {
     using dockstation::hardware::interfaces::ControllerTelemetrySnapshotPayload;
     using dockstation::hardware::interfaces::SensorQualityStatus;
 
-    const std::array<ControllerTelemetryMeasurement, 9U> measurements{{
-        {"dht22-01.temperature", 23.75, "degC", SensorQualityStatus::Ok, "m-001"},
-        {"dht22-01.humidity", std::uint64_t{61U}, "%", SensorQualityStatus::Stale, "m-002"},
-        {"sensor.count", std::int64_t{-7}, "count", SensorQualityStatus::Ok, "m-005"},
-        {"cover.closed", true, "bool", SensorQualityStatus::Unknown, "m-003"},
-        {"sensor.note", std::string_view{"probe\"ok"}, "text", SensorQualityStatus::Invalid, "m-004"},
+    // Eight logical station-state values plus four independent DHT22 channels.
+    const std::array<ControllerTelemetryMeasurement, 12U> measurements{{
+        {"lid.position", std::string_view{"NOT_CONFIGURED"}, "status",
+         SensorQualityStatus::NotConfigured, "mono_us_100"},
+        {"platform.motion_active", std::string_view{"UNKNOWN"}, "status",
+         SensorQualityStatus::Unknown, "mono_us_100"},
+        {"cleaning.active", std::string_view{"UNKNOWN"}, "status",
+         SensorQualityStatus::Unknown, "mono_us_100"},
+        {"drive.motion_active", std::string_view{"UNKNOWN"}, "status",
+         SensorQualityStatus::Unknown, "mono_us_100"},
+        {"safety_stop.active", std::string_view{"UNKNOWN"}, "status",
+         SensorQualityStatus::Unknown, "mono_us_100"},
+        {"workspace.state", std::string_view{"UNKNOWN"}, "status",
+         SensorQualityStatus::Unknown, "mono_us_100"},
+        {"command.last_decision", std::string_view{"NONE"}, "status",
+         SensorQualityStatus::Unknown, "mono_us_100"},
+        {"command.pending", std::string_view{"NONE"}, "status",
+         SensorQualityStatus::Unknown, "mono_us_100"},
         {"dht22_1.temperature", 21.7, "°C", SensorQualityStatus::Ok, "mono_us_100"},
         {"dht22_1.humidity", 46.2, "%", SensorQualityStatus::Ok, "mono_us_100"},
         {"dht22_2.temperature", std::string_view{"NOT_CONFIGURED"}, "status",
@@ -165,13 +177,20 @@ void test_controller_telemetry_serialization() {
     assert(payload.find("\"source_controller_id\":\"esp32-01\"") != std::string::npos);
     assert(payload.find("\"sequence_number\":17") != std::string::npos);
     assert(payload.find("\"received_at_utc\":\"2026-11-16T") != std::string::npos);
-    assert(payload.find("\"sensor_id\":\"dht22-01.temperature\"") != std::string::npos);
-    assert(payload.find("\"value_type\":\"NUMBER\",\"value\":23.75") != std::string::npos);
-    assert(payload.find("\"value_type\":\"UNSIGNED_INTEGER\",\"value\":61") != std::string::npos);
-    assert(payload.find("\"value_type\":\"INTEGER\",\"value\":-7") != std::string::npos);
-    assert(payload.find("\"value_type\":\"BOOLEAN\",\"value\":true") != std::string::npos);
-    assert(payload.find("probe\\\"ok") != std::string::npos);
-    assert(payload.find("\"quality_status\":\"STALE\"") != std::string::npos);
+    assert(snapshot.measurement_count() == 12U);
+    assert(payload.find("\"sensor_id\":\"lid.position\"") != std::string::npos);
+    assert(payload.find("\"sensor_id\":\"workspace.state\"") != std::string::npos);
+    assert(payload.find("\"sensor_id\":\"command.pending\"") != std::string::npos);
+    assert(payload.find("\"sensor_id\":\"dht22_1.temperature\"") != std::string::npos);
+    assert(payload.find("\"sensor_id\":\"dht22_1.humidity\"") != std::string::npos);
+    assert(payload.find("\"sensor_id\":\"dht22_2.temperature\"") != std::string::npos);
+    assert(payload.find("\"sensor_id\":\"dht22_2.humidity\"") != std::string::npos);
+    assert(payload.find("\"value_type\":\"NUMBER\",\"value\":21.7") != std::string::npos);
+    assert(payload.find("\"value_type\":\"NUMBER\",\"value\":46.2") != std::string::npos);
+    assert(payload.find("\"quality_status\":\"OK\"") != std::string::npos);
+    assert(payload.find("\"quality_status\":\"UNKNOWN\"") != std::string::npos);
+    assert(payload.find("\"quality_status\":\"NOT_CONFIGURED\"") != std::string::npos);
+    assert(payload.find("\"value\":\"NOT_CONFIGURED\"") != std::string::npos);
     assert(payload.find("\"sensor_id\":\"dht22_1.temperature\"") != std::string::npos);
     assert(payload.find("\"sensor_id\":\"dht22_1.humidity\"") != std::string::npos);
     assert(payload.find("\"sensor_id\":\"dht22_2.temperature\"") != std::string::npos);

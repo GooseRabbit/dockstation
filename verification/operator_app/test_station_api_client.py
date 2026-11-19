@@ -86,25 +86,44 @@ def valid_controller_telemetry():
         "sequence_number": 17,
         "received_at_utc": "2026-11-16T05:33:20.123Z",
         "measurements": [
-            {
-                "sensor_id": "dht22-01.temperature",
-                "value_type": "NUMBER",
-                "value": 23.75,
-                "unit": "degC",
-                "quality_status": "OK",
-                "measured_at": "1794800000000",
-            },
-            {
-                "sensor_id": "cover.closed",
-                "value_type": "BOOLEAN",
-                "value": True,
-                "unit": "bool",
-                "quality_status": "UNKNOWN",
-                "measured_at": "1794800000001",
-            },
+            {"sensor_id": "lid.position", "value_type": "TEXT",
+             "value": "NOT_CONFIGURED", "unit": "status",
+             "quality_status": "NOT_CONFIGURED", "measured_at": "mono_us_100"},
+            {"sensor_id": "platform.motion_active", "value_type": "TEXT",
+             "value": "UNKNOWN", "unit": "status",
+             "quality_status": "UNKNOWN", "measured_at": "mono_us_100"},
+            {"sensor_id": "cleaning.active", "value_type": "TEXT",
+             "value": "UNKNOWN", "unit": "status",
+             "quality_status": "UNKNOWN", "measured_at": "mono_us_100"},
+            {"sensor_id": "drive.motion_active", "value_type": "TEXT",
+             "value": "UNKNOWN", "unit": "status",
+             "quality_status": "UNKNOWN", "measured_at": "mono_us_100"},
+            {"sensor_id": "safety_stop.active", "value_type": "TEXT",
+             "value": "UNKNOWN", "unit": "status",
+             "quality_status": "UNKNOWN", "measured_at": "mono_us_100"},
+            {"sensor_id": "workspace.state", "value_type": "TEXT",
+             "value": "UNKNOWN", "unit": "status",
+             "quality_status": "UNKNOWN", "measured_at": "mono_us_100"},
+            {"sensor_id": "command.last_decision", "value_type": "TEXT",
+             "value": "NONE", "unit": "status",
+             "quality_status": "UNKNOWN", "measured_at": "mono_us_100"},
+            {"sensor_id": "command.pending", "value_type": "TEXT",
+             "value": "NONE", "unit": "status",
+             "quality_status": "UNKNOWN", "measured_at": "mono_us_100"},
+            {"sensor_id": "dht22_1.temperature", "value_type": "NUMBER",
+             "value": 21.7, "unit": "°C", "quality_status": "OK",
+             "measured_at": "mono_us_100"},
+            {"sensor_id": "dht22_1.humidity", "value_type": "NUMBER",
+             "value": 46.2, "unit": "%", "quality_status": "OK",
+             "measured_at": "mono_us_100"},
+            {"sensor_id": "dht22_2.temperature", "value_type": "TEXT",
+             "value": "NOT_CONFIGURED", "unit": "status",
+             "quality_status": "NOT_CONFIGURED", "measured_at": "mono_us_100"},
+            {"sensor_id": "dht22_2.humidity", "value_type": "TEXT",
+             "value": "NOT_CONFIGURED", "unit": "status",
+             "quality_status": "NOT_CONFIGURED", "measured_at": "mono_us_100"},
         ],
     }
-
 
 def valid_diagnostics():
     return {
@@ -219,6 +238,24 @@ def test_validate_diagnostics_response_accepts_controller_telemetry():
     payload = valid_diagnostics()
     payload["controller_telemetry"] = valid_controller_telemetry()
     StationApiClient.validate_diagnostics_response(payload)
+
+
+def test_validate_diagnostics_response_accepts_full_twelve_measurement_station_snapshot():
+    payload = valid_diagnostics()
+    telemetry = valid_controller_telemetry()
+    payload["controller_telemetry"] = telemetry
+
+    StationApiClient.validate_diagnostics_response(payload)
+
+    measurements = telemetry["measurements"]
+    assert len(measurements) == 12
+    assert [item["sensor_id"] for item in measurements[-4:]] == [
+        "dht22_1.temperature",
+        "dht22_1.humidity",
+        "dht22_2.temperature",
+        "dht22_2.humidity",
+    ]
+    assert measurements[-1]["quality_status"] == "NOT_CONFIGURED"
 
 
 def test_validate_diagnostics_response_accepts_invalid_non_finite_number_as_null():
