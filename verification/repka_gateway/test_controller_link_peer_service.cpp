@@ -433,9 +433,24 @@ void run_peer_service(
                     result.error.store(-102, std::memory_order_release);
                     break;
                 }
-            } else if (!service.send_station_state_snapshot("1700000000400", 1700000000U)) {
-                result.error.store(-103, std::memory_order_release);
-                break;
+            } else {
+                const ControllerTelemetryMeasurement dht22_measurements[] = {
+                    {"dht22_1.temperature", 21.7, "°C",
+                     SensorQualityStatus::Ok, "mono_us_100"},
+                    {"dht22_1.humidity", 46.2, "%",
+                     SensorQualityStatus::Ok, "mono_us_100"},
+                    {"dht22_2.temperature", std::string_view{"NOT_CONFIGURED"},
+                     "status", SensorQualityStatus::NotConfigured, "mono_us_100"},
+                    {"dht22_2.humidity", std::string_view{"NOT_CONFIGURED"},
+                     "status", SensorQualityStatus::NotConfigured, "mono_us_100"},
+                };
+                if (!service.send_station_state_snapshot(
+                        "1700000000400", 1700000000U,
+                        dht22_measurements,
+                        sizeof(dht22_measurements) / sizeof(dht22_measurements[0]))) {
+                    result.error.store(-103, std::memory_order_release);
+                    break;
+                }
             }
         }
 
@@ -577,11 +592,15 @@ bool run_complete_peer_service_flow() {
         decoded.envelope.type == ControllerMessageType::TelemetrySnapshot) {
         const auto* snapshot =
             std::get_if<ControllerTelemetrySnapshotPayload>(&decoded.payload);
-        if (snapshot != nullptr && snapshot->measurement_count == 8U) {
+        if (snapshot != nullptr && snapshot->measurement_count == 12U) {
             bool lid_not_configured = false;
             bool motion_unknown = false;
             bool stop_unknown = false;
             bool pending_none = false;
+            bool dht22_1_temperature = false;
+            bool dht22_1_humidity = false;
+            bool dht22_2_temperature_not_configured = false;
+            bool dht22_2_humidity_not_configured = false;
             for (std::size_t index = 0U; index < snapshot->measurement_count; ++index) {
                 const auto& measurement = snapshot->measurements[index];
                 if (measurement.sensor_id == "lid.position") {
@@ -599,10 +618,29 @@ bool run_complete_peer_service_flow() {
                 } else if (measurement.sensor_id == "command.pending") {
                     pending_none =
                         std::get<std::string_view>(measurement.value) == "NONE";
+                } else if (measurement.sensor_id == "dht22_1.temperature") {
+                    dht22_1_temperature =
+                        std::get<double>(measurement.value) == 21.7 &&
+                        measurement.quality == SensorQualityStatus::Ok;
+                } else if (measurement.sensor_id == "dht22_1.humidity") {
+                    dht22_1_humidity =
+                        std::get<double>(measurement.value) == 46.2 &&
+                        measurement.quality == SensorQualityStatus::Ok;
+                } else if (measurement.sensor_id == "dht22_2.temperature") {
+                    dht22_2_temperature_not_configured =
+                        std::get<std::string_view>(measurement.value) == "NOT_CONFIGURED" &&
+                        measurement.quality == SensorQualityStatus::NotConfigured;
+                } else if (measurement.sensor_id == "dht22_2.humidity") {
+                    dht22_2_humidity_not_configured =
+                        std::get<std::string_view>(measurement.value) == "NOT_CONFIGURED" &&
+                        measurement.quality == SensorQualityStatus::NotConfigured;
                 }
             }
             state_telemetry_valid =
-                lid_not_configured && motion_unknown && stop_unknown && pending_none;
+                lid_not_configured && motion_unknown && stop_unknown && pending_none &&
+                dht22_1_temperature && dht22_1_humidity &&
+                dht22_2_temperature_not_configured &&
+                dht22_2_humidity_not_configured;
         }
     }
     const bool state_telemetry_consumed =
@@ -719,7 +757,7 @@ bool run_complete_peer_service_flow() {
            "accepts and transmits an explicitly empty snapshot without inventing measurements");
     expect(state_telemetry_valid &&
                server_result.state_snapshot_flushed.load(std::memory_order_acquire),
-           "sends station-state telemetry with NOT_CONFIGURED and UNKNOWN input quality");
+           "sends all eight station-state and four DHT22 measurements over the authenticated ControllerLink");
     expect(accepted_command_valid,
            "TLS peer accepts a fail-safe STOP command and returns ACCEPTED/PENDING");
     expect(rejected_command_valid,
