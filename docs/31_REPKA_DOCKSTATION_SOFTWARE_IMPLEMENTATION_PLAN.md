@@ -1804,3 +1804,11 @@ peer service очищает pending-команду при закрытии/ош�
 проверяет интеграцию транспорта, peer-session и локальной safety-policy на host;
 реальные UART, ESP32 GPIO, концевики и исполнительные драйверы по-прежнему
 требуют аппаратной приёмки.
+
+## Дополнение 2.43 — восстановление телеметрии после потери канала и рестарта Gateway
+
+Расширен host-level end-to-end тест ControllerLinkService. После разрыва канала посреди неполного telemetry frame прежний полный snapshot сохраняется только как диагностически устаревший. После повторного TLS 1.3 PSK-DHE и HELLO/HELLO_ACK новый REQUEST_SNAPSHOT приводит к приёму полного набора четырёх DHT22-каналов; проверяются числовые значения, quality и явные NOT_CONFIGURED для второго датчика. Повторный старый sequence отвергается, а оставшийся снимок при потере authenticated link публикуется со статусом WARN.
+
+Отдельно проверен lifecycle stop/start ControllerLinkService: stop очищает process-local telemetry snapshot; следующий start создаёт новый per-process instance ID; после нового TLS/HELLO/HELLO_ACK Gateway запрашивает и принимает новый DHT22 snapshot, который возвращается в diagnostics со статусом PASS. Peer продолжает собственную последовательность сообщений между двумя TLS transport.
+
+Проверка находится в `verification/repka_gateway/test_controller_link_service.cpp`; границы доказательности описаны в `docs/34_CONTROLLER_LINK_FAULT_INJECTION_TESTS.md`. Это Linux host test с POSIX PTY и OpenSSL TLS peer, а не физическая проверка ESP-IDF/Mbed TLS/UART или запуск/перезапуск отдельного systemd process. CI для нового сценария ожидает выполнения; аппаратная приёмка остаётся открытой.
