@@ -60,3 +60,12 @@ UART event queue policy используется ESP-IDF transport и отдел
 Тест использует production `ControllerLinkService`, POSIX PTY и OpenSSL TLS 1.3 PSK-DHE peer. Это проверка lifecycle/recovery на Linux host. Она моделирует stop/start сервиса внутри тестового процесса; не является испытанием фактического systemd process restart, ESP-IDF FreeRTOS task, Mbed TLS peer на физической ESP32 или UART-проводов. Отдельные systemd startup/restart checks остаются в CI, а физическое отключение питания/кабеля и восстановление на паре плат — аппаратной приёмкой.
 
 **Результат CI:** run [44485093597](https://github.com/GooseRabbit/dockstation/actions/runs/44485093597) — SUCCESS для exact HEAD `88e8fc4f7cd38c8ba70abb4b50e47905f1455650`. CTest прошёл 50/50 на Linux x86_64, Linux ARM64 и OpenSSL 3.5; дополнительно прошли 31 C++ host program, 165 Python/Operator/Gateway tests, Mbed TLS/OpenSSL interoperability и подписание ARM64 bundle. Физическая приёмка остаётся отдельной задачей.
+
+
+## 7. Восстановление ESP32 peer service после потери транспорта
+
+Расширен `verification/repka_gateway/test_controller_link_peer_service.cpp`: после завершения полного TLS/ControllerLink сценария клиент закрывает первое соединение. Тот же экземпляр `ControllerLinkPeerService` обнаруживает закрытие, очищает pending-команду и переинициализирует TLS transport через `restart_transport()` на новом POSIX socket pair.
+
+Затем тест выполняет новый TLS 1.3 PSK-DHE handshake и отправляет HELLO от того же peer boot instance с sequence 8 (после ранее принятых sequence 1–7). Проверяется HELLO_ACK с прежним локальным controller instance ID и продолжающимся исходящим sequence 8. Тем самым на host проверяется сохранение объекта peer-session, replay history и счётчиков последовательности между transport reconnect, а также очистка временного pending command state.
+
+Это host integration test production Mbed TLS peer service на POSIX socket pair. Он не проверяет UART driver, FreeRTOS scheduling, реальную потерю питания/проводов или физическую ESP32. Отдельная аппаратная приёмка остаётся обязательной.
