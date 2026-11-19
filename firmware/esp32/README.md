@@ -210,9 +210,11 @@ reader only for explicitly configured pins. This task is started even when the
 physical ControllerLink profile or protected credentials are unavailable; in
 that mode it continues the independent sensor lifecycle without opening NVS,
 UART or TLS. Both checked-in sensor pins remain unset, so the normal image
-reports both channels as NOT_CONFIGURED. Sensor samples are not transmitted to
-Repka while ControllerLink is NOT_CONFIGURED; end-to-end transport is the next
-integration step. The decoder, adapter and scheduler
+reports both channels as NOT_CONFIGURED. Sensor samples are not transmitted to Repka while ControllerLink is
+NOT_CONFIGURED. The Repka-side ControllerLink receiver and diagnostics JSON
+path are implemented and covered by a host PTY integration test for all four
+DHT22 measurements. Physical UART exchange remains pending confirmation of
+the hardware profile, GPIO mapping and provisioned credentials. The decoder, adapter and scheduler
 are built by ESP-IDF and checked by the host CTest targets `dht22_frame_decoder`,
 `dht22_telemetry_adapter` and `dht22_sampling_scheduler`; these tests do
 not prove physical sensor operation or acquisition timing.
