@@ -1208,11 +1208,11 @@ SQLite утверждён как локальный backend по DEC-068. До �
 4. **Текущий этап — аудит и доведение программного среза.** Проверить совместимость контрактов ESP32 → Repka → Windows, обработку отказов и восстановления, границы read-only/физического исполнения, host/CI-проверки и соответствие документации коду. Исправлять только обнаруженные недочёты текущего объёма. Не добавлять сейчас аккаунты, серверную авторизацию, историю измерений, управление физическими механизмами или другие будущие подсистемы.
 
 5. **После аудита — два установщика.**
-   - Windows `.exe`: Operator и необходимые runtime-компоненты; сценарии установки, обновления, удаления и восстановления должны быть описаны и проверены.
-   - Repka `.deb`: C++ Linux Gateway и все необходимые runtime-компоненты для чистой Debian/APT-совместимой системы; до выпуска подтвердить фактическую ОС, архитектуру и ABI целевой платы.
-   - В Linux-пакет включить production ESP32 firmware binary для подтверждённого board/Flash/partition profile и компактный инструмент прошивки. Текущий CI image является compile-check артефактом: согласно `docs/33_ESP32_HARDWARE_PROFILE.md`, его унаследованный flash/partition profile пока не подтверждён и прошивать его на физическую плату нельзя.
-   - Прошивка не запускается автоматически при установке или обновлении `.deb`; только отдельная явная команда `sudo dockstation-esp32-setup` должна обнаружить устройство, проверить board/Flash/image compatibility, выполнить preflight, прошить и проверить результат. ESP-IDF и компилятор на Repka для этого не устанавливаются.
-   - Отдельная обязательная зависимость до реального ControllerLink: безопасное provisioning Flash Encryption/NVS Encryption, `nvs_keys`, PSK/identity и пары стабильных controller ID. Текущий `ControllerPskNvsCredentialStore` только читает уже provisioned encrypted NVS и намеренно не создаёт/не меняет ключи; provisioning workflow пока не реализован. Setup-helper обязан завершаться fail-closed при отсутствии корректного профиля/credentials и не должен включать eFuses или генерировать ключи без отдельной утверждённой процедуры.
+   - Windows `.exe`: frozen QML Operator и необходимые Python/PySide6 runtime-компоненты; сценарии установки, обновления, удаления и восстановления описаны в `docs/34_INSTALLER_AND_DEPLOYMENT_SPEC.md`.
+   - Первый Repka `.deb`: C++ Linux Gateway, provisioner executables, systemd units и конфигурация. Состав и lifecycle-сценарии описаны в `docs/34_INSTALLER_AND_DEPLOYMENT_SPEC.md`; до реального выпуска подтвердить фактическую ОС, архитектуру и ABI целевой платы.
+   - **Первый `.deb` не содержит ESP32 firmware и не устанавливает инструмент прошивки.** Текущий CI image — compile-check артефакт с неподтверждённым flash/partition profile; прошивать его на физическую плату нельзя. Production firmware можно добавить только после подтверждения board/Flash/partition profile по `docs/33_ESP32_HARDWARE_PROFILE.md`.
+   - В будущем прошивка будет отдельной явной операцией через `sudo dockstation-esp32-setup`; установка или обновление `.deb` никогда не запускает её автоматически. Setup-helper должен проверить board/Flash/image compatibility и credentials и fail-closed отказаться от действий при отсутствии условий. ESP-IDF и компилятор на Repka не устанавливаются.
+   - До реального ControllerLink требуется безопасное provisioning Flash Encryption/NVS Encryption, `nvs_keys`, PSK/identity и пары стабильных controller ID. Текущий `ControllerPskNvsCredentialStore` только читает заранее provisioned encrypted NVS; отдельная утверждённая процедура provisioning ещё нужна.
 
 **Что остаётся вне host-приёмки:** фактическая Repka OS и её package ABI; доступ Gateway к выбранному UART; pinmux/console; электрические уровни и перекрёстное подключение TX/RX; прошивка конкретной ESP32-платы; чтение двух физических DHT22. Успешные сборки, PTY и синтетические snapshots не засчитываются как физическое испытание.
 
@@ -1989,3 +1989,9 @@ ControllerLink требуется отдельная безопасная provis
 проверки. Будущий `dockstation-esp32-setup` должен проверять готовность этого
 профиля и отказывать без изменений при его отсутствии; обычная установка
 `.deb` ничего не прошивает и не provision-ит.
+
+
+## Дополнение 2.51 — состав первого установочного пакета
+
+Зафиксирован состав начальных дистрибутивов в `docs/34_INSTALLER_AND_DEPLOYMENT_SPEC.md`.
+Windows installer содержит frozen QML Operator и его Python/PySide6 runtime; OpenSSH Client остаётся системной зависимостью Windows, а пользовательские SSH keys, known_hosts и профили не входят в installer. Первый ARM64 `.deb` содержит только C++ Gateway, provisioner executables, systemd units и конфигурацию. Он не содержит ESP32 firmware и не выполняет прошивку или provisioning. Сценарии lifecycle должны сохранять пользовательскую конфигурацию и постоянные данные.
