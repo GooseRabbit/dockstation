@@ -410,7 +410,7 @@ jobs:
             echo "First Debian package must not include or execute ESP32 firmware setup." >&2
             exit 1
           fi
-          sha256sum --check --strict "$deb.sha256"
+          (cd "$artifacts" && sha256sum --check --strict "$(basename "$deb").sha256")
 
       - name: Upload ARM64 build output for signing job
         id: upload-arm64-build-bundle
