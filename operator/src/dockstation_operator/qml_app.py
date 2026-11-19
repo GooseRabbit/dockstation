@@ -13,7 +13,9 @@ from .ui.qml_bridge import QmlOperatorBridge
 
 
 def main() -> int:
-    app = QGuiApplication(sys.argv)
+    smoke_test = "--smoke-test" in sys.argv
+    qt_arguments = [argument for argument in sys.argv if argument != "--smoke-test"]
+    app = QGuiApplication(qt_arguments)
     app.setApplicationName("DockStation Operator")
     engine = QQmlApplicationEngine()
     bridge = QmlOperatorBridge()
@@ -23,6 +25,10 @@ def main() -> int:
     if not engine.rootObjects():
         bridge.shutdown()
         return 1
+    if smoke_test:
+        # Packaging CI loads the real QML tree without opening a persistent UI.
+        bridge.shutdown()
+        return 0
     app.aboutToQuit.connect(bridge.shutdown)
     return app.exec()
 
