@@ -27,7 +27,8 @@ def main() -> int:
         write_smoke_log(f"Qt message: {message}")
 
     if smoke_test:
-        Path(log_path).write_text("qml_app.main entered\n", encoding="utf-8") if log_path else None
+        if log_path:
+            Path(log_path).write_text("qml_app.main entered\n", encoding="utf-8")
         qInstallMessageHandler(qt_message_handler)
 
     app = QGuiApplication(qt_arguments)
@@ -49,19 +50,16 @@ def main() -> int:
     write_smoke_log(f"QML source exists: {qml_path.exists()} ({qml_path})")
     if getattr(sys, "frozen", False):
         bundle_root = Path(getattr(sys, "_MEIPASS", Path(__file__).parent))
-        for import_path in (bundle_root / "PySide6" / "qml", bundle_root / "PySide6" / "Qt" / "qml"):
+        import_paths = (
+            bundle_root / "PySide6" / "qml",
+            bundle_root / "PySide6" / "Qt" / "qml",
+        )
+        for import_path in import_paths:
             if import_path.is_dir():
                 engine.addImportPath(str(import_path))
                 write_smoke_log(f"Added QML import path: {import_path}")
     engine.load(QUrl.fromLocalFile(str(qml_path)))
     if not engine.rootObjects():
-        if smoke_test:
-            log_path = os.environ.get("DOCKSTATION_SMOKE_LOG")
-            if log_path:
-                details = [f"QML source: {qml_path}", *qml_warnings]
-                if not qml_warnings:
-                    details.append("QQmlApplicationEngine created no root objects and emitted no warnings.")
-                Path(log_path).write_text("\n".join(details) + "\n", encoding="utf-8")
         for warning in qml_warnings:
             write_smoke_log(warning)
         if not qml_warnings:
