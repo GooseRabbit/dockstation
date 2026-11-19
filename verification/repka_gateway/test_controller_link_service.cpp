@@ -698,16 +698,23 @@ int main() {
     expect(proof_nonzero, "the established session proof contains derived keying material");
     OPENSSL_cleanse(session_proof.data(), session_proof.size());
 
-    const ControllerTelemetryMeasurement fixture_measurement{
-        "fixture.temperature", 21.5, "C",
-        SensorQualityStatus::Ok, "2026-11-16T06:39:34Z"};
+    const std::array<ControllerTelemetryMeasurement, 4U> dht22_measurements{{
+        {"dht22_1.temperature", 21.5, "°C",
+         SensorQualityStatus::Ok, "mono_us_1000000"},
+        {"dht22_1.humidity", 46.25, "%RH",
+         SensorQualityStatus::Ok, "mono_us_1000000"},
+        {"dht22_2.temperature", std::string_view{"NOT_CONFIGURED"}, "status",
+         SensorQualityStatus::NotConfigured, "mono_us_1000000"},
+        {"dht22_2.humidity", std::string_view{"NOT_CONFIGURED"}, "status",
+         SensorQualityStatus::NotConfigured, "mono_us_1000000"},
+    }};
     const ControllerTelemetrySnapshotPayload telemetry_payload{
-        &fixture_measurement, 1U};
+        dht22_measurements.data(), dht22_measurements.size()};
     const auto telemetry_envelope =
         peer_envelope(ControllerMessageType::TelemetrySnapshot, 2U);
     expect(send_peer_message(peer, pty.master, telemetry_envelope,
                              ControllerMessagePayload{telemetry_payload}),
-           "sends a fixture telemetry frame through the established TLS stream");
+           "sends both DHT22 channels through the established TLS stream");
 
     for (std::size_t attempt = 0U;
          attempt < 64U && !e2e_service.telemetry_snapshot().available();
@@ -716,16 +723,51 @@ int main() {
     }
     const auto& snapshot = e2e_service.telemetry_snapshot();
     ControllerTelemetryMeasurementView measurement{};
-    expect(snapshot.available() && snapshot.sequence_number() == 2U &&
-               snapshot.controller_id() == "esp32-01" &&
-               snapshot.measurement_count() == 1U &&
-               snapshot.measurement(0U, measurement) &&
-               measurement.sensor_id == "fixture.temperature" &&
-               measurement.unit == "C" &&
-               measurement.quality == SensorQualityStatus::Ok &&
-               std::get_if<double>(&measurement.value) != nullptr &&
-               *std::get_if<double>(&measurement.value) == 21.5,
-           "retains an owned typed telemetry snapshot after the TLS frame buffer is reused");
+    const bool retained_dht22_channels =
+        snapshot.available() && snapshot.sequence_number() == 2U &&
+        snapshot.controller_id() == "esp32-01" &&
+        snapshot.measurement_count() == dht22_measurements.size() &&
+        snapshot.measurement(0U, measurement) &&
+        measurement.sensor_id == "dht22_1.temperature" &&
+        measurement.unit == "°C" &&
+        measurement.quality == SensorQualityStatus::Ok &&
+        std::get_if<double>(&measurement.value) != nullptr &&
+        *std::get_if<double>(&measurement.value) == 21.5 &&
+        snapshot.measurement(1U, measurement) &&
+        measurement.sensor_id == "dht22_1.humidity" &&
+        measurement.unit == "%RH" &&
+        std::get_if<double>(&measurement.value) != nullptr &&
+        *std::get_if<double>(&measurement.value) == 46.25 &&
+        snapshot.measurement(2U, measurement) &&
+        measurement.sensor_id == "dht22_2.temperature" &&
+        measurement.quality == SensorQualityStatus::NotConfigured &&
+        std::get_if<std::string_view>(&measurement.value) != nullptr &&
+        *std::get_if<std::string_view>(&measurement.value) == "NOT_CONFIGURED" &&
+        snapshot.measurement(3U, measurement) &&
+        measurement.sensor_id == "dht22_2.humidity" &&
+        measurement.quality == SensorQualityStatus::NotConfigured &&
+        std::get_if<std::string_view>(&measurement.value) != nullptr &&
+        *std::get_if<std::string_view>(&measurement.value) == "NOT_CONFIGURED";
+    expect(retained_dht22_channels,
+           "retains both DHT22 channels as owned typed measurements after the TLS frame buffer is reused");
+
+    const auto accepted_link_status = e2e_service.status();
+    const std::string diagnostics_json =
+        dockstation::communications::serialize_system_diagnostics(
+            &accepted_link_status, nullptr, &snapshot);
+    expect(diagnostics_json.find("\\"sensor_id\\":\\"dht22_1.temperature\\"") !=
+               std::string::npos &&
+               diagnostics_json.find("\\"sensor_id\\":\\"dht22_1.humidity\\"") !=
+               std::string::npos &&
+               diagnostics_json.find("\\"sensor_id\\":\\"dht22_2.temperature\\"") !=
+               std::string::npos &&
+               diagnostics_json.find("\\"sensor_id\\":\\"dht22_2.humidity\\"") !=
+               std::string::npos &&
+               diagnostics_json.find("\\"value\\":21.5") != std::string::npos &&
+               diagnostics_json.find("\\"value\\":46.25") != std::string::npos &&
+               diagnostics_json.find("\\"quality_status\\":\\"NOT_CONFIGURED\\"") !=
+               std::string::npos,
+           "exposes all four accepted DHT22 measurements and their quality through the Gateway diagnostics JSON");
 
     expect(event_adapter.statistics().authenticated_messages_received == 1U &&
                event_adapter.statistics().projected_events == 0U &&
