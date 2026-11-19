@@ -1128,11 +1128,12 @@ SQLite утверждён как локальный backend по DEC-068. До �
 
 ## 6. Уже реализованная часть репозитория
 
-- StationStateManager F01–F17: логические функции ядра реализованы; нужны production-хранилища, источники событий, payload decoder, Timer и composition root.
-- ConfigurationManager CFG-F00…CFG-F08: переносимая логика чтения/проверки/snapshot/revision реализована; нужны production-политики, decoder и repository.
+- **StationStateManager F01–F17:** переносимая логика ядра реализована. Production-интеграция уже включает доверенную source-session границу, SQLite source/session/cursor stores и приём subsystem-status событий через ControllerLink/F13. Это частичный вертикальный срез, а не полная интеграция SSM: в текущем Gateway composition root global/operation/timeout processors остаются `Unsupported`; полный набор event sources, payload decoders, Timer и соответствующих production processors ещё не подключён.
+- **ConfigurationManager CFG-F00…CFG-F08:** переносимая логика чтения/проверки/snapshot/revision реализована; production-политики, decoder и repository остаются отдельной работой.
+- **Gateway persistence:** SQLite schema, единое владение соединением через `GatewayPersistenceContext`, source/subsystem stores и lifecycle открытия/закрытия подключены к C++ Gateway. Это локальная persistence foundation, а не законченная политика хранения всех будущих данных станции.
 - Точные контракты и назначения функций приведены в docs/26_CODE_FUNCTION_CATALOG.md.
 
-Наличие ядра не означает, что уже есть готовое запускаемое приложение или интеграция на Repka.
+Наличие ядра и частичной production-интеграции не означает, что уже есть полностью готовое наземное приложение или аппаратная интеграция на Repka.
 
 ## 7. Что не выбираем заранее
 
