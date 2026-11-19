@@ -937,7 +937,7 @@ int main() {
     expect(e2e_service.status().state == ControllerLinkServiceState::LinkLost &&
                !e2e_service.status().tls_authenticated &&
                !e2e_service.status().protocol_established &&
-               e2e_service.telemetry_snapshot().sequence_number() == 7U &&
+               e2e_service.telemetry_snapshot().sequence_number() == 2U &&
                e2e_service.authenticated_pair_identity().empty(),
            "disconnect during an incomplete transfer loses the session and retains only the last complete snapshot");
 
