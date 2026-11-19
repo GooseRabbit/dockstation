@@ -1838,6 +1838,46 @@ UART pin map или защищённых ControllerLink credentials больше
 `NOT_CONFIGURED` сенсорная задача не открывает NVS, UART или TLS.
 Публикация измерений на Repka остаётся следующим отдельным этапом.
 
+
+## Дополнение 2.46 — host-level проверка приёма двух каналов DHT22 на Repka
+
+На Linux стороне уже реализован приём телеметрии через существующий
+ControllerLink: `ControllerLinkService` запрашивает снимок после установления
+TLS/HELLO-сессии и далее с периодом две секунды, принимает
+`TELEMETRY_SNAPSHOT`, проверяет сообщение и сохраняет собственную bounded-копию
+типизированных измерений. Основной C++ Gateway передаёт последний принятый
+снимок в JSON-поле `controller_telemetry` ответа
+`GET /api/v1/system/diagnostics`.
+
+Host integration test `verification/repka_gateway/test_controller_link_service.cpp`
+расширен сквозным сценарием для четырёх измерений:
+`dht22_1.temperature`, `dht22_1.humidity`,
+`dht22_2.temperature` и `dht22_2.humidity`. Он проверяет сохранение числовых
+значений первого канала, явных `NOT_CONFIGURED` статусов второго канала и
+появление всех четырёх измерений в JSON diagnostics. Тест использует POSIX PTY
+и тестового OpenSSL TLS peer; это проверка Linux-приёмника и JSON-контракта,
+а не физическая ESP32/Repka UART-приёмка.
+
+Полученный телеметрический снимок пока хранится в памяти ControllerLinkService.
+Постоянная история измерений в SQLite в этот этап не включена. Передача данных
+из Gateway в Windows Operator рассматривается отдельным следующим пунктом
+маршрута работ; существующий diagnostics endpoint уже содержит последний
+снимок.
+
+Физический запуск остаётся заблокирован до подтверждения UART device path и
+электрической разводки, provisioned pair credentials и идентификаторов
+контроллеров. Базовый `dockstation-gateway.service` намеренно использует
+`PrivateDevices=true` и не получает доступ к UART. Для аппаратного профиля
+предусмотрен отдельный `dockstation-gateway-uart@.service` с
+`PrivateDevices=false` и адресным `DeviceAllow=/dev/%i rw`; включать его
+можно только после выбора и проверки конкретного UART-устройства. GPIO и
+UART-контакты ESP32 остаются неподтверждёнными, а штатный firmware profile —
+default-off.
+
+CI должен подтвердить новый host integration test. Физический обмен и
+доступ службы к выбранному UART на целевой Repka остаются отдельными
+аппаратными проверками.
+
 Изменены `firmware/esp32/main/app_main.cpp` и `firmware/esp32/README.md`.
 Host-тесты декодера, telemetry adapter и scheduler проверяют чистые компоненты;
 ESP-IDF workflow должен подтвердить компиляцию/линковку изменённого startup.
