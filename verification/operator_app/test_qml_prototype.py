@@ -64,6 +64,48 @@ def test_qml_prototype_loads_with_the_seven_approved_tabs():
         assert telemetry_panel is not None, "Accepted ESP32 telemetry needs its own panel."
         assert bridge.controllerTelemetry == []
         assert "Нет принятого снимка" in bridge.controllerTelemetrySummary
+
+        bridge.model.apply_diagnostics({
+            "controller_telemetry": {
+                "status": "PASS",
+                "link_connected": True,
+                "source_controller_id": "esp32-controller",
+                "controller_instance_id": "instance-1",
+                "sequence_number": 1,
+                "received_at_utc": "2026-11-19T09:00:00Z",
+                "measurements": [
+                    {"sensor_id": "dht22_1.temperature", "value_type": "NUMBER",
+                     "value": 21.7, "unit": "°C", "quality_status": "OK",
+                     "measured_at": "mono_us_100"},
+                    {"sensor_id": "dht22_1.humidity", "value_type": "NUMBER",
+                     "value": 46.2, "unit": "%", "quality_status": "OK",
+                     "measured_at": "mono_us_100"},
+                    {"sensor_id": "dht22_2.temperature", "value_type": "TEXT",
+                     "value": "NOT_CONFIGURED", "unit": "status",
+                     "quality_status": "NOT_CONFIGURED",
+                     "measured_at": "mono_us_100"},
+                    {"sensor_id": "dht22_2.humidity", "value_type": "TEXT",
+                     "value": "NOT_CONFIGURED", "unit": "status",
+                     "quality_status": "NOT_CONFIGURED",
+                     "measured_at": "mono_us_100"},
+                ],
+            }
+        })
+        climate_sensors = bridge.climateSensors
+        assert len(climate_sensors) == 2
+        assert climate_sensors[0]["temperature_value"] == "21.7"
+        assert climate_sensors[0]["humidity_value"] == "46.2"
+        assert climate_sensors[0]["temperature_available"] is True
+        assert climate_sensors[1]["temperature_value"] == "—"
+        assert climate_sensors[1]["temperature_note"] == "Не настроен"
+        climate_page = roots[0].findChild(QObject, "page.climate")
+        assert climate_page is not None
+        roots[0].setProperty("currentTab", 1)
+        app.processEvents()
+        assert roots[0].findChild(QObject, "climate.dht22_1") is not None
+        assert roots[0].findChild(QObject, "climate.dht22_2") is not None
+        assert roots[0].findChild(QObject, "climate.dht22_1.temperature") is not None
+
         cover_status = roots[0].findChild(QObject, "sensor.cover-status")
         assert cover_status is not None, "Lid position must have its own panel."
         navigation = roots[0].property("navigation")
