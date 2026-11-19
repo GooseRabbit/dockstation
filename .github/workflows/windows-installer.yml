@@ -1,0 +1,109 @@
+name: Windows Operator installer
+
+on:
+  push:
+    branches:
+      - chore/flatten-repka-directories
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Build and verify Windows installer
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install Operator and packaging tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ".\operator[qml]" pyinstaller
+
+      - name: Build frozen QML application
+        shell: pwsh
+        run: >-
+          python -m PyInstaller --noconfirm --clean --windowed
+          --name DockStationOperator
+          --paths operator/src
+          --collect-all PySide6
+          --collect-all shiboken6
+          --add-data "operator/src/dockstation_operator/ui/qml;dockstation_operator/ui/qml"
+          packaging/windows/launcher.py
+
+      - name: Verify frozen executable exists
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "dist/DockStationOperator/DockStationOperator.exe")) {
+            throw "Frozen Operator executable was not created."
+          }
+
+      - name: Smoke-test packaged QML application
+        shell: pwsh
+        run: |
+          $env:QT_QPA_PLATFORM = "offscreen"
+          & "dist/DockStationOperator/DockStationOperator.exe" --smoke-test
+          if ($LASTEXITCODE -ne 0) {
+            throw "Packaged QML application failed its startup smoke test."
+          }
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Compile Windows setup executable
+        shell: pwsh
+        run: |
+          $version = "0.1.0+\${{ github.sha }}".Substring(0, 18)
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DAppVersion=$version" "packaging/windows/DockStationOperator.iss"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Inno Setup compilation failed."
+          }
+          $installer = Get-ChildItem "artifacts/DockStationOperator-Setup-*.exe" | Select-Object -First 1
+          if (-not $installer) {
+            throw "Windows setup executable was not created."
+          }
+          "INSTALLER_PATH=$($installer.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Verify install, user data preservation, and uninstall
+        shell: pwsh
+        run: |
+          $installRoot = Join-Path $env:RUNNER_TEMP "DockStationOperator-TestInstall"
+          $profileDir = Join-Path $env:LOCALAPPDATA "DockStationOperator"
+          $profileFile = Join-Path $profileDir "stations.json"
+          New-Item -ItemType Directory -Force -Path $profileDir | Out-Null
+          Set-Content -Path $profileFile -Value '{"profiles":[]}' -Encoding UTF8
+
+          $install = Start-Process -FilePath $env:INSTALLER_PATH -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DIR=$installRoot") -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "Silent installation failed: $($install.ExitCode)" }
+
+          $exe = Join-Path $installRoot "DockStationOperator.exe"
+          if (-not (Test-Path $exe)) { throw "Installed executable is missing." }
+          $env:QT_QPA_PLATFORM = "offscreen"
+          & $exe --smoke-test
+          if ($LASTEXITCODE -ne 0) { throw "Installed application smoke test failed." }
+
+          $uninstaller = Join-Path $installRoot "unins000.exe"
+          $remove = Start-Process -FilePath $uninstaller -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART") -Wait -PassThru
+          if ($remove.ExitCode -ne 0) { throw "Uninstall failed: $($remove.ExitCode)" }
+          if (-not (Test-Path $profileFile)) {
+            throw "Uninstaller unexpectedly removed user station data."
+          }
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: dockstation-operator-windows-x64-\${{ github.sha }}
+          path: artifacts/DockStationOperator-Setup-*.exe
+          if-no-files-found: error
+          retention-days: 30
