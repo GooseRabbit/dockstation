@@ -1,0 +1,11 @@
+Source: dockstation-gateway
+Section: misc
+Priority: optional
+Maintainer: DockStation Project
+Standards-Version: 4.6.2
+
+Package: dockstation-gateway
+Architecture: any
+Depends: ${shlibs:Depends}, adduser, systemd
+Description: DockStation read-only Linux Gateway
+ C++ Gateway service and local diagnostic API for DockStation Repka stations.
