@@ -382,12 +382,14 @@ class QmlOperatorBridge(QObject):
         telemetry = snapshot.get("controller_telemetry", {}) if isinstance(snapshot, dict) else {}
         if not isinstance(telemetry, dict) or telemetry.get("sequence_number") is None:
             return "Нет принятого снимка телеметрии от ESP32."
-        link = "канал Repka–ESP32 установлен" if telemetry.get("link_connected") else "канал Repka–ESP32 не установлен"
+        link_connected = telemetry.get("link_connected") is True
+        link = "канал Repka–ESP32 установлен" if link_connected else "канал Repka–ESP32 не установлен"
         received = telemetry.get("received_at_utc") or "время получения неизвестно"
         count = len(telemetry.get("measurements", []))
+        freshness = "" if link_connected else " · последний снимок сохранён, показания неактуальны"
         return (
             f"Снимок №{telemetry.get('sequence_number')} · измерений: {count} · "
-            f"получен: {received} · {link}"
+            f"получен: {received} · {link}{freshness}"
         )
 
     @Property(str, notify=viewChanged)
@@ -488,8 +490,11 @@ class QmlOperatorBridge(QObject):
             )
             quality = str(item.get("quality_status", "UNKNOWN"))
             note = quality_labels.get(quality, "Неизвестно")
+            link_connected = telemetry.get("link_connected") is True
+            if not link_connected:
+                note = "Связь с ESP32 потеряна · " + note
             if self.model.stale:
-                note = "Снимок устарел · " + note
+                note = "Снимок Gateway устарел · " + note
 
             value = f"{raw_value:.1f}" if numeric else "—"
             progress = -1.0
@@ -502,7 +507,9 @@ class QmlOperatorBridge(QObject):
                 )
             return {
                 "value": value,
-                "available": numeric and quality == "OK" and not self.model.stale,
+                "available": (
+                    numeric and quality == "OK" and link_connected and not self.model.stale
+                ),
                 "note": note,
                 "progress": progress,
             }
