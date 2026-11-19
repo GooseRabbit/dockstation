@@ -312,6 +312,8 @@ struct ServerResult final {
     std::atomic<bool> last_outbound_pending{false};
     std::atomic<int> last_peer_state{0};
     std::atomic<bool> stop_requested{false};
+    std::atomic<int> restart_fd{-1};
+    std::atomic<bool> restart_completed{false};
     std::atomic<int> error{0};
     std::array<std::uint8_t, kControllerLinkSessionProofSize> exporter{};
 };
@@ -349,12 +351,32 @@ void run_peer_service(
         if (status.command_pending) {
             result.command_pending_observed.store(true, std::memory_order_release);
         }
-        if ((status.state == ControllerLinkPeerServiceState::Stopped ||
-             status.state == ControllerLinkPeerServiceState::Error) &&
+        if (status.state == ControllerLinkPeerServiceState::Stopped &&
             !status.command_pending) {
             result.command_pending_cleared_after_disconnect.store(
                 true, std::memory_order_release);
-            break;
+            const int replacement_fd =
+                result.restart_fd.exchange(-1, std::memory_order_acq_rel);
+            if (replacement_fd >= 0) {
+                transport.fd = replacement_fd;
+                const bool restarted = service.restart_transport(
+                    credentials, &transport, socket_send, socket_receive);
+                result.restart_completed.store(restarted,
+                                               std::memory_order_release);
+                if (!restarted) {
+                    result.error.store(
+                        service.status().last_mbedtls_error != 0
+                            ? service.status().last_mbedtls_error : -104,
+                        std::memory_order_release);
+                    break;
+                }
+                continue;
+            }
+            if (result.stop_requested.load(std::memory_order_acquire)) {
+                break;
+            }
+            (void)::poll(nullptr, 0U, 1);
+            continue;
         }
 
         if (status.state == ControllerLinkPeerServiceState::Error) {
@@ -768,6 +790,76 @@ bool run_complete_peer_service_flow() {
     client.close();
     (void)::shutdown(sockets[0], SHUT_RDWR);
     ::close(sockets[0]);
+
+    for (std::size_t attempt = 0U; attempt < 500U &&
+         !server_result.command_pending_cleared_after_disconnect.load(
+             std::memory_order_acquire); ++attempt) {
+        (void)::poll(nullptr, 0U, 2);
+    }
+
+    int reconnect_sockets[2]{-1, -1};
+    bool reconnect_pair_created =
+        ::socketpair(AF_UNIX, SOCK_STREAM, 0, reconnect_sockets) == 0;
+    bool reconnect_server_nonblocking =
+        reconnect_pair_created && set_nonblocking(reconnect_sockets[1]);
+    if (reconnect_server_nonblocking) {
+        server_result.restart_fd.store(reconnect_sockets[1],
+                                       std::memory_order_release);
+    }
+
+    bool restart_completed = false;
+    for (std::size_t attempt = 0U; attempt < 500U; ++attempt) {
+        restart_completed =
+            server_result.restart_completed.load(std::memory_order_acquire);
+        if (restart_completed ||
+            server_result.error.load(std::memory_order_acquire) != 0) {
+            break;
+        }
+        (void)::poll(nullptr, 0U, 2);
+    }
+
+    ControllerPskTlsClient reconnect_client;
+    const bool reconnect_client_initialized =
+        reconnect_pair_created && reconnect_client.initialize(client_credentials);
+    const bool reconnect_tls_handshake =
+        reconnect_client_initialized && restart_completed &&
+        drive_client_handshake(reconnect_client, reconnect_sockets[0]);
+
+    ControllerMessageEnvelope reconnect_hello{};
+    reconnect_hello.type = ControllerMessageType::Hello;
+    reconnect_hello.protocol_version = ControllerProtocolVersion{1U, 1U};
+    reconnect_hello.controller_id = "repka-01";
+    reconnect_hello.controller_instance_id = "repka-boot-01";
+    reconnect_hello.sequence_number = 8U;
+    reconnect_hello.sent_at = "1700000000800";
+    const bool reconnect_hello_sent = reconnect_tls_handshake &&
+        write_controller_message(reconnect_client, reconnect_sockets[0],
+                                 reconnect_hello, empty_payload);
+    ControllerFrameStreamDecoder reconnect_decoder{};
+    ControllerCodecDecodeStorage reconnect_storage{};
+    ControllerCodecDecodedMessage reconnect_decoded{};
+    const bool reconnect_ack_received = reconnect_hello_sent &&
+        read_controller_message(reconnect_client, reconnect_sockets[0],
+                                 reconnect_decoder, reconnect_storage,
+                                 reconnect_decoded);
+    const bool reconnect_ack_valid = reconnect_ack_received &&
+        reconnect_decoded.envelope.type == ControllerMessageType::HelloAck &&
+        reconnect_decoded.envelope.controller_id == "esp32-01" &&
+        reconnect_decoded.envelope.controller_instance_id == "esp32-boot-01" &&
+        reconnect_decoded.envelope.sequence_number == 8U;
+
+    expect(reconnect_pair_created && reconnect_server_nonblocking &&
+               restart_completed,
+           "reinitializes the same peer-service object after transport loss");
+    expect(reconnect_tls_handshake && reconnect_ack_valid,
+           "completes a fresh TLS and HELLO handshake while preserving controller identity and message sequence");
+
+    reconnect_client.close();
+    if (reconnect_pair_created && reconnect_sockets[0] >= 0) {
+        (void)::shutdown(reconnect_sockets[0], SHUT_RDWR);
+        ::close(reconnect_sockets[0]);
+    }
+    server_result.stop_requested.store(true, std::memory_order_release);
     server_thread.join();
     if (!accepted_command_valid || !rejected_command_valid ||
         !disconnect_command_valid) {
@@ -797,6 +889,10 @@ bool run_complete_peer_service_flow() {
            "peer service clears pending command when the authenticated transport is lost");
     (void)::shutdown(sockets[1], SHUT_RDWR);
     ::close(sockets[1]);
+    if (reconnect_pair_created && reconnect_sockets[1] >= 0) {
+        (void)::shutdown(reconnect_sockets[1], SHUT_RDWR);
+        ::close(reconnect_sockets[1]);
+    }
 
     server_credentials.clear();
     OPENSSL_cleanse(client_exporter.data(), client_exporter.size());
@@ -818,6 +914,7 @@ bool run_complete_peer_service_flow() {
         server_result.command_pending_observed.load(std::memory_order_acquire) &&
         server_result.command_pending_cleared_after_disconnect.load(
             std::memory_order_acquire) &&
+        restart_completed && reconnect_tls_handshake && reconnect_ack_valid &&
         server_result.error.load(std::memory_order_acquire) == 0;
 }
 
