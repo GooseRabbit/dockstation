@@ -116,6 +116,7 @@ def test_qml_prototype_loads_with_the_seven_approved_tabs():
         bridge.viewChanged.emit()
         app.processEvents()
         assert len(bridge.controllerTelemetry) == 12
+        assert bridge.controllerTelemetry[0]["measured_at"] == "0.000 с после запуска ESP32"
         assert {item["sensor_id"] for item in bridge.controllerTelemetry} >= {
             "lid.position", "command.pending",
             "dht22_1.temperature", "dht22_1.humidity",
