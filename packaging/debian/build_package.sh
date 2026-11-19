@@ -53,9 +53,7 @@ done
 
 # dpkg-shlibdeps derives runtime package dependencies from the actual ARM64 ELF binaries.
 mkdir -p debian
-sed -e "s/@VERSION@/$VERSION/g" \
-    -e 's/@RUNTIME_DEPENDS@/${shlibs:Depends}/' \
-    packaging/debian/control.in > debian/control
+cp packaging/debian/shlibdeps.control debian/control
 cleanup_debian_control() { rm -f debian/control debian/substvars; }
 trap 'cleanup_debian_control; rm -rf -- "$PACKAGE_ROOT"' EXIT
 
