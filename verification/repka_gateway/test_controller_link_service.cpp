@@ -1011,10 +1011,10 @@ int main() {
     const ControllerTelemetrySnapshotPayload recovered_payload{
         recovered_measurements, sizeof(recovered_measurements) /
             sizeof(recovered_measurements[0])};
-    const auto recovered_envelope =
+    const auto reconnected_telemetry_envelope =
         peer_envelope(ControllerMessageType::TelemetrySnapshot, 7U);
     expect(send_peer_message(
-               recovery_peer, pty.master, recovered_envelope,
+               recovery_peer, pty.master, reconnected_telemetry_envelope,
                ControllerMessagePayload{recovered_payload}),
            "sends a fresh four-channel DHT22 snapshot after transport recovery");
     for (std::size_t attempt = 0U;
