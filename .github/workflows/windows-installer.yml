@@ -64,7 +64,7 @@ jobs:
       - name: Compile Windows setup executable
         shell: pwsh
         run: |
-          $version = "0.1.0+\${{ github.sha }}".Substring(0, 18)
+          $version = "0.1.0+${{ github.sha }}".Substring(0, 18)
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DAppVersion=$version" "packaging/windows/DockStationOperator.iss"
           if ($LASTEXITCODE -ne 0) {
             throw "Inno Setup compilation failed."
@@ -103,7 +103,7 @@ jobs:
       - name: Upload Windows installer
         uses: actions/upload-artifact@v7
         with:
-          name: dockstation-operator-windows-x64-\${{ github.sha }}
+          name: dockstation-operator-windows-x64-${{ github.sha }}
           path: artifacts/DockStationOperator-Setup-*.exe
           if-no-files-found: error
           retention-days: 30
