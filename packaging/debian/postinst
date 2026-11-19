@@ -27,7 +27,7 @@ case "${1:-}" in
         chmod 0640 /etc/dockstation/gateway.conf
         install -d -o dockstation -g dockstation -m 0700 /var/lib/dockstation
 
-        if command -v systemctl >/dev/null 2>&1; then
+        if [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1; then
             systemctl daemon-reload
         fi
         deb-systemd-helper enable dockstation-gateway.service >/dev/null || true
