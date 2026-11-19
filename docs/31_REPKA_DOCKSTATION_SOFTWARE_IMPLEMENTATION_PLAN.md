@@ -1210,7 +1210,9 @@ SQLite утверждён как локальный backend по DEC-068. До �
 5. **После аудита — два установщика.**
    - Windows `.exe`: Operator и необходимые runtime-компоненты; сценарии установки, обновления, удаления и восстановления должны быть описаны и проверены.
    - Repka `.deb`: C++ Linux Gateway и все необходимые runtime-компоненты для чистой Debian/APT-совместимой системы; до выпуска подтвердить фактическую ОС, архитектуру и ABI целевой платы.
-   - В Linux-пакет включить уже собранный ESP32 firmware binary и компактный инструмент прошивки. Прошивка не запускается автоматически при установке или обновлении `.deb`; только отдельная явная команда `sudo dockstation-esp32-setup` должна обнаружить устройство, проверить совместимость образа, прошить, проверить результат и перезапустить/проверить прошивку. ESP-IDF и компилятор на Repka для этого не устанавливаются.
+   - В Linux-пакет включить production ESP32 firmware binary для подтверждённого board/Flash/partition profile и компактный инструмент прошивки. Текущий CI image является compile-check артефактом: согласно `docs/33_ESP32_HARDWARE_PROFILE.md`, его унаследованный flash/partition profile пока не подтверждён и прошивать его на физическую плату нельзя.
+   - Прошивка не запускается автоматически при установке или обновлении `.deb`; только отдельная явная команда `sudo dockstation-esp32-setup` должна обнаружить устройство, проверить board/Flash/image compatibility, выполнить preflight, прошить и проверить результат. ESP-IDF и компилятор на Repka для этого не устанавливаются.
+   - Отдельная обязательная зависимость до реального ControllerLink: безопасное provisioning Flash Encryption/NVS Encryption, `nvs_keys`, PSK/identity и пары стабильных controller ID. Текущий `ControllerPskNvsCredentialStore` только читает уже provisioned encrypted NVS и намеренно не создаёт/не меняет ключи; provisioning workflow пока не реализован. Setup-helper обязан завершаться fail-closed при отсутствии корректного профиля/credentials и не должен включать eFuses или генерировать ключи без отдельной утверждённой процедуры.
 
 **Что остаётся вне host-приёмки:** фактическая Repka OS и её package ABI; доступ Gateway к выбранному UART; pinmux/console; электрические уровни и перекрёстное подключение TX/RX; прошивка конкретной ESP32-платы; чтение двух физических DHT22. Успешные сборки, PTY и синтетические snapshots не засчитываются как физическое испытание.
 
@@ -1968,3 +1970,22 @@ ESP32». Неизвестные форматы остаются без выду�
 `operator/src/dockstation_operator/ui/qml_bridge.py`,
 `verification/operator_app/test_qml_prototype.py` и
 `docs/23_OPERATOR_APPLICATION.md`.
+
+
+## Дополнение 2.50 — обязательные preconditions ESP32 firmware package
+
+Уточнён состав будущего Repka `.deb`: он должен содержать production firmware image,
+а не автоматически использовать любой CI build artifact. Документированный
+кандидат ESP32 предполагает 4 MB Flash, тогда как текущий ESP-IDF CI build
+наследует default 2 MB partition profile; физическая Flash ещё не проверена.
+До read-only `flash_id`, подтверждения платы и утверждения production partition
+table текущий CI image запрещено прошивать на физическую плату.
+
+Также выявлена отдельная provisioning-зависимость: ESP32 credential provider
+открывает только существующую encrypted NVS и читает PSK[32], identity[16],
+controller ID и peer ID. Он намеренно не создаёт NVS keys, не генерирует
+credentials и не включает Flash Encryption/eFuses. Для первого физического
+ControllerLink требуется отдельная безопасная provisioning-процедура и её
+проверки. Будущий `dockstation-esp32-setup` должен проверять готовность этого
+профиля и отказывать без изменений при его отсутствии; обычная установка
+`.deb` ничего не прошивает и не provision-ит.
