@@ -56,6 +56,10 @@ constexpr UBaseType_t kControllerLinkTaskPriority = tskIDLE_PRIORITY + 3U;
 
 constexpr std::uint64_t kMemoryReportIntervalMs = 60000U;
 
+// Sensor acquisition is independent from ControllerLink readiness. This flag
+// is enabled only after the complete transport profile and credentials pass.
+bool g_controller_link_enabled{false};
+
 void log_runtime_memory(const char* phase) noexcept {
     const std::size_t free_heap = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     const std::size_t largest_block =
@@ -261,20 +265,24 @@ void controller_link_polling_task(void*) {
 
     ControllerLinkReconnectBackoff reconnect_backoff{};
     initialize_dht22_channels();
-    if (!start_or_restart_controller_link()) {
-        const auto delay_ms =
-            reconnect_backoff.schedule_after_failure(monotonic_milliseconds());
-        const auto status = g_controller_link_runtime.status();
-        log_startup_blockers(status.startup_readiness);
-        ESP_LOGW(
-            kTag,
-            "ControllerLink startup failed; retry in %u ms (UART: %s, UART fault: %s, TLS: %d)",
-            static_cast<unsigned>(delay_ms),
-            esp_err_to_name(status.last_uart_error),
-            dockstation::firmware::esp32::controller_uart_fault_name(status.last_uart_fault),
-            status.peer.last_mbedtls_error);
+    if (g_controller_link_enabled) {
+        if (!start_or_restart_controller_link()) {
+            const auto delay_ms =
+                reconnect_backoff.schedule_after_failure(monotonic_milliseconds());
+            const auto status = g_controller_link_runtime.status();
+            log_startup_blockers(status.startup_readiness);
+            ESP_LOGW(
+                kTag,
+                "ControllerLink startup failed; retry in %u ms (UART: %s, UART fault: %s, TLS: %d)",
+                static_cast<unsigned>(delay_ms),
+                esp_err_to_name(status.last_uart_error),
+                dockstation::firmware::esp32::controller_uart_fault_name(status.last_uart_fault),
+                status.peer.last_mbedtls_error);
+        } else {
+            ESP_LOGI(kTag, "ControllerLink runtime started; waiting for authenticated peer session");
+        }
     } else {
-        ESP_LOGI(kTag, "ControllerLink runtime started; waiting for authenticated peer session");
+        ESP_LOGI(kTag, "DHT22 sampling task active; ControllerLink remains NOT_CONFIGURED");
     }
 
     log_runtime_memory("task-start");
@@ -287,6 +295,20 @@ void controller_link_polling_task(void*) {
     for (;;) {
         const std::uint64_t now_ms = monotonic_milliseconds();
         poll_dht22_channels();
+
+        // Keep the DHT22 acquisition lifecycle alive even when the physical
+        // UART profile or protected ControllerLink credentials are not ready.
+        // No NVS, UART or TLS operation is attempted in this mode.
+        if (!g_controller_link_enabled) {
+            if (now_ms >= last_memory_report_ms &&
+                now_ms - last_memory_report_ms >= kMemoryReportIntervalMs) {
+                log_runtime_memory("periodic");
+                last_memory_report_ms = now_ms;
+            }
+            vTaskDelay(poll_delay);
+            continue;
+        }
+
         auto runtime_status = g_controller_link_runtime.status();
 
         if (runtime_status.state ==
@@ -386,111 +408,124 @@ extern "C" void app_main(void) {
 
     ESP_LOGI(kTag, "DockStation ESP32 firmware bootstrap started");
 
-    // Generate the per-boot identity before ADC, I2S or RF subsystems are used.
-    if (!g_controller_instance_id.generate_for_current_boot()) {
-        ESP_LOGE(kTag, "Could not generate controller instance identity");
-        return;
+    // DHT22 acquisition is useful independently of ControllerLink. Prepare
+    // its task even when the physical UART profile is intentionally unset.
+    g_controller_link_enabled = false;
+
+    const bool controller_link_ready = []() noexcept {
+        // Generate the per-boot identity before ADC, I2S or RF subsystems are used.
+        if (!g_controller_instance_id.generate_for_current_boot()) {
+            ESP_LOGE(kTag, "Could not generate controller instance identity");
+            return false;
+        }
+        ESP_LOGI(kTag, "Per-boot controller instance identity generated");
+
+        // The default hardware profile is deliberately unconfirmed. This check
+        // happens before NVS initialization: an unknown board must not touch the
+        // production credential store or attempt any transport setup.
+        if (!g_controller_link_start_config.hardware_profile_confirmed) {
+            ESP_LOGW(kTag, "ControllerLink remains NOT_CONFIGURED: physical hardware profile is not confirmed; secure NVS was not opened");
+            return false;
+        }
+
+        // Require an explicit, non-console UART pin map before attempting any
+        // credential access. The UART driver itself is still not installed here.
+        if (!dockstation::firmware::esp32::ControllerUartTransport::is_valid_config(
+                g_controller_link_start_config.uart)) {
+            ESP_LOGW(kTag, "ControllerLink remains NOT_CONFIGURED: explicit UART port/TX/RX configuration is missing or invalid; secure NVS was not opened");
+            return false;
+        }
+
+        // Read only pre-provisioned credentials from an existing encrypted NVS
+        // partition. The store never generates, repairs, writes or rotates keys.
+        auto& credential_store = g_controller_credential_store;
+        if (!credential_store.initialize()) {
+            ESP_LOGW(
+                kTag,
+                "ControllerLink remains NOT_CONFIGURED: protected NVS is unavailable (%s)",
+                esp_err_to_name(credential_store.last_error()));
+            return false;
+        }
+
+        if (!credential_store.load(g_controller_link_credentials)) {
+            ESP_LOGW(
+                kTag,
+                "ControllerLink remains NOT_CONFIGURED: pre-provisioned PSK/identity are unavailable (%s)",
+                esp_err_to_name(credential_store.last_error()));
+            g_controller_link_credentials.clear();
+            return false;
+        }
+
+        if (!credential_store.load_controller_ids(g_controller_stable_ids)) {
+            ESP_LOGW(
+                kTag,
+                "ControllerLink remains NOT_CONFIGURED: stable local/peer controller IDs are unavailable or invalid (%s)",
+                esp_err_to_name(credential_store.last_error()));
+            g_controller_link_credentials.clear();
+            g_controller_stable_ids.clear();
+            return false;
+        }
+
+        // These string_views point into static-lifetime owned buffers above.
+        // The stable IDs are public protocol identifiers, not credentials.
+        g_controller_link_start_config.session.local_controller_id =
+            g_controller_stable_ids.local_id();
+        g_controller_link_start_config.session.peer_controller_id =
+            g_controller_stable_ids.peer_id();
+
+        const auto& session_config = g_controller_link_start_config.session;
+        ControllerLinkStartupReadinessInput readiness_input{};
+        readiness_input.hardware_profile_confirmed =
+            g_controller_link_start_config.hardware_profile_confirmed;
+        readiness_input.uart_configuration_valid =
+            dockstation::firmware::esp32::ControllerUartTransport::is_valid_config(
+                g_controller_link_start_config.uart);
+        readiness_input.pair_credentials_available =
+            true;  // Both fixed-size secret fields passed the read-only NVS loader.
+        readiness_input.instance_identity_generated =
+            g_controller_instance_id.is_generated();
+        readiness_input.instance_identity_configuration_matches =
+            g_controller_instance_id.is_generated() &&
+            (session_config.local_controller_instance_id.empty() ||
+             session_config.local_controller_instance_id ==
+                 g_controller_instance_id.value());
+        readiness_input.protocol_version_major =
+            session_config.protocol_version.major;
+        readiness_input.local_controller_id =
+            g_controller_stable_ids.local_id();
+        readiness_input.peer_controller_id =
+            g_controller_stable_ids.peer_id();
+
+        const auto readiness =
+            evaluate_controller_link_startup_readiness(readiness_input);
+        if (!readiness.is_ready()) {
+            log_startup_blockers(readiness);
+            g_controller_link_credentials.clear();
+            return false;
+        }
+        return true;
+    }();
+
+    g_controller_link_enabled = controller_link_ready;
+    if (!controller_link_ready) {
+        ESP_LOGI(kTag, "ControllerLink is NOT_CONFIGURED; continuing with independent DHT22 subsystem");
     }
-    ESP_LOGI(kTag, "Per-boot controller instance identity generated");
 
-    // The default hardware profile is deliberately unconfirmed. This check
-    // happens before NVS initialization: an unknown board must not touch the
-    // production credential store or attempt any transport setup.
-    if (!g_controller_link_start_config.hardware_profile_confirmed) {
-        ESP_LOGW(kTag, "ControllerLink remains NOT_CONFIGURED: physical hardware profile is not confirmed; secure NVS was not opened");
-        return;
-    }
-
-    // Require an explicit, non-console UART pin map before attempting any
-    // credential access. The UART driver itself is still not installed here.
-    if (!dockstation::firmware::esp32::ControllerUartTransport::is_valid_config(
-            g_controller_link_start_config.uart)) {
-        ESP_LOGW(kTag, "ControllerLink remains NOT_CONFIGURED: explicit UART port/TX/RX configuration is missing or invalid; secure NVS was not opened");
-        return;
-    }
-
-    // Read only pre-provisioned credentials from an existing encrypted NVS
-    // partition. The store never generates, repairs, writes or rotates keys.
-    auto& credential_store = g_controller_credential_store;
-    if (!credential_store.initialize()) {
-        ESP_LOGW(
-            kTag,
-            "ControllerLink remains NOT_CONFIGURED: protected NVS is unavailable (%s)",
-            esp_err_to_name(credential_store.last_error()));
-        return;
-    }
-
-    if (!credential_store.load(g_controller_link_credentials)) {
-        ESP_LOGW(
-            kTag,
-            "ControllerLink remains NOT_CONFIGURED: pre-provisioned PSK/identity are unavailable (%s)",
-            esp_err_to_name(credential_store.last_error()));
-        g_controller_link_credentials.clear();
-        return;
-    }
-
-    if (!credential_store.load_controller_ids(g_controller_stable_ids)) {
-        ESP_LOGW(
-            kTag,
-            "ControllerLink remains NOT_CONFIGURED: stable local/peer controller IDs are unavailable or invalid (%s)",
-            esp_err_to_name(credential_store.last_error()));
-        g_controller_link_credentials.clear();
-        g_controller_stable_ids.clear();
-        return;
-    }
-
-    // These string_views point into static-lifetime owned buffers above.
-    // The stable IDs are public protocol identifiers, not credentials.
-    g_controller_link_start_config.session.local_controller_id =
-        g_controller_stable_ids.local_id();
-    g_controller_link_start_config.session.peer_controller_id =
-        g_controller_stable_ids.peer_id();
-
-    const auto& session_config = g_controller_link_start_config.session;
-    ControllerLinkStartupReadinessInput readiness_input{};
-    readiness_input.hardware_profile_confirmed =
-        g_controller_link_start_config.hardware_profile_confirmed;
-    readiness_input.uart_configuration_valid =
-        dockstation::firmware::esp32::ControllerUartTransport::is_valid_config(
-            g_controller_link_start_config.uart);
-    readiness_input.pair_credentials_available =
-        true;  // Both fixed-size secret fields passed the read-only NVS loader.
-    readiness_input.instance_identity_generated =
-        g_controller_instance_id.is_generated();
-    readiness_input.instance_identity_configuration_matches =
-        g_controller_instance_id.is_generated() &&
-        (session_config.local_controller_instance_id.empty() ||
-         session_config.local_controller_instance_id ==
-             g_controller_instance_id.value());
-    readiness_input.protocol_version_major =
-        session_config.protocol_version.major;
-    readiness_input.local_controller_id =
-        g_controller_stable_ids.local_id();
-    readiness_input.peer_controller_id =
-        g_controller_stable_ids.peer_id();
-
-    const auto readiness =
-        evaluate_controller_link_startup_readiness(readiness_input);
-    if (!readiness.is_ready()) {
-        log_startup_blockers(readiness);
-        g_controller_link_credentials.clear();
-        return;
-    }
-
-    // The dedicated task starts and then exclusively owns runtime/UART/TLS.
+    // One task owns DHT sampling and, when configured, ControllerLink. This
+    // avoids cross-task access to the latest sensor samples.
     const BaseType_t task_created = xTaskCreate(
         controller_link_polling_task,
-        "dockstation_link",
+        "dockstation_runtime",
         kControllerLinkTaskStackSizeBytes,
         nullptr,
         kControllerLinkTaskPriority,
         nullptr);
     if (task_created != pdPASS) {
         g_controller_link_credentials.clear();
-        ESP_LOGE(kTag, "Could not create ControllerLink polling task");
+        ESP_LOGE(kTag, "Could not create DockStation runtime polling task");
         return;
     }
-    ESP_LOGI(kTag, "ControllerLink prerequisites accepted; polling task queued");
+    ESP_LOGI(kTag, "DockStation runtime polling task queued");
 }
 
 // Link-only acceptance hook. The main component forces this symbol into the
