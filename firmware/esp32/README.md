@@ -203,10 +203,12 @@ separated by at least 2,000 ms. A permitted attempt consumes its slot even if
 the physical acquisition subsequently fails. A monotonic-clock regression
 blocks further reads until explicit reinitialization.
 
-The scheduler does **not** read GPIO, generate sensor timing, power a sensor,
-create a FreeRTOS task or run a timer. No sensor pin is assigned and no test
-value is sent to ControllerLink. The decoder, adapter and scheduler are built
-by ESP-IDF and checked by the host CTest targets `dht22_frame_decoder`,
+The scheduler itself remains a pure policy component and does not read GPIO,
+generate sensor timing, power a sensor, create a FreeRTOS task or run a timer.
+The firmware polling task invokes the GPIO reader only for explicitly
+configured pins. Both checked-in sensor pins remain unset, so the normal image
+reports both channels as NOT_CONFIGURED. The decoder, adapter and scheduler
+are built by ESP-IDF and checked by the host CTest targets `dht22_frame_decoder`,
 `dht22_telemetry_adapter` and `dht22_sampling_scheduler`; these tests do
 not prove physical sensor operation or acquisition timing.
 
@@ -386,9 +388,11 @@ The pending state is cleared on connection loss or by the future actuator layer
 only after physical completion feedback. There is currently no actuator layer,
 GPIO acquisition, or physical completion acknowledgement in the firmware.
 
-The polling task now answers snapshot requests with logical station-state
-telemetry. Its unknown input qualities are intentional. DHT22 sampling and lid
-limit-switch debounce are still not connected to GPIO, and the actual board
+The polling task answers snapshot requests with logical station-state
+telemetry plus the two DHT22 channels. Its unknown input qualities are
+intentional. The DHT22 GPIO reader and telemetry path are implemented, but
+both sensor pins remain unset until the actual wiring is confirmed. Lid
+limit-switch debounce is still not connected to GPIO, and the actual board
 profile remains default-off until physical acceptance.
 
 

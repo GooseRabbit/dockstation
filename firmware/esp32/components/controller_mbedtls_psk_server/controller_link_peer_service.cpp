@@ -396,9 +396,18 @@ bool ControllerLinkPeerService::send_telemetry_snapshot(
 
 bool ControllerLinkPeerService::send_station_state_snapshot(
     std::string_view sent_at,
-    std::uint64_t monotonic_time_ms) noexcept {
-    std::array<hardware::interfaces::ControllerTelemetryMeasurement, 8U>
-        station_measurements{};
+    std::uint64_t monotonic_time_ms,
+    const hardware::interfaces::ControllerTelemetryMeasurement* additional_measurements,
+    std::size_t additional_measurement_count) noexcept {
+    constexpr std::size_t kStationMeasurementCapacity = 8U;
+    constexpr std::size_t kAdditionalMeasurementCapacity = 4U;
+    if (additional_measurement_count > kAdditionalMeasurementCapacity ||
+        (additional_measurement_count != 0U && additional_measurements == nullptr)) {
+        return false;
+    }
+
+    std::array<hardware::interfaces::ControllerTelemetryMeasurement,
+               kStationMeasurementCapacity> station_measurements{};
     const std::size_t station_count =
         station_state_.build_telemetry(station_measurements, sent_at, monotonic_time_ms);
     std::array<hardware::interfaces::ControllerTelemetryMeasurement,
@@ -407,8 +416,11 @@ bool ControllerLinkPeerService::send_station_state_snapshot(
     for (std::size_t index = 0U; index < station_count; ++index) {
         measurements[index] = station_measurements[index];
     }
+    for (std::size_t index = 0U; index < additional_measurement_count; ++index) {
+        measurements[station_count + index] = additional_measurements[index];
+    }
     const hardware::interfaces::ControllerTelemetrySnapshotPayload snapshot{
-        measurements.data(), count};
+        measurements.data(), station_count + additional_measurement_count};
     return send_telemetry_snapshot(snapshot, sent_at);
 }
 
