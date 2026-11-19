@@ -520,8 +520,8 @@ jobs:
   attest-arm64-bundle:
     name: Sign and verify ARM64 release bundle
     needs: [arm64-build-and-test, openssl-35-compatibility]
-    # Never grant signing identity to pull-request code. Only the named working
-    # branch may publish a signed distribution artifact.
+    # Never grant signing identity to pull-request code. The working branch
+    # and version tags may publish signed distribution artifacts.
     if: ${{ github.event_name != 'pull_request' && (github.ref == 'refs/heads/chore/flatten-repka-directories' || startsWith(github.ref, 'refs/tags/v')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
