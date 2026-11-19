@@ -92,7 +92,7 @@ jobs:
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: dockstation-operator-windows-x64-${{ github.sha }}
-          path: ${{ runner.temp }}\\dockstation-release
+          path: ${{ runner.temp }}/dockstation-release
 
       - name: Wait for Linux release, then attach Windows installer
         shell: pwsh
