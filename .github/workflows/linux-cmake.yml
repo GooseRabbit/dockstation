@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - chore/flatten-repka-directories
+    tags:
+      - 'v*'
   pull_request:
     branches:
       - main
@@ -520,7 +522,7 @@ jobs:
     needs: [arm64-build-and-test, openssl-35-compatibility]
     # Never grant signing identity to pull-request code. Only the named working
     # branch may publish a signed distribution artifact.
-    if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/chore/flatten-repka-directories' }}
+    if: ${{ github.event_name != 'pull_request' && (github.ref == 'refs/heads/chore/flatten-repka-directories' || startsWith(github.ref, 'refs/tags/v')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -764,3 +766,82 @@ jobs:
             printf '%s\n' "- Retention: 30 days."
             printf '%s\n' "- The ARM64 build runner is Ubuntu 24.04; official Repka OS runtime compatibility remains to be checked on the target image."
           } >> "$GITHUB_STEP_SUMMARY"
+
+  publish-github-release:
+    name: Publish signed Linux installers to GitHub Release
+    needs: attest-arm64-bundle
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Download signed ARM64 Debian package and provenance
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: dockstation-gateway-arm64-deb-${{ github.sha }}
+          path: ${{ runner.temp }}/dockstation-release/deb
+
+      - name: Download signed Repka ARM64 bundle and provenance
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: dockstation-repka-pi5-arm64-${{ github.sha }}
+          path: ${{ runner.temp }}/dockstation-release/bundle
+
+      - name: Create prerelease and publish Linux assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          release_dir="$RUNNER_TEMP/dockstation-release"
+          deb="$(find "$release_dir/deb" -maxdepth 1 -type f -name '*.deb' -print -quit)"
+          bundle="$release_dir/bundle/dockstation-repka-pi5-arm64.tar.gz"
+          test -n "$deb" && test -s "$deb"
+          test -s "$deb.sha256"
+          test -s "$deb.attestation.jsonl"
+          test -s "$bundle"
+          test -s "$bundle.sha256"
+          test -s "$bundle.attestation.jsonl"
+
+          (
+            cd "$(dirname "$deb")"
+            sha256sum --check --strict "$(basename "$deb").sha256"
+          )
+          (
+            cd "$(dirname "$bundle")"
+            sha256sum --check --strict "$(basename "$bundle").sha256"
+          )
+
+          notes="$RUNNER_TEMP/dockstation-release-notes.md"
+          cat > "$notes" <<'EOF'
+          ## DockStation prerelease
+
+          This is a preliminary engineering release, not a declaration of production readiness.
+
+          ### Linux / Repka
+          - ARM64 Debian package: DockStation Gateway and systemd integration.
+          - Repka Pi 5 ARM64 deployment bundle, with SHA-256 checksums and Sigstore build provenance.
+          - ESP32 firmware is not included.
+          - Compatibility with the final Repka OS image and physical hardware must still be confirmed.
+
+          ### Windows
+          - The Windows Operator installer is attached separately by the Windows build workflow after this release is created.
+          - Packaging succeeded, but application startup and installation/uninstallation on a clean Windows machine have not yet been validated.
+
+          ### Verification
+          - Verify the SHA-256 checksum before installation.
+          - Verify Sigstore provenance for the signed Linux assets.
+          - Treat this release as a test build until the remaining platform and hardware checks are complete.
+          EOF
+
+          gh release create "$RELEASE_TAG" \
+            "$deb" "$deb.sha256" "$deb.attestation.jsonl" \
+            "$bundle" "$bundle.sha256" "$bundle.attestation.jsonl" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "DockStation $RELEASE_TAG" \
+            --notes-file "$notes" \
+            --prerelease \
+            --verify-tag
+
