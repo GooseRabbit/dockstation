@@ -91,6 +91,8 @@ def test_qml_prototype_loads_with_the_seven_approved_tabs():
                 ],
             }
         })
+        bridge.viewChanged.emit()
+        app.processEvents()
         climate_sensors = bridge.climateSensors
         assert len(climate_sensors) == 2
         assert climate_sensors[0]["temperature_value"] == "21.7"
