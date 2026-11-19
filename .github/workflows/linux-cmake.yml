@@ -749,6 +749,7 @@ jobs:
           BUNDLE_URL: ${{ steps.upload-signed-arm64-bundle.outputs.artifact-url }}
           ATTESTATION_URL: ${{ steps.attest-arm64-bundle.outputs.attestation-url }}
           SOURCE_COMMIT: ${{ github.sha }}
+          SOURCE_REF: ${{ github.ref }}
         run: |
           set -euo pipefail
           bundle_sha256="$(awk '{ print $1 }' "$RUNNER_TEMP/dockstation-arm64/signed/dockstation-repka-pi5-arm64.tar.gz.sha256")"
@@ -762,7 +763,7 @@ jobs:
             printf '%s\n' "- Included files: archive, SHA-256 sidecar, detached Sigstore attestation JSONL."
             printf '%s\n' "- Provenance verified against repository, workflow, branch and exact source commit."
             printf '%s\n' "- Negative checks passed: modified archive, wrong workflow and wrong source commit were rejected."
-            printf '%s\n' "- Verify online: gh attestation verify dockstation-repka-pi5-arm64.tar.gz --repo GooseRabbit/dockstation --signer-workflow GooseRabbit/dockstation/.github/workflows/linux-cmake.yml --source-ref refs/heads/chore/flatten-repka-directories --source-digest $SOURCE_COMMIT"
+            printf '%s\n' "- Verify online: gh attestation verify dockstation-repka-pi5-arm64.tar.gz --repo GooseRabbit/dockstation --signer-workflow GooseRabbit/dockstation/.github/workflows/linux-cmake.yml --source-ref $SOURCE_REF --source-digest $SOURCE_COMMIT"
             printf '%s\n' "- Retention: 30 days."
             printf '%s\n' "- The ARM64 build runner is Ubuntu 24.04; official Repka OS runtime compatibility remains to be checked on the target image."
           } >> "$GITHUB_STEP_SUMMARY"
