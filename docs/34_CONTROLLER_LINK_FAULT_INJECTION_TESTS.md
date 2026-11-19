@@ -58,3 +58,5 @@ UART event queue policy используется ESP-IDF transport и отдел
 6. Повторная остановка снова очищает process-local snapshot.
 
 Тест использует production `ControllerLinkService`, POSIX PTY и OpenSSL TLS 1.3 PSK-DHE peer. Это проверка lifecycle/recovery на Linux host. Она моделирует stop/start сервиса внутри тестового процесса; не является испытанием фактического systemd process restart, ESP-IDF FreeRTOS task, Mbed TLS peer на физической ESP32 или UART-проводов. Отдельные systemd startup/restart checks остаются в CI, а физическое отключение питания/кабеля и восстановление на паре плат — аппаратной приёмкой.
+
+**Результат CI:** run [44485093597](https://github.com/GooseRabbit/dockstation/actions/runs/44485093597) — SUCCESS для exact HEAD `88e8fc4f7cd38c8ba70abb4b50e47905f1455650`. CTest прошёл 50/50 на Linux x86_64, Linux ARM64 и OpenSSL 3.5; дополнительно прошли 31 C++ host program, 165 Python/Operator/Gateway tests, Mbed TLS/OpenSSL interoperability и подписание ARM64 bundle. Физическая приёмка остаётся отдельной задачей.
