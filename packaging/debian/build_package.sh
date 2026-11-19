@@ -53,7 +53,9 @@ done
 
 # dpkg-shlibdeps derives runtime package dependencies from the actual ARM64 ELF binaries.
 mkdir -p debian
-cp packaging/debian/control.in debian/control
+sed -e "s/@VERSION@/$VERSION/g" \
+    -e 's/@RUNTIME_DEPENDS@/${shlibs:Depends}/' \
+    packaging/debian/control.in > debian/control
 cleanup_debian_control() { rm -f debian/control debian/substvars; }
 trap 'cleanup_debian_control; rm -rf -- "$PACKAGE_ROOT"' EXIT
 
@@ -63,7 +65,7 @@ SHLIBS_OUTPUT="$(dpkg-shlibdeps -O \
     -e"$PACKAGE_ROOT/usr/bin/dockstation-registry-provision")"
 RUNTIME_DEPENDS="$(printf '%s\n' "$SHLIBS_OUTPUT" | sed -n 's/^shlibs:Depends=//p')"
 [[ -n "$RUNTIME_DEPENDS" ]] || { echo "dpkg-shlibdeps returned no runtime dependencies." >&2; exit 1; }
-rm -f debian/control
+rm -f debian/control debian/substvars
 
 sed -e "s/@VERSION@/$VERSION/g" \
     -e "s|@RUNTIME_DEPENDS@|$RUNTIME_DEPENDS|g" \
