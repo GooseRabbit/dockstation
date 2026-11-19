@@ -126,8 +126,33 @@ def test_qml_prototype_loads_with_the_seven_approved_tabs():
         assert climate_sensors[0]["temperature_value"] == "21.7"
         assert climate_sensors[0]["humidity_value"] == "46.2"
         assert climate_sensors[0]["temperature_available"] is True
+        assert climate_sensors[0]["humidity_available"] is True
         assert climate_sensors[1]["temperature_value"] == "—"
         assert climate_sensors[1]["temperature_note"] == "Не настроен"
+        assert climate_sensors[1]["humidity_note"] == "Не настроен"
+
+        # A current Gateway response may retain the last accepted ESP32 snapshot
+        # after the controller link is lost. Keep the value visible, but never
+        # present it as a live/available measurement.
+        accepted_snapshot = bridge.model.snapshot
+        link_lost_snapshot = dict(accepted_snapshot)
+        link_lost_telemetry = dict(accepted_snapshot["controller_telemetry"])
+        link_lost_telemetry.update(status="WARN", link_connected=False)
+        link_lost_snapshot["controller_telemetry"] = link_lost_telemetry
+        bridge.model.apply_diagnostics(link_lost_snapshot)
+        link_lost_climate = bridge.climateSensors
+        assert link_lost_climate[0]["temperature_value"] == "21.7"
+        assert link_lost_climate[0]["temperature_available"] is False
+        assert "Связь с ESP32 потеряна" in link_lost_climate[0]["temperature_note"]
+        assert "показания неактуальны" in bridge.controllerTelemetrySummary
+
+        # A lost Windows-to-Gateway connection also invalidates otherwise OK data.
+        bridge.model.mark_diagnostics_stale("API недоступен")
+        gateway_stale_climate = bridge.climateSensors
+        assert gateway_stale_climate[0]["temperature_available"] is False
+        assert "Снимок Gateway устарел" in gateway_stale_climate[0]["temperature_note"]
+        bridge.model.apply_diagnostics(accepted_snapshot)
+
         climate_page = roots[0].findChild(QObject, "page.climate")
         assert climate_page is not None
         roots[0].setProperty("currentTab", 1)
