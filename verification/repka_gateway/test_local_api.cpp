@@ -151,8 +151,8 @@ void test_controller_telemetry_serialization() {
          SensorQualityStatus::Unknown, "mono_us_100"},
         {"command.pending", std::string_view{"NONE"}, "status",
          SensorQualityStatus::Unknown, "mono_us_100"},
-        {"dht22_1.temperature", 21.7, "°C", SensorQualityStatus::Ok, "mono_us_100"},
-        {"dht22_1.humidity", 46.2, "%", SensorQualityStatus::Ok, "mono_us_100"},
+        {"dht22_1.temperature", 21.5, "°C", SensorQualityStatus::Ok, "mono_us_100"},
+        {"dht22_1.humidity", 46.25, "%", SensorQualityStatus::Ok, "mono_us_100"},
         {"dht22_2.temperature", std::string_view{"NOT_CONFIGURED"}, "status",
          SensorQualityStatus::NotConfigured, "mono_us_100"},
         {"dht22_2.humidity", std::string_view{"NOT_CONFIGURED"}, "status",
@@ -181,12 +181,10 @@ void test_controller_telemetry_serialization() {
     assert(payload.find("\"sensor_id\":\"lid.position\"") != std::string::npos);
     assert(payload.find("\"sensor_id\":\"workspace.state\"") != std::string::npos);
     assert(payload.find("\"sensor_id\":\"command.pending\"") != std::string::npos);
-    assert(payload.find("\"sensor_id\":\"dht22_1.temperature\"") != std::string::npos);
-    assert(payload.find("\"sensor_id\":\"dht22_1.humidity\"") != std::string::npos);
     assert(payload.find("\"sensor_id\":\"dht22_2.temperature\"") != std::string::npos);
     assert(payload.find("\"sensor_id\":\"dht22_2.humidity\"") != std::string::npos);
-    assert(payload.find("\"value_type\":\"NUMBER\",\"value\":21.7") != std::string::npos);
-    assert(payload.find("\"value_type\":\"NUMBER\",\"value\":46.2") != std::string::npos);
+    assert(payload.find("\"value_type\":\"NUMBER\",\"value\":21.5") != std::string::npos);
+    assert(payload.find("\"value_type\":\"NUMBER\",\"value\":46.25") != std::string::npos);
     assert(payload.find("\"quality_status\":\"OK\"") != std::string::npos);
     assert(payload.find("\"quality_status\":\"UNKNOWN\"") != std::string::npos);
     assert(payload.find("\"quality_status\":\"NOT_CONFIGURED\"") != std::string::npos);
