@@ -2,15 +2,19 @@
 set -eu
 
 case "${1:-}" in
-    remove|purge)
+    remove)
         deb-systemd-helper disable dockstation-gateway.service >/dev/null 2>&1 || true
-        if command -v systemctl >/dev/null 2>&1; then
-            systemctl daemon-reload || true
-        fi
+        ;;
+    purge)
+        deb-systemd-helper purge dockstation-gateway.service >/dev/null 2>&1 || true
         # Persistent station state is intentionally retained, including on purge.
         # Only remove the configuration directory if dpkg left it completely empty.
         rmdir /etc/dockstation 2>/dev/null || true
         ;;
 esac
+
+if command -v systemctl >/dev/null 2>&1; then
+    systemctl daemon-reload || true
+fi
 
 exit 0
