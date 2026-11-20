@@ -831,7 +831,7 @@ ApplicationWindow {
                                         Layout.fillWidth: true
                                         text: bridge.localPort
                                         placeholderText: "18080"
-                                        placeholderTextColor: root.muted
+                                        placeholderTextColor: root.placeholderTextColor
                                         inputMethodHints: Qt.ImhDigitsOnly
                                         onTextEdited: bridge.setLocalPort(text)
                                     }
