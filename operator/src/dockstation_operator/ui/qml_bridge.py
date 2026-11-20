@@ -383,7 +383,10 @@ class QmlOperatorBridge(QObject):
         if not isinstance(telemetry, dict) or telemetry.get("sequence_number") is None:
             return "Нет принятого снимка телеметрии от ESP32."
         link_connected = telemetry.get("link_connected") is True
-        link = "канал Repka–ESP32 установлен" if link_connected else "канал Repka–ESP32 не установлен"
+        if telemetry.get("transport") == "PROTOTYPE_UART":
+            link = "прототипный UART активен" if link_connected else "прототипный UART неактивен"
+        else:
+            link = "канал Repka–ESP32 установлен" if link_connected else "канал Repka–ESP32 не установлен"
         received = telemetry.get("received_at_utc") or "время получения неизвестно"
         count = len(telemetry.get("measurements", []))
         freshness = "" if link_connected else " · последний снимок сохранён, показания неактуальны"
@@ -400,6 +403,16 @@ class QmlOperatorBridge(QObject):
         link = snapshot.get("controller_link")
         if not isinstance(link, dict):
             return "Gateway передал некорректное состояние канала Repka–ESP32."
+        telemetry = snapshot.get("controller_telemetry", {})
+        if isinstance(telemetry, dict) and telemetry.get("transport") == "PROTOTYPE_UART":
+            if telemetry.get("link_connected") is True:
+                return "Прототипный UART ESP32 подключён; передача без шифрования."
+            if telemetry.get("sequence_number") is not None:
+                return "Прототипный UART ESP32: последнее показание устарело."
+            prototype_error = telemetry.get("error_code", "")
+            if prototype_error:
+                return f"Прототипный UART ESP32 ожидает данные: {prototype_error}."
+            return "Прототипный UART ESP32 настроен, ожидание первого пакета."
         status = link.get("status", "NOT_CONFIGURED")
         error_code = link.get("error_code", "")
         if status == "OK":
