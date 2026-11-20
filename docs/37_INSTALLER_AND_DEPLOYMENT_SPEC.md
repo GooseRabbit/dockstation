@@ -81,8 +81,8 @@ The current ESP32 credential store reads pre-provisioned encrypted NVS only. A s
 |---|---|
 | Fresh install | Verify that the package architecture matches the native host and runtime dependencies; install files; create the system account/group and initial config if absent; enable/start only the read-only base service; verify local health endpoint. |
 | Upgrade | Preserve /etc/dockstation/gateway.conf and /var/lib/dockstation; stop/restart the base service through package lifecycle; do not alter UART selection or secrets. |
-| Remove | Stop and disable the service; remove package-owned executables/units; retain configuration and persistent state for a later reinstall. |
-| Purge | Remove package conffiles according to dpkg policy, but do not silently delete /var/lib/dockstation; data deletion is a separate explicit administrative action. |
+| Remove | Stop and disable the service; remove package-owned executables/units; retain configuration and persistent state for a later reinstall. `deb-systemd-helper disable` removes the enablement link but keeps helper state for a possible reinstall. |
+| Purge | Remove package conffiles according to dpkg policy and purge the helper's service-state record with `deb-systemd-helper purge`, but do not delete `/var/lib/dockstation`; data deletion is a separate explicit administrative action. |
 | Restore | Reinstall package, restore configuration and database from an independently verified backup if needed, then verify service and /api/v1/health. The package does not claim to implement automatic backup/restore. |
 
 ## 5. Release gates and verification
@@ -90,7 +90,7 @@ The current ESP32 credential store reads pre-provisioned encrypted NVS only. A s
 A release is not ready merely because the package can be built.
 
 - Windows: build the frozen QML application, compile the installer, verify the installer payload and run a packaged-app QML startup smoke test on Windows CI. Perform a manual install/upgrade/uninstall check on a supported Windows 10/11 machine before declaring a user-facing release.
-- amd64: build the package on a native x86_64/amd64 runner, verify the ELF machine type and Debian metadata, inspect payload and dependencies, and exercise install/upgrade/remove/purge lifecycle in an isolated Ubuntu/Debian environment.
-- Repka arm64: build the package on a native ARM64 runner, inspect package metadata and payload, install/upgrade/remove it in an isolated Debian-compatible ARM64 environment, verify conffile/state preservation, verify service lifecycle and health endpoint, and inspect dependency resolution.
+- amd64: build two distinct Debian versions on a native x86_64/amd64 runner, verify ELF machine type and metadata, inspect payload/dependencies, then install the lower version and upgrade to the higher version. Verify preservation of the conffile, a valid SQLite database and a test record through upgrade, remove and purge. Verify that purge removes only dpkg-owned configuration while retaining `/var/lib/dockstation`.
+- Repka arm64: perform the same two-version install/upgrade/remove/purge lifecycle on a native ARM64 runner, including SQLite `PRAGMA integrity_check` and retained test data. This is a native ARM64 CI environment, not a substitute for checking the exact Repka OS image and physical board.
 - Before distributing to the actual Repka: record /etc/os-release, dpkg --print-architecture, libc, OpenSSL and SQLite runtime versions from the exact vendor image; confirm the package dependency/ABI floor against that image.
 - Physical UART, ESP32, sensors, keys, pinmux and firmware are hardware acceptance items, not package CI claims.
