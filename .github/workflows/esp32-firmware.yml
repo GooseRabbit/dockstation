@@ -3,12 +3,14 @@ name: ESP32 firmware build
 on:
   push:
     branches:
-      - chore/flatten-repka-directories
+      - main
     paths:
       - "firmware/esp32/**"
       - "src/hardware/interfaces/**"
       - ".github/workflows/esp32-firmware.yml"
   pull_request:
+    branches:
+      - main
     paths:
       - "firmware/esp32/**"
       - "src/hardware/interfaces/**"
