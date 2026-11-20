@@ -804,7 +804,7 @@ jobs:
           name: dockstation-repka-pi5-arm64-${{ github.sha }}
           path: ${{ runner.temp }}/dockstation-release/bundle
 
-      - name: Create prerelease and publish Linux assets
+      - name: Create or update prerelease and publish Linux assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ github.ref_name }}
@@ -852,12 +852,26 @@ jobs:
           - Treat this release as a test build until the remaining platform and hardware checks are complete.
           EOF
 
-          gh release create "$RELEASE_TAG" \
-            "$deb" "$deb.sha256" "$deb.attestation.jsonl" \
-            "$bundle" "$bundle.sha256" "$bundle.attestation.jsonl" \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "DockStation $RELEASE_TAG" \
-            --notes-file "$notes" \
-            --prerelease \
-            --verify-tag
+          # A release may already have been created manually. Reuse it instead
+          # of failing with "a release with the same tag name already exists".
+          # --clobber makes this publication step safe to retry without
+          # leaving duplicate or stale copies of these six Linux assets.
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists; attaching verified ARM64 assets."
+            gh release upload "$RELEASE_TAG" \
+              "$deb" "$deb.sha256" "$deb.attestation.jsonl" \
+              "$bundle" "$bundle.sha256" "$bundle.attestation.jsonl" \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+          else
+            echo "Release $RELEASE_TAG does not exist; creating the prerelease."
+            gh release create "$RELEASE_TAG" \
+              "$deb" "$deb.sha256" "$deb.attestation.jsonl" \
+              "$bundle" "$bundle.sha256" "$bundle.attestation.jsonl" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "DockStation $RELEASE_TAG" \
+              --notes-file "$notes" \
+              --prerelease \
+              --verify-tag
+          fi
 
