@@ -54,9 +54,10 @@ struct ControllerLinkServiceStatus final {
     const char* error_code{""};
 };
 
-// Connects the Repka UART/TLS transport to the shared ControllerCodec and
-// ControllerLinkSession. It deliberately exposes no physical-command API:
-// the only initial application request is REQUEST_SNAPSHOT.
+// Connects the Repka UART/TLS transport to ControllerCodec and
+// ControllerLinkSession. REQUEST_SNAPSHOT is the autonomous telemetry request;
+// request_command() is a narrow transport seam for an already-authorized caller.
+// It does not execute hardware actions or publish command completion to the API.
 class ControllerLinkService final {
 public:
     ControllerLinkService() noexcept = default;
