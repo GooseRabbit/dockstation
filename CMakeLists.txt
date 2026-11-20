@@ -818,6 +818,7 @@ if(BUILD_TESTING)
                     test_dht22_frame_decoder
                     test_controller_psk_credential_store
                     test_local_api
+                    test_prototype_uart_telemetry_service
                     test_source_cursor_reader
                     test_source_session_contract
                     test_source_session_verifier
@@ -966,6 +967,9 @@ if(BUILD_TESTING)
                 -fsanitize=address,undefined
             )
             target_link_options(test_local_api PRIVATE
+                -fsanitize=address,undefined
+            )
+            target_link_options(test_prototype_uart_telemetry_service PRIVATE
                 -fsanitize=address,undefined
             )
             target_link_options(test_source_cursor_reader PRIVATE
