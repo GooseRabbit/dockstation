@@ -3,7 +3,7 @@ name: Mbed TLS / OpenSSL interoperability
 on:
   push:
     branches:
-      - chore/flatten-repka-directories
+      - main
   pull_request:
     branches:
       - main
