@@ -2,7 +2,7 @@ Package: dockstation-gateway
 Version: @VERSION@
 Section: misc
 Priority: optional
-Architecture: arm64
+Architecture: @ARCH@
 Maintainer: DockStation Project
 Depends: @RUNTIME_DEPENDS@, adduser, systemd
 Description: DockStation read-only Linux Gateway
