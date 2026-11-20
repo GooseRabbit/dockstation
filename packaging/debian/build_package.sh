@@ -105,7 +105,7 @@ case "$PACKAGE_ARCH" in
 esac
 
 for binary in "$PACKAGE_ROOT"/usr/bin/dockstation*; do
-    readelf -h "$binary" | grep -Fq "Machine:                           $EXPECTED_ELF_MACHINE" || {
+    readelf -h "$binary" | grep -Eq "Machine:[[:space:]]+$EXPECTED_ELF_MACHINE$" || {
         echo "ELF architecture mismatch: $binary is not $PACKAGE_ARCH." >&2
         readelf -h "$binary" | grep 'Machine:' >&2 || true
         exit 1
