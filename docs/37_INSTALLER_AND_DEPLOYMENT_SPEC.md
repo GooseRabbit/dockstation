@@ -1,8 +1,8 @@
 # DockStation installers and deployment contract
 
 **Status:** implementation specification for the first distributable software slice.  
-**Date:** 2026-11-19.  
-**Scope:** Windows Operator installer and ARM64 Repka Gateway Debian package.
+**Date:** 2026-11-20.  
+**Scope:** Windows Operator installer and native-architecture Linux Gateway Debian packages (amd64 for x86_64 hosts and arm64 for Repka).
 
 ## 1. Product boundaries
 
@@ -26,9 +26,9 @@ It does not contain:
 
 Target: Windows 10/11 x64. The installer must not require Python to be installed on the target PC. It must not silently enable/install Windows optional features or weaken SSH host-key checking. The initial CI artifact is not Authenticode-signed because no code-signing certificate has been configured; GitHub build provenance, if enabled, is not a substitute for Windows publisher signing and SmartScreen may show an unknown-publisher warning.
 
-### Repka package (.deb)
+### Linux Gateway package (.deb)
 
-The initial package is dockstation-gateway for native ARM64 (arm64) Debian/APT-compatible systems. It contains:
+The package is built natively for the target Debian architecture: amd64 for x86_64 Linux hosts and arm64 for Repka Pi 5. The same package payload and lifecycle policy are used for both architectures; the ELF machine type, Debian Architecture field, runtime dependencies and filename must match the actual native build. Cross-architecture packaging is not implied. It contains:
 
 - dockstation_linux_bootstrap;
 - dockstation-credential-provision;
@@ -43,7 +43,7 @@ It does not contain:
 - ESP-IDF or a compiler for ESP32;
 - an automatically executed ESP32 flash/provisioning operation.
 
-Runtime shared-library dependencies are derived from the actual ARM64 binaries at package-build time and written into Debian control metadata. The exact target Repka OS image and its package/ABI compatibility remain a release gate; arm64 alone does not prove compatibility with every Repka OS image.
+Runtime shared-library dependencies are derived from the actual native binaries at package-build time and written into Debian control metadata. For Repka, the exact target OS image and its package/ABI compatibility remain a release gate; arm64 alone does not prove compatibility with every Repka OS image. The amd64 package is intended for x86_64 Debian/Ubuntu hosts and is also used to validate the installer path on the development server.
 
 ## 2. Gateway service and configuration policy
 
@@ -75,7 +75,7 @@ The current ESP32 credential store reads pre-provisioned encrypted NVS only. A s
 | Uninstall | Remove application binaries and shortcuts; preserve profiles, logs, SSH keys, known_hosts and other user data. Explain where the data remains. |
 | Restore | Reinstall the same or newer installer; existing user data is reused. Recovery of lost SSH keys/known_hosts is the user's independent backup responsibility. |
 
-### Repka
+### Linux Gateway package (amd64 / arm64)
 
 | Scenario | Required behaviour |
 |---|---|
@@ -90,6 +90,7 @@ The current ESP32 credential store reads pre-provisioned encrypted NVS only. A s
 A release is not ready merely because the package can be built.
 
 - Windows: build the frozen QML application, compile the installer, verify the installer payload and run a packaged-app QML startup smoke test on Windows CI. Perform a manual install/upgrade/uninstall check on a supported Windows 10/11 machine before declaring a user-facing release.
-- Repka: build the package on a native ARM64 runner, inspect package metadata and payload, install/upgrade/remove it in an isolated Debian-compatible ARM64 environment, verify conffile/state preservation, verify service lifecycle and health endpoint, and inspect dependency resolution.
+- amd64: build the package on a native x86_64/amd64 runner, verify the ELF machine type and Debian metadata, inspect payload and dependencies, and exercise install/upgrade/remove/purge lifecycle in an isolated Ubuntu/Debian environment.
+- Repka arm64: build the package on a native ARM64 runner, inspect package metadata and payload, install/upgrade/remove it in an isolated Debian-compatible ARM64 environment, verify conffile/state preservation, verify service lifecycle and health endpoint, and inspect dependency resolution.
 - Before distributing to the actual Repka: record /etc/os-release, dpkg --print-architecture, libc, OpenSSL and SQLite runtime versions from the exact vendor image; confirm the package dependency/ABI floor against that image.
 - Physical UART, ESP32, sensors, keys, pinmux and firmware are hardware acceptance items, not package CI claims.
