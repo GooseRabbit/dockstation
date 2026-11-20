@@ -8,13 +8,11 @@ idf_component_register(
         "../../../../firmware/esp32/components/controller_station_logic/controller_station_command_policy.cpp"
         "../../../../firmware/esp32/components/controller_station_logic/controller_station_state.cpp"
         "../../../../firmware/esp32/components/controller_station_logic/controller_station_safety_input_adapter.cpp"
-        "../../../../firmware/esp32/components/controller_lid_limit_switches/lid_limit_switch_tracker.cpp"
     INCLUDE_DIRS
         "include"
         "../../../../src"
         "../controller_station_logic/include"
-        "../controller_lid_limit_switches/include"
-    REQUIRES mbedtls bootloader_support
+    REQUIRES mbedtls bootloader_support controller_lid_limit_switches
 )
 
 # Keep the firmware component on the same language baseline as the shared code.
