@@ -1417,7 +1417,7 @@ Repka использует `controller_local_id` и `controller_peer_id` из с
 | `Dht22DecodeStatus` | Разделяет успешное декодирование, неверный аргумент/длину, ошибку checksum и значения вне диапазона влажности/температуры. |
 | `decode_dht22_frame(const uint8_t*, size_t, Dht22DecodedReading&)` | Декодирует уже захваченные пять байт AM2302/DHT22: humidity MSB/LSB, temperature MSB/LSB и checksum. Проверяет 8-битную сумму первых четырёх байтов, sign bit температуры и диапазоны; на любой ошибке очищает output. Не обращается к GPIO и не создаёт показания. |
 
-Реализация находится в `firmware/esp32/components/controller_dht22_sensor/`; та же функция входит в ESP-IDF target build и host CTest `dht22_frame_decoder`. Тайминги single-bus, GPIO pin map, питание, минимальный интервал опроса, состояние/качество канала и интеграция двух физических датчиков остаются отдельной работой после подтверждения аппаратного профиля. Host-тесты проверяют только декодер кадра, не датчик и не электрическую линию.
+Реализация находится в `firmware/esp32/components/controller_dht22_sensor/`; та же функция входит в ESP-IDF target build и host CTest `dht22_frame_decoder`. GPIO acquisition реализован в ESP-IDF adapter; прошивка назначает DHT22 №1 на GPIO25 и DHT22 №2 на GPIO26, использует отдельные scheduler и публикует до четырёх телеметрических каналов. Физическая проводка, питание, уровни, тайминги и реальные датчики ещё требуют аппаратной приёмки. Host-тесты проверяют только декодер кадра, не датчик и не электрическую линию.
 
 Источник формата и ограничений: [Aosong AM2302 Technical Manual](https://aosong.com/uploadfiles/2025/04/20250417105409216.pdf), таблица 6 и разделы 5.2–5.3.
 
