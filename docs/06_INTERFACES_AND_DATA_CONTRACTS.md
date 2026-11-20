@@ -1411,13 +1411,13 @@ SourceSessionEvidence должен формироваться доверенны
 
 Подтверждение/смена сессии и фиксация события профильным обработчиком пока являются двумя отдельными транзакционными шагами. Если F13 или профильная фиксация завершится ошибкой после подтверждения новой сессии, новая сессия останется установленной с пустым last_sequence; событие при этом не считается обработанным.
 
-### 27.15. Кандидатная граница локального SQLite-хранилища (DEC-068 — предложение)
+### 27.15. Production SQLite boundary in Linux Gateway (DEC-068)
 
-SqliteDatabase размещается в src/platform/persistence/ и не переносит типы SQLite в dockstation::core или dockstation::configuration. Его назначение — владение одним native connection, проверка application_id/user_version и начальная schema migration. Кандидатный CTest sqlite_persistence_probe прошёл в GitHub Actions run 43699555707 (23/23 CTest, 31/31 C++ host-программ, 141 pytest).
+SQLite is the selected local persistence backend for the current Repka Gateway slice. `SqliteDatabase` remains in `src/platform/persistence/` and keeps SQLite types out of `dockstation::core` and `dockstation::configuration`. `GatewayPersistenceContext` owns the single native connection; the composition root opens it before `LocalApiServer` starts and closes it after the server stops. The database resides under `/var/lib/dockstation/dockstation.sqlite3` and is owned by the dedicated `dockstation` service account.
 
-Текущий probe подтверждает только поведение движка и адаптера на host: режим DELETE journal, synchronous=EXTRA, foreign_keys=ON, trusted_schema=OFF; отклонение относительного пути, конечного symlink и чужой БД без изменения её WAL-режима; атомарность связанных строк в одной транзакции; сохранность после close/reopen и откат незавершённой транзакции после принудительного завершения дочернего процесса. Он не доказывает устойчивость при power loss и не реализует ни один из логических repository-портов SSM/CFG.
+Production adapters currently persist local source/session/cursor and subsystem-status data. An authenticated ControllerLink `SUBSYSTEM_STATUS_UPDATED` event passes through the authenticated ingress, `StationEventPipeline`, F13 `SubsystemStatusEventProcessor`, and `SqliteSubsystemStatusStore`; the accepted Event, append-only status history, current-status pointer and source cursor are committed atomically. The current integration does not provide full persistence for every SSM processor, all sensor telemetry/history, video, operator logs, backup/restore, or power-loss guarantees.
 
-Кандидатный путь /var/lib/dockstation/station.sqlite3 предполагает отдельное systemd StateDirectory=dockstation с mode 0750; соответствующее изменение service unit ещё не выполнено. Реальная БД не подключена к Gateway runtime, а её доменные таблицы и production adapters не созданы. SQLite остаётся предложением DEC-068, а не утверждённым выбором; проверка точной библиотеки/версии на Repka OS обязательна.
+Host CTest and x86_64/ARM64 CI exercise SQLite open/migration, transactions, close/reopen, integrity checks, and the authenticated ControllerLink/PTY integration path. These checks do not establish durability under sudden power loss or compatibility with the final Repka OS image. The exact target SQLite runtime and filesystem behavior remain hardware/deployment acceptance items.
 
 ### 27.16. Registry-backed SourceSessionVerifier
 
