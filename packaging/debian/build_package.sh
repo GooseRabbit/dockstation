@@ -84,20 +84,37 @@ RUNTIME_DEPENDS="$(printf '%s\n' "$SHLIBS_OUTPUT" | sed -n 's/^shlibs:Depends=//
 # Keep the package installable on either ABI-compatible OpenSSL 3 provider.
 RUNTIME_DEPENDS="$(printf '%s\n' "$RUNTIME_DEPENDS" | sed -E 's/libssl3t64 \(>= ([^)]+)\)/libssl3 (>= \1) | libssl3t64 (>= \1)/g')"
 sed -e "s/@VERSION@/$VERSION/g" \
+    -e "s/@ARCH@/$PACKAGE_ARCH/g" \
     -e "s#@RUNTIME_DEPENDS@#$RUNTIME_DEPENDS#g" \
     packaging/debian/control.in > "$PACKAGE_ROOT/DEBIAN/control"
 
-# Validate ELF architecture before creating a package labelled arm64.
+# Build a native package only: Debian architecture metadata must match every
+# shipped ELF executable. Cross-compilation/package staging is not implied.
+PACKAGE_ARCH="$(dpkg --print-architecture)"
+case "$PACKAGE_ARCH" in
+    amd64)
+        EXPECTED_ELF_MACHINE='Advanced Micro Devices X86-64'
+        ;;
+    arm64)
+        EXPECTED_ELF_MACHINE='AArch64'
+        ;;
+    *)
+        echo "Unsupported Debian package architecture: $PACKAGE_ARCH (supported: amd64, arm64)" >&2
+        exit 1
+        ;;
+esac
+
 for binary in "$PACKAGE_ROOT"/usr/bin/dockstation*; do
-    readelf -h "$binary" | grep -Eq 'Machine:[[:space:]]+AArch64' || {
-        echo "Non-AArch64 executable in ARM64 package: $binary" >&2
+    readelf -h "$binary" | grep -Fq "Machine:                           $EXPECTED_ELF_MACHINE" || {
+        echo "ELF architecture mismatch: $binary is not $PACKAGE_ARCH." >&2
+        readelf -h "$binary" | grep 'Machine:' >&2 || true
         exit 1
     }
 done
 
 chmod 0755 "$PACKAGE_ROOT/DEBIAN/postinst" "$PACKAGE_ROOT/DEBIAN/prerm" "$PACKAGE_ROOT/DEBIAN/postrm"
 chmod 0644 "$PACKAGE_ROOT/DEBIAN/control" "$PACKAGE_ROOT/DEBIAN/conffiles"
-package="$OUTPUT_DIR/dockstation-gateway_${VERSION}_arm64.deb"
+package="$OUTPUT_DIR/dockstation-gateway_${VERSION}_${PACKAGE_ARCH}.deb"
 dpkg-deb --root-owner-group --build "$PACKAGE_ROOT" "$package"
 dpkg-deb --info "$package"
 dpkg-deb --contents "$package"
