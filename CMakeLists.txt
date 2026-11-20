@@ -62,6 +62,7 @@ add_library(dockstation_linux_runtime STATIC
     src/hardware/interfaces/controller_link_startup_readiness.cpp
     src/hardware/interfaces/controller_telemetry_snapshot.cpp
     src/platform/linux/controller_link_service.cpp
+    src/platform/linux/prototype_uart_telemetry_service.cpp
     src/communications/api_serialization.cpp
     src/communications/local_api_server.cpp
 )
@@ -692,6 +693,16 @@ if(BUILD_TESTING)
     set_tests_properties(
         controller_psk_credential_provision_rejects_identical_ids
         PROPERTIES WILL_FAIL TRUE)
+
+    add_executable(test_prototype_uart_telemetry_service
+        verification/repka_gateway/test_prototype_uart_telemetry_service.cpp
+    )
+    target_link_libraries(test_prototype_uart_telemetry_service
+        PRIVATE dockstation_linux_runtime
+    )
+    dockstation_apply_compile_policy(test_prototype_uart_telemetry_service)
+    add_test(NAME prototype_uart_telemetry_service
+        COMMAND test_prototype_uart_telemetry_service)
 
     add_executable(test_local_api
         verification/repka_gateway/test_local_api.cpp

@@ -176,7 +176,8 @@ HttpParseResult parse_http_request_impl(const std::string& raw_request) {
 
 ApiResponse dispatch_api_request_impl(
     const HttpRequest& request,
-    const platform::linux_platform::ControllerLinkService* controller_link) {
+    const platform::linux_platform::ControllerLinkService* controller_link,
+    const platform::linux_platform::PrototypeUartTelemetryService* prototype_uart) {
     if (request.target.find('?') != std::string::npos ||
         request.target.find('#') != std::string::npos) {
         return {400U, "Bad Request",
@@ -202,7 +203,7 @@ ApiResponse dispatch_api_request_impl(
         const auto* telemetry_snapshot = controller_link == nullptr
             ? nullptr : &controller_link->telemetry_snapshot();
         const std::string body = serialize_system_diagnostics(
-            &controller_status, nullptr, telemetry_snapshot);
+            &controller_status, nullptr, telemetry_snapshot, prototype_uart);
         if (body.empty()) {
             return {500U, "Internal Server Error",
                     serialize_error_response(
@@ -254,8 +255,9 @@ HttpParseResult parse_http_request(const std::string& raw_request) {
 
 ApiResponse dispatch_api_request(
     const HttpRequest& request,
-    const platform::linux_platform::ControllerLinkService* controller_link) {
-    return dispatch_api_request_impl(request, controller_link);
+    const platform::linux_platform::ControllerLinkService* controller_link,
+    const platform::linux_platform::PrototypeUartTelemetryService* prototype_uart) {
+    return dispatch_api_request_impl(request, controller_link, prototype_uart);
 }
 
 LocalApiServer::~LocalApiServer() {
@@ -264,7 +266,8 @@ LocalApiServer::~LocalApiServer() {
 
 bool LocalApiServer::start(
     std::uint32_t port,
-    platform::linux_platform::ControllerLinkService* controller_link) {
+    platform::linux_platform::ControllerLinkService* controller_link,
+    platform::linux_platform::PrototypeUartTelemetryService* prototype_uart) {
     if (listen_descriptor_ >= 0) {
         error_ = "Local API server is already running";
         return false;
@@ -325,6 +328,7 @@ bool LocalApiServer::start(
     listen_descriptor_ = descriptor;
     bound_port_ = ntohs(actual_address.sin_port);
     controller_link_ = controller_link;
+    prototype_uart_ = prototype_uart;
     error_.clear();
     return true;
 }
@@ -460,7 +464,7 @@ LocalApiServeResult LocalApiServer::serve_once(int timeout_milliseconds) {
                         response = {400U, "Bad Request",
                             serialize_error_response("INVALID_HTTP_REQUEST", parsed.error), {}};
                     } else {
-                        response = dispatch_api_request_impl(parsed.request, controller_link_);
+                        response = dispatch_api_request_impl(parsed.request, controller_link_, prototype_uart_);
                     }
                 }
                 client.response = build_http_response(response);
@@ -518,6 +522,7 @@ void LocalApiServer::stop() noexcept {
     }
     bound_port_ = 0U;
     controller_link_ = nullptr;
+    prototype_uart_ = nullptr;
 }
 
 LocalApiServerStatus LocalApiServer::status() const {
@@ -527,17 +532,19 @@ LocalApiServerStatus LocalApiServer::status() const {
 int run_local_api_server(
     std::uint32_t port,
     const volatile std::sig_atomic_t* shutdown_requested,
-    platform::linux_platform::ControllerLinkServiceConfig controller_config) {
+    platform::linux_platform::ControllerLinkServiceConfig controller_config,
+    std::string_view prototype_uart_device) {
     platform::linux_platform::ControllerLinkService controller_link;
     return run_local_api_server(
-        port, shutdown_requested, controller_link, controller_config);
+        port, shutdown_requested, controller_link, controller_config, prototype_uart_device);
 }
 
 int run_local_api_server(
     std::uint32_t port,
     const volatile std::sig_atomic_t* shutdown_requested,
     platform::linux_platform::ControllerLinkService& controller_link,
-    platform::linux_platform::ControllerLinkServiceConfig controller_config) {
+    platform::linux_platform::ControllerLinkServiceConfig controller_config,
+    std::string_view prototype_uart_device) {
     if (shutdown_requested == nullptr) {
         (void)write_log(platform::logging::LogLevel::Error,
                         "Для локального API не передан флаг штатного завершения");
@@ -553,8 +560,17 @@ int run_local_api_server(
                             ? "" : controller_status.error_code}});
     }
 
+    platform::linux_platform::PrototypeUartTelemetryService prototype_uart;
+    if (!prototype_uart_device.empty() && !prototype_uart.configure(prototype_uart_device)) {
+        (void)write_log(platform::logging::LogLevel::Error,
+                        "Некорректная настройка прототипного UART DHT22",
+                        {{"device", std::string{prototype_uart_device}}});
+        controller_link.stop();
+        return 1;
+    }
+
     LocalApiServer server;
-    if (!server.start(port, &controller_link)) {
+    if (!server.start(port, &controller_link, &prototype_uart)) {
         (void)write_log(platform::logging::LogLevel::Error,
                         "Не удалось запустить локальный read-only API",
                         {{"reason", server.status().reason},
@@ -571,6 +587,7 @@ int run_local_api_server(
 
     while (*shutdown_requested == 0) {
         controller_link.poll();
+        prototype_uart.poll();
         const LocalApiServeResult result = server.serve_once(250);
         if (result == LocalApiServeResult::Error) {
             (void)write_log(platform::logging::LogLevel::Error,

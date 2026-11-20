@@ -5,6 +5,7 @@
 #include <string_view>
 
 #include "driver/gpio.h"
+#include "driver/uart.h"
 #include "esp_err.h"
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
@@ -55,6 +56,17 @@ constexpr std::uint32_t kControllerLinkTaskStackSizeBytes = 12U * 1024U;
 constexpr UBaseType_t kControllerLinkTaskPriority = tskIDLE_PRIORITY + 3U;
 
 constexpr std::uint64_t kMemoryReportIntervalMs = 60000U;
+
+// Temporary plaintext prototype telemetry channel. UART0 remains dedicated to
+// USB programming/logging; UART2 is wired separately to the Linux host.
+constexpr uart_port_t kPrototypeUartPort = UART_NUM_2;
+constexpr gpio_num_t kPrototypeUartTxPin = GPIO_NUM_17;
+constexpr gpio_num_t kPrototypeUartRxPin = GPIO_NUM_16;
+constexpr int kPrototypeUartBaudRate = 115200;
+constexpr std::uint64_t kPrototypeTelemetryIntervalMs = 2000U;
+bool g_prototype_uart_enabled{false};
+std::uint64_t g_prototype_telemetry_sequence{0U};
+
 
 // Sensor acquisition is independent from ControllerLink readiness. This flag
 // is enabled only after the complete transport profile and credentials pass.
@@ -149,6 +161,87 @@ constexpr gpio_num_t kDht22Sensor1DataPin = GPIO_NUM_25;
 constexpr gpio_num_t kDht22Sensor2DataPin = GPIO_NUM_26;
 
 std::array<Dht22Channel, 2U> g_dht22_channels{};
+
+bool initialize_prototype_uart() noexcept {
+    uart_config_t uart_config{};
+    uart_config.baud_rate = kPrototypeUartBaudRate;
+    uart_config.data_bits = UART_DATA_8_BITS;
+    uart_config.parity = UART_PARITY_DISABLE;
+    uart_config.stop_bits = UART_STOP_BITS_1;
+    uart_config.flow_ctrl = UART_HW_FLOWCTRL_DISABLE;
+    uart_config.rx_flow_ctrl_thresh = 0U;
+    uart_config.source_clk = UART_SCLK_DEFAULT;
+
+    esp_err_t result = uart_param_config(kPrototypeUartPort, &uart_config);
+    if (result != ESP_OK) {
+        ESP_LOGE(kTag, "Prototype UART configuration failed: %s", esp_err_to_name(result));
+        return false;
+    }
+    result = uart_set_pin(
+        kPrototypeUartPort, kPrototypeUartTxPin, kPrototypeUartRxPin,
+        UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+    if (result != ESP_OK) {
+        ESP_LOGE(kTag, "Prototype UART pin setup failed: %s", esp_err_to_name(result));
+        return false;
+    }
+    result = uart_driver_install(kPrototypeUartPort, 1024, 256, 0, nullptr, 0);
+    if (result != ESP_OK) {
+        ESP_LOGE(kTag, "Prototype UART driver install failed: %s", esp_err_to_name(result));
+        return false;
+    }
+
+    ESP_LOGW(kTag,
+        "PLAINTEXT PROTOTYPE UART active: UART2 TX=GPIO%d RX=GPIO%d baud=%d 8N1",
+        static_cast<int>(kPrototypeUartTxPin),
+        static_cast<int>(kPrototypeUartRxPin), kPrototypeUartBaudRate);
+    return true;
+}
+
+void send_prototype_dht22_telemetry() noexcept {
+    if (!g_prototype_uart_enabled) return;
+
+    const std::uint64_t now_us = static_cast<std::uint64_t>(esp_timer_get_time());
+    char values[4][24]{};
+    for (std::size_t index = 0U; index < g_dht22_channels.size(); ++index) {
+        const auto& channel = g_dht22_channels[index];
+        const bool fresh = channel.has_reading &&
+            now_us >= channel.measured_at_us &&
+            now_us - channel.measured_at_us <= 5000000U;
+        const std::size_t temperature_index = index * 2U;
+        const std::size_t humidity_index = temperature_index + 1U;
+        if (fresh) {
+            const double temperature =
+                static_cast<double>(channel.reading.temperature_tenths_c) / 10.0;
+            const double humidity =
+                static_cast<double>(channel.reading.relative_humidity_tenths_percent) / 10.0;
+            (void)std::snprintf(values[temperature_index], sizeof(values[temperature_index]),
+                                "%.1f", temperature);
+            (void)std::snprintf(values[humidity_index], sizeof(values[humidity_index]),
+                                "%.1f", humidity);
+        } else {
+            std::snprintf(values[temperature_index], sizeof(values[temperature_index]), "NA");
+            std::snprintf(values[humidity_index], sizeof(values[humidity_index]), "NA");
+        }
+    }
+
+    ++g_prototype_telemetry_sequence;
+    if (g_prototype_telemetry_sequence == 0U) ++g_prototype_telemetry_sequence;
+    char frame[160]{};
+    const int length = std::snprintf(
+        frame, sizeof(frame), "DS1,%llu,%llu,%s,%s,%s,%s\n",
+        static_cast<unsigned long long>(g_prototype_telemetry_sequence),
+        static_cast<unsigned long long>(monotonic_milliseconds()),
+        values[0], values[1], values[2], values[3]);
+    if (length <= 0 || static_cast<std::size_t>(length) >= sizeof(frame)) {
+        ESP_LOGW(kTag, "Prototype telemetry frame formatting failed");
+        return;
+    }
+    const int written = uart_write_bytes(
+        kPrototypeUartPort, frame, static_cast<size_t>(length));
+    if (written != length) {
+        ESP_LOGW(kTag, "Prototype UART telemetry write incomplete: %d/%d", written, length);
+    }
+}
 
 void initialize_dht22_channels() noexcept {
     // Keep the mapping in one place so a later wiring revision is easy to apply.
@@ -295,6 +388,7 @@ void controller_link_polling_task(void*) {
 
     log_runtime_memory("task-start");
     std::uint64_t last_memory_report_ms = monotonic_milliseconds();
+    std::uint64_t last_prototype_telemetry_ms = 0U;
 
     constexpr TickType_t requested_delay = pdMS_TO_TICKS(10U);
     constexpr TickType_t poll_delay =
@@ -303,6 +397,14 @@ void controller_link_polling_task(void*) {
     for (;;) {
         const std::uint64_t now_ms = monotonic_milliseconds();
         poll_dht22_channels();
+
+        if (g_prototype_uart_enabled &&
+            (last_prototype_telemetry_ms == 0U ||
+             (now_ms >= last_prototype_telemetry_ms &&
+              now_ms - last_prototype_telemetry_ms >= kPrototypeTelemetryIntervalMs))) {
+            send_prototype_dht22_telemetry();
+            last_prototype_telemetry_ms = now_ms;
+        }
 
         // Keep the DHT22 acquisition lifecycle alive even when the physical
         // UART profile or protected ControllerLink credentials are not ready.
@@ -415,6 +517,10 @@ extern "C" void app_main(void) {
         evaluate_controller_link_startup_readiness;
 
     ESP_LOGI(kTag, "DockStation ESP32 firmware bootstrap started");
+    g_prototype_uart_enabled = initialize_prototype_uart();
+    if (!g_prototype_uart_enabled) {
+        ESP_LOGE(kTag, "Prototype telemetry UART unavailable; DHT22 sampling will continue locally");
+    }
 
     // DHT22 acquisition is useful independently of ControllerLink. Prepare
     // its task even when the physical UART profile is intentionally unset.

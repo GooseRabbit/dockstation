@@ -15,6 +15,8 @@ struct RuntimeConfig {
     std::uint32_t api_port{kDefaultGatewayPort};
     // Leave all three values empty until the paired ESP32 and UART device are configured.
     std::string controller_uart_device{};
+    // Temporary plaintext DHT22 prototype channel; independent of secure ControllerLink.
+    std::string prototype_uart_device{};
     std::string controller_local_id{};
     std::string controller_peer_id{};
     // Optional authenticated subsystem-event binding; Station ID is not

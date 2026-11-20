@@ -437,3 +437,8 @@ GPIO acquisition is still not connected. This layer validates age only after
 a caller supplies a sample; it does not prove that a caller actually sampled
 the electrical input at that time. The hardware integration must timestamp
 samples at acquisition, not when forwarding cached values.
+
+ 
+## Prototype UART telemetry
+
+A plaintext receive-only DHT22 telemetry path is available for isolated hardware prototyping. UART2 uses GPIO17 TX / GPIO16 RX at 115200 8N1; UART0 remains the USB console/programming port. The frame and Linux configuration are documented in docs/35_PROTOTYPE_UART_DHT22.md. This temporary transport does not provide authentication, encryption or commands.

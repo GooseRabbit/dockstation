@@ -10,6 +10,7 @@
 #include <sstream>
 #include <cstdio>
 #include <algorithm>
+#include <array>
 #include <string>
 
 #include "platform/linux/network_diagnostics.hpp"
@@ -215,6 +216,67 @@ std::optional<std::string> telemetry_received_at_utc(std::uint64_t epoch_ms) {
     }
     std::copy(suffix, suffix + suffix_size, buffer + written);
     return std::string{buffer};
+}
+
+std::string serialize_prototype_uart_telemetry(
+    const platform::linux_platform::PrototypeUartTelemetryService& service) {
+    const bool available = service.has_snapshot();
+    const bool connected = service.connected();
+    bool has_valid_measurement = false;
+    for (std::size_t index = 0U; available && index < 4U; ++index) {
+        has_valid_measurement = has_valid_measurement || service.measurement(index).available;
+    }
+    const char* status = !service.configured() ? "NOT_CONFIGURED"
+        : !available ? "UNAVAILABLE"
+        : connected && has_valid_measurement ? "PASS" : "WARN";
+    const char* message = !service.configured()
+        ? "Prototype UART telemetry is not configured"
+        : !available ? "Waiting for the first ESP32 telemetry frame"
+        : connected ? "Latest DHT22 telemetry frame received over prototype UART"
+                    : "Last DHT22 snapshot retained; UART data is stale";
+
+    std::ostringstream output;
+    output << "{\"status\":\"" << status
+           << "\",\"message\":\"" << message
+           << "\",\"transport\":\"PROTOTYPE_UART\""
+           << ",\"error_code\":\"" << service.error_code() << "\""
+           << ",\"link_connected\":" << (connected ? "true" : "false")
+           << ",\"source_controller_id\":"
+           << optional_string(available, available ? std::string{"esp32-prototype"} : std::string{})
+           << ",\"controller_instance_id\":"
+           << optional_string(available, available ? std::string{"prototype-uart"} : std::string{})
+           << ",\"sequence_number\":"
+           << optional_integer(available, service.sequence_number())
+           << ",\"received_at_utc\":";
+    const auto received_at = available
+        ? telemetry_received_at_utc(service.received_at_unix_ms()) : std::nullopt;
+    output << (received_at.has_value() ? "\""+*received_at+"\"" : "null")
+           << ",\"measurements\":[";
+    constexpr std::array<const char*, 4U> ids{{
+        "dht22_1.temperature", "dht22_1.humidity",
+        "dht22_2.temperature", "dht22_2.humidity"}};
+    constexpr std::array<const char*, 4U> units{{"°C", "%", "°C", "%"}};
+    for (std::size_t index = 0U; available && index < ids.size(); ++index) {
+        if (index != 0U) output << ',';
+        const auto& measurement = service.measurement(index);
+        const char* quality = !measurement.available ? "UNAVAILABLE"
+            : connected ? "OK" : "STALE";
+        output << "{\"sensor_id\":\"" << ids[index]
+               << "\",\"value_type\":\""
+               << (measurement.available ? "NUMBER" : "TEXT")
+               << "\",\"value\":";
+        if (measurement.available) {
+            output << optional_number(true, measurement.value, true);
+        } else {
+            output << "\"UNAVAILABLE\"";
+        }
+        output << ",\"unit\":\"" << units[index]
+               << "\",\"quality_status\":\"" << quality
+               << "\",\"measured_at\":\"esp_uptime_ms_"
+               << service.esp_uptime_ms() << "\"}";
+    }
+    output << "]}";
+    return output.str();
 }
 
 std::string serialize_controller_telemetry(
@@ -514,7 +576,8 @@ std::string serialize_health_response() {
 std::string serialize_system_diagnostics(
     const platform::linux_platform::ControllerLinkServiceStatus* controller_link_status,
     const platform::linux_runtime::LinuxPlatformCapabilities* platform_capabilities,
-    const hardware::interfaces::ControllerTelemetrySnapshot* telemetry_snapshot) {
+    const hardware::interfaces::ControllerTelemetrySnapshot* telemetry_snapshot,
+    const platform::linux_platform::PrototypeUartTelemetryService* prototype_uart) {
     const bool hardware_controller_connected =
         controller_link_status != nullptr &&
         controller_link_status->tls_authenticated &&
@@ -556,7 +619,9 @@ std::string serialize_system_diagnostics(
                                   detected_capabilities)
            << ",\"network\":" << serialize_network(network)
            << ",\"controller_telemetry\":"
-           << serialize_controller_telemetry(controller_link_status, telemetry_snapshot)
+           << (prototype_uart != nullptr && prototype_uart->configured()
+                   ? serialize_prototype_uart_telemetry(*prototype_uart)
+                   : serialize_controller_telemetry(controller_link_status, telemetry_snapshot))
            << ",\"controller_link\":"
            << serialize_controller_link_status(controller_link_status == nullptr
                    ? platform::linux_platform::ControllerLinkServiceStatus{}

@@ -17,3 +17,8 @@ log_stderr=true
 # Leave both commented until the station identity/source registration exists.
 # station_id=station-01
 # controller_source=esp32.main
+
+# Temporary plaintext DHT22 prototype receiver. Uncomment only on an isolated
+# test bench and use a real /dev/tty... device node.
+# The gateway-uart@.service template grants access only to this selected node.
+# prototype_uart_device=/dev/ttyS1

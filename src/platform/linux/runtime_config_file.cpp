@@ -95,6 +95,7 @@ RuntimeConfigFileResult parse_runtime_config_text(const std::string& contents) {
     RuntimeConfig config{};
     bool api_port_seen{false};
     bool controller_uart_device_seen{false};
+    bool prototype_uart_device_seen{false};
     bool controller_local_id_seen{false};
     bool controller_peer_id_seen{false};
     bool station_id_seen{false};
@@ -150,6 +151,12 @@ RuntimeConfigFileResult parse_runtime_config_text(const std::string& contents) {
                 }
                 controller_uart_device_seen = true;
                 config.controller_uart_device.assign(value.data(), value.size());
+            } else if (key == "prototype_uart_device") {
+                if (prototype_uart_device_seen) {
+                    return invalid(line_number, "prototype_uart_device", "duplicate key");
+                }
+                prototype_uart_device_seen = true;
+                config.prototype_uart_device.assign(value.data(), value.size());
             } else if (key == "controller_local_id") {
                 if (controller_local_id_seen) {
                     return invalid(line_number, "controller_local_id", "duplicate key");

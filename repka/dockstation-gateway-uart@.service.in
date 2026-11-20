@@ -8,6 +8,7 @@ StartLimitBurst=5
 Type=simple
 User=dockstation
 Group=dockstation
+SupplementaryGroups=dialout
 WorkingDirectory=/
 StateDirectory=dockstation
 StateDirectoryMode=0700

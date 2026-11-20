@@ -55,7 +55,8 @@ int run_gateway_with_persistent_event_ingress(
             {{"event_ingress", "NOT_CONFIGURED"},
              {"reason", "station_id/controller_source are not configured"}});
         return dockstation::communications::run_local_api_server(
-            config.api_port, shutdown_requested, controller_config);
+            config.api_port, shutdown_requested, controller_config,
+            config.prototype_uart_device);
     }
 
     int service_result = 1;
@@ -117,7 +118,7 @@ int run_gateway_with_persistent_event_ingress(
 
             service_result = dockstation::communications::run_local_api_server(
                 config.api_port, shutdown_requested, controller_link,
-                controller_config);
+                controller_config, config.prototype_uart_device);
         });
 
     if (!invoked) {
@@ -187,7 +188,8 @@ int run_gateway_service(
         {{"persistence", "NOT_CONFIGURED"},
          {"event_ingress", "NOT_CONFIGURED"}});
     return dockstation::communications::run_local_api_server(
-        config.api_port, shutdown_requested, controller_config);
+        config.api_port, shutdown_requested, controller_config,
+        config.prototype_uart_device);
 #endif
 }
 

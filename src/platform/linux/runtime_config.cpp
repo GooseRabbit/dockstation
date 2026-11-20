@@ -172,6 +172,17 @@ RuntimeConfigValidationResult validate_runtime_config(const RuntimeConfig& confi
         }
     }
 
+    if (!config.prototype_uart_device.empty()) {
+        if (!valid_controller_uart_path(config.prototype_uart_device)) {
+            return invalid("prototype_uart_device",
+                           "prototype UART path must be a normalized /dev/... path");
+        }
+        if (!config.controller_uart_device.empty()) {
+            return invalid("prototype_uart_device",
+                           "prototype UART and secure ControllerLink cannot use the serial runtime simultaneously");
+        }
+    }
+
     return {RuntimeConfigValidationStatus::Valid, {}, {}};
 }
 
