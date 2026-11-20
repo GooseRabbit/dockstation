@@ -127,7 +127,7 @@ jobs:
           trap cleanup_package_test EXIT
 
           # Keep package lifecycle testing isolated from service startup on the runner.
-          printf '%s\\n' '#!/bin/sh' 'exit 101' | sudo tee "$policy" >/dev/null
+          printf '%s\n' '#!/bin/sh' 'exit 101' | sudo tee "$policy" >/dev/null
           sudo chmod 0755 "$policy"
 
           sudo dpkg -i "$deb"
@@ -137,8 +137,8 @@ jobs:
           sudo getent passwd dockstation >/dev/null
           sudo getent group dockstation >/dev/null
 
-          printf '%s\\n' 'local_setting=preserve-on-upgrade' | sudo tee -a /etc/dockstation/gateway.conf >/dev/null
-          printf '%s\\n' 'preserve-me' | sudo tee /var/lib/dockstation/package-test-marker >/dev/null
+          printf '%s\n' 'local_setting=preserve-on-upgrade' | sudo tee -a /etc/dockstation/gateway.conf >/dev/null
+          printf '%s\n' 'preserve-me' | sudo tee /var/lib/dockstation/package-test-marker >/dev/null
           sudo dpkg -i "$deb"
           sudo grep -Fqx 'local_setting=preserve-on-upgrade' /etc/dockstation/gateway.conf
           sudo grep -Fqx 'preserve-me' /var/lib/dockstation/package-test-marker
