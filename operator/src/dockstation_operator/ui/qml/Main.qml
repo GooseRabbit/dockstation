@@ -21,6 +21,7 @@ ApplicationWindow {
     property color elevated: "#202D38"
     property color borderColor: "#31414E"
     property color primaryText: "#E8EEF3"
+    property color placeholderTextColor: "#FFFFFF"
     property color secondaryText: "#A8B5C0"
     property color accent: "#58B8A5"
     property color muted: "#8796A4"
@@ -215,6 +216,7 @@ ApplicationWindow {
         id: darkField
         implicitHeight: 38
         color: root.primaryText
+        placeholderTextColor: root.placeholderTextColor
         selectionColor: root.accent
         selectedTextColor: "#101820"
         verticalAlignment: TextInput.AlignVCenter
@@ -820,7 +822,6 @@ ApplicationWindow {
                                         Layout.fillWidth: true
                                         text: bridge.sshPort
                                         placeholderText: "22"
-                                        placeholderTextColor: root.muted
                                         inputMethodHints: Qt.ImhDigitsOnly
                                         onTextEdited: bridge.setSshPort(text)
                                     }
@@ -1357,6 +1358,7 @@ ApplicationWindow {
                                                                  logsScrollView.availableHeight)
                                         text: bridge.eventsText
                                         placeholderText: "Событий пока нет."
+                                        placeholderTextColor: root.placeholderTextColor
                                         readOnly: true
                                         selectByMouse: true
                                         persistentSelection: true
