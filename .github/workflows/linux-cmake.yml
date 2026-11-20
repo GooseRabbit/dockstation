@@ -839,7 +839,7 @@ jobs:
           - ARM64 Debian package: DockStation Gateway and systemd integration.
           - AMD64 Debian package is attached by its independently verified build workflow.
           - Repka Pi 5 ARM64 deployment bundle, with SHA-256 checksums and Sigstore build provenance.
-          - ESP32 firmware is not included.
+          - ESP32 prototype firmware (4 MB merged image and component binaries) is attached separately after its ESP-IDF build and generated flash arguments pass verification; physical Repka integration remains untested.
           - Compatibility with the final Repka OS image and physical hardware must still be confirmed.
 
           ### Windows
