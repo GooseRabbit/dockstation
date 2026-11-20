@@ -96,16 +96,20 @@ An accepted `REQUEST_SNAPSHOT` is answered with eight logical station-state
 measurements: lid position, platform/cleaning/drive activity, safety-stop state,
 workspace state, last command decision and pending-command state. Unavailable
 physical inputs are represented as `UNKNOWN` with `Unknown` quality; an
-unconfigured lid is `NOT_CONFIGURED`. The current firmware does not acquire
-DHT22 readings or GPIO feedback, so no temperature, humidity, motor state or
-limit-switch value is fabricated. The DHT22 decoder/adapter and lid tracker
-remain pure components awaiting hardware acquisition. The temporary envelope
+unconfigured lid is `NOT_CONFIGURED`. The runtime acquires two DHT22 channels independently of ControllerLink:
+sensor 1 uses GPIO25 and sensor 2 uses GPIO26. The GPIO reader, bounded polling,
+decoder and telemetry path are connected in firmware. Physical wiring,
+electrical levels, pull-ups and actual sensor readings still require acceptance
+on the board. No motor state or limit-switch value is fabricated; the lid
+tracker remains a pure component awaiting GPIO acquisition. The temporary envelope
 time marker is `mono_us_<value>`, monotonic microseconds since boot; it is
 **not UTC wall-clock time**, and the final timestamp convention remains open.
 
-The checked-in profile still has `hardware_profile_confirmed=false` and unset
-UART GPIOs. Therefore the normal image still returns before NVS and never
-creates this task. The link-only acceptance hook is forced into the ELF for
+The checked-in ControllerLink profile still has
+`hardware_profile_confirmed=false` and unset UART GPIOs. The normal image
+therefore skips NVS, UART and TLS setup, but it still creates the runtime task
+for independent DHT22 acquisition on GPIO25/GPIO26. ControllerLink remains
+NOT_CONFIGURED. The link-only acceptance hook is forced into the ELF for
 compile/link coverage but is not executed.
 
 The Mbed TLS server reseeds its per-connection DRBG when TLS is
@@ -192,7 +196,7 @@ valid while the measurements are used.
 
 The component now also contains an ESP-IDF GPIO acquisition adapter. It drives the configured open-drain data pin low for 1.1 ms, releases it, captures the 40 data-bit high pulses with bounded edge waits, and passes the resulting five-byte frame through the existing checksum/range decoder. The reader returns explicit NOT_CONFIGURED, GPIO, timeout or invalid-frame outcomes; it does not return fabricated values. Use an external 4.7–10 kOhm data-line pull-up. The capture is polling-based and may reject a frame if an interrupt stretches a pulse; a later hardware timing review can replace this small adapter without changing the decoder or telemetry contract.
 
-The firmware defines two independent DHT22 channels. Their GPIO values deliberately remain `GPIO_NUM_NC`; no pins are guessed. Each configured channel has its own sampling scheduler and cached real reading. Sampling attempts are rate-limited independently, and snapshot telemetry reports NOT_CONFIGURED or UNAVAILABLE explicitly until a valid reading exists. Valid values are sent with their acquisition timestamp; values older than five seconds are marked STALE. The existing station-state measurements remain in the same snapshot.
+The firmware defines two independent DHT22 channels: sensor 1 DATA is GPIO25 and sensor 2 DATA is GPIO26. Each channel has its own sampling scheduler and cached real reading. These are the selected prototype assignments; verify the physical header labels and 3.3 V electrical compatibility before wiring. Sampling attempts are rate-limited independently, and snapshot telemetry reports NOT_CONFIGURED or UNAVAILABLE explicitly until a valid reading exists. Valid values are sent with their acquisition timestamp; values older than five seconds are marked STALE. The existing station-state measurements remain in the same snapshot.
 
 The component also contains a pure `Dht22SamplingScheduler`. Each
 physical sensor uses its own scheduler instance. The caller initializes it
