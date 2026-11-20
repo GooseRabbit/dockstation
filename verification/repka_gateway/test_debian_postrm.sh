@@ -18,12 +18,20 @@ cat > "$BIN/systemctl" <<'SH'
 #!/bin/sh
 printf 'systemctl %s\n' "$*" >> "$DOCKSTATION_POSTRM_TEST_LOG"
 SH
-chmod +x "$BIN/deb-systemd-helper" "$BIN/systemctl"
+cat > "$BIN/rmdir" <<'SH'
+#!/bin/sh
+printf 'rmdir %s\n' "$*" >> "$DOCKSTATION_POSTRM_TEST_LOG"
+SH
+chmod +x "$BIN/deb-systemd-helper" "$BIN/systemctl" "$BIN/rmdir"
 export PATH="$BIN:/usr/bin:/bin"
 export DOCKSTATION_POSTRM_TEST_LOG="$LOG"
 
 sh "$SCRIPT" remove
 grep -Fqx 'helper disable dockstation-gateway.service' "$LOG"
+if grep -Fq 'rmdir ' "$LOG"; then
+    echo "FAIL: remove must retain the conffile directory." >&2
+    exit 1
+fi
 if grep -Fq 'helper purge ' "$LOG"; then
     echo "FAIL: remove must not purge deb-systemd-helper state." >&2
     exit 1
@@ -37,6 +45,7 @@ if grep -Fq 'helper disable ' "$LOG"; then
     exit 1
 fi
 grep -Fqx 'systemctl daemon-reload' "$LOG"
+grep -Fqx 'rmdir /etc/dockstation' "$LOG"
 
 if grep -Eq 'rm .*(/var/lib/dockstation|dockstation\.sqlite3)' "$SCRIPT"; then
     echo "FAIL: postrm must not remove persistent station data." >&2
