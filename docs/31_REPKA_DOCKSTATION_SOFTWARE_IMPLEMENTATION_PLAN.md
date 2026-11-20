@@ -479,6 +479,8 @@ Persistence adapters / Clock / Timer / ID providers
 
 ### 5.1.1. Утверждённый локальный SQLite backend (DEC-068)
 
+**Актуальный статус на редакцию 2.52 (2026-11-20):** SQLite production integration в C++ Gateway уже реализована. `GatewayPersistenceContext` владеет одним SQLite-соединением; composition root открывает его до запуска LocalApiServer и закрывает после остановки сервера. Production stores обеспечивают source/session/cursor registry и subsystem status persistence; authenticated ControllerLink event ingress проходит через pipeline и F13 processor в SQLite. Соответственно, исторические утверждения ниже о том, что Gateway не открывает БД и production adapters отсутствуют, описывают состояние на момент редакции 1.70 и не являются текущим статусом. Текущая интеграция не означает готовность полной SSM persistence всех processors, хранения всей истории телеметрии/видео, backup/restore или приёмки на Repka OS.
+
 **Статус:** выбор локального SQLite backend и базовый профиль утверждены владельцем 2026-11-16. Техническая foundation прошла host CI; production schema/adapters и целевая Repka OS acceptance ещё предстоят.
 
 - Backend-кандидат — SQLite для небольшого локального структурированного состояния станции и транзакционных SSM/CFG repository-портов. Он не предназначен для хранения видео/крупных материалов; для них остаётся отдельный LocalStorageManager/backend по DEC-057.
