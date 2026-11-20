@@ -43,7 +43,7 @@
 - полный мастер-план программного продукта Repka Pi 5 — `31_REPKA_DOCKSTATION_SOFTWARE_IMPLEMENTATION_PLAN.md`.
 - распределение локальных, серверных и резервных данных — `32_PERSISTENCE_AND_STORAGE_TOPOLOGY.md`.
 - состав Windows/Repka установщиков, зависимости и lifecycle-сценарии — `37_INSTALLER_AND_DEPLOYMENT_SPEC.md`.
-- удалённый доступ, WireGuard, сопряжение устройств и независимое HTTPS-восстановление VPN — `32_REMOTE_ACCESS_AND_DEVICE_PAIRING_PLAN.md`;
+- удалённый доступ, WireGuard, сопряжение устройств и независимое HTTPS-восстановление VPN — `38_REMOTE_ACCESS_AND_DEVICE_PAIRING_PLAN.md`;
 - проверки отказов программного обмена Repka ↔ ESP32 и границы их доказательности — docs/34_CONTROLLER_LINK_FAULT_INJECTION_TESTS.md;
 - ESP32 command policy, pending lifecycle, safety-input semantics и logical-state telemetry — docs/35_ESP32_APPLICATION_LOGIC.md;
 - ESP32 input freshness, monotonic timestamps, stale-state handling и fail-closed command checks — docs/36_ESP32_INPUT_FRESHNESS.md.
