@@ -1,4 +1,4 @@
-# Каталог предполагаемых функций DockStation
+# Каталог функций DockStation: реализация и план
 
 **Статус:** предварительный рабочий каталог.  
 **Дата актуализации:** 2026-11-20.
@@ -6,7 +6,25 @@
 
 > **Важно:** каталог сочетает уже существующие функции и планируемые функции; названия, расположение и состав могут уточняться по мере разработки. Это карта текущей реализации и будущих задач, а не окончательное техническое задание.
 
-Основные языки и runtime текущего среза выбраны: C++ для переносимого ядра и Linux Gateway; Python 3.12 + PySide6 + Qt Quick/QML для Windows Operator; ESP-IDF (C/C++) для прошивки ESP32; shell для установки и проверок. Сигнатуры ниже приведены в C++-подобном виде там, где это уместно. Типы вроде `Result<T>`, `Mission`, `Event`, `Status` и другие названия обозначают данные, структуру которых ещё предстоит определить. Функции со статусом **«уже есть»** присутствуют в текущем рабочем коде; остальные — предполагаемые.
+Стек текущего программного среза выбран: C++17 для переносимого ядра и Linux Gateway; Python 3.12 + PySide6 + Qt Quick/QML для Windows Operator; ESP-IDF C/C++ для прошивки ESP32; shell для установки и проверок. Сигнатуры ниже приведены в C++-подобном виде там, где это уместно.
+
+**Единые статусы каталога:**
+- **РЕАЛИЗОВАНО** — production source function/component существует; указанная рядом проверка подтверждает только свой уровень (unit/host/CI), а не физическую приёмку.
+- **ЧАСТИЧНО РЕАЛИЗОВАНО** — существует часть логики/контракт или изолированная реализация, но отсутствует необходимая production-интеграция, политика, адаптер либо аппаратная проверка.
+- **ЗАПЛАНИРОВАНО** — production source implementation отсутствует; упомянутые пути/имена являются проектируемыми, а не существующими файлами.
+
+| Модуль | Статус | Что действительно реализовано |
+|---|---|---|
+| StationStateManager | ЧАСТИЧНО РЕАЛИЗОВАНО | F01–F17 имеют отдельную логическую реализацию/host tests; Gateway подключает только доверенный source-session ingress и F13 SUBSYSTEM_STATUS_UPDATED. Полный global/operation/timeout/recovery runtime и полная SSM persistence отсутствуют. |
+| ConfigurationManager | ЧАСТИЧНО РЕАЛИЗОВАНО | CFG-F00…F08 — логика и host tests; production policies, repository/decoder adapters и Gateway integration отсутствуют. |
+| Linux Gateway | РЕАЛИЗОВАН В ТЕКУЩЕМ СРЕЗЕ | C++ bootstrap, read-only API, system/network/platform diagnostics, systemd, ControllerLink status, optional authenticated ingress и SQLite persistence для subsystem-status. Это не полный функционал станции. |
+| ControllerLink | ЧАСТИЧНО РЕАЛИЗОВАНО | Linux UART/TLS, ESP32 peer service, handshake, heartbeat и telemetry host path; Mbed TLS/OpenSSL host interop. Физический UART/SoC не проверены. |
+| ESP32 firmware | ЧАСТИЧНО РЕАЛИЗОВАНО | ESP-IDF target build и логика peer/safety/DHT22; board profile default-off, GPIO не назначены, физическая плата не проверена. |
+| SQLite persistence | ЧАСТИЧНО РЕАЛИЗОВАНО | Source/subsystem registry, accepted subsystem-status Event, history/current pointer и source cursor. Не полная SSM state/operation/recovery, sensor history или video archive. |
+| Windows Operator | ЧАСТИЧНО РЕАЛИЗОВАНО | QML, SSH/API diagnostics, local station profiles, client logs. Нет пользовательских аккаунтов/ролей, продуктовых команд, камеры и полного интерфейса. |
+| DiagnosticsManager, SafetyManager и остальные функциональные менеджеры | ЗАПЛАНИРОВАНО | Контракты/планы существуют; production implementation не начата. |
+
+Разделы 2–14 (кроме 14A–14D), 16–20 описывают будущие функции, если рядом явно не указан статус реализации. Раздел 15 описывает реализованные CFG-F00…F08, но не production-интеграцию. Разделы 21–24 и дополнения описывают существующие программные компоненты и их границы. Типы вроде `Result<T>`, `Mission`, `Event`, `Status` могут оставаться проектными, если рядом не указана реализация.
 
 ---
 
@@ -622,7 +640,7 @@ PlatformLogger обслуживает технические сообщения 
 | `load_configuration(repository, decoder, policy, issue_buffer, issue_capacity)` — CFG-F07 | `configuration_load.cpp` | Один read → decode → F05 → F06 проход; нарушения портов и статусов закрываются через INTERNAL_ERROR. |
 | `get_configuration_revision(active_configuration)` — CFG-F08 | `configuration_revision.cpp` | Read-only извлечение ревизии из выбранного вызывающим слоем согласованного VALID результата; не хранит активное состояние. |
 
-Функции записи и применения конфигурации остаются будущими задачами и не входят в реализованный read-only срез CFG-F00…F08.
+CFG-F00…F08 реализованы как логические функции и проверяются отдельными host unit/contract harness. Эти исходники компилируются в `tools/run_host_tests.sh`, но не входят в production CMake target Linux Gateway. Production-набор версий/обязательных полей/значений, реальный `SettingsRepository` и `ConfigurationDecoderPort`, а также подключение ConfigurationManager к Gateway отсутствуют. `RuntimeConfigFileLoader` — отдельная загрузка настроек процесса Gateway и не является production adapter ConfigurationManager. Функции записи и применения конфигурации остаются будущими задачами.
 ---
 
 ## 16. Идентичность станции — StationIdentityManager
@@ -823,12 +841,12 @@ PlatformLogger обслуживает технические сообщения 
 
 | Функция | Назначение |
 |---|---|
-| `read_network_interfaces()` **(реализована; запуск проверки ожидает)** | Получает имена, индексы, флаги UP/RUNNING/LOOPBACK и MTU интерфейсов. Невозможность прочитать флаги/MTU обозначается отдельными признаками доступности. |
-| `read_interface_addresses()` **(реализована; запуск проверки ожидает)** | Получает локальные IPv4/IPv6-адреса через `getifaddrs()`; префикс сети отмечается доступным только при корректной маске. |
-| `read_default_route()` **(реализована; запуск проверки ожидает)** | Читает IPv4 и IPv6 default routes из Linux procfs; отсутствие маршрута представляется пустым списком при доступных таблицах, ошибка чтения обеих таблиц — UNAVAILABLE. |
-| `resolve_dns_name(hostname, family)` **(реализована; запуск проверки ожидает)** | Разрешает явно переданное имя через системный resolver/NSS и возвращает уникальные адреса. Вызов синхронный, отдельный тайм-аут DNS пока не предоставляется. |
-| `check_tcp_reachability(host, port, timeout)` **(реализована; запуск проверки ожидает)** | Проверяет TCP-подключение к заданному узлу и порту через non-blocking connect/poll; timeout ограничен 1 мс…60 с после синхронного DNS-разрешения. Статус AVAILABLE означает, что проверка выполнена; `reachable=false` и причина отражают отказ/тайм-аут соединения. |
-| `collect_network_diagnostics()` **(реализована; запуск проверки ожидает)** | Собирает только локальные интерфейсы, адреса и default routes. Не инициирует DNS-запросы или внешние TCP-подключения автоматически. |
+| `read_network_interfaces()` **(РЕАЛИЗОВАНО; CTest/CI прошёл)** | Получает имена, индексы, флаги UP/RUNNING/LOOPBACK и MTU интерфейсов. Невозможность прочитать флаги/MTU обозначается отдельными признаками доступности. |
+| `read_interface_addresses()` **(РЕАЛИЗОВАНО; CTest/CI прошёл)** | Получает локальные IPv4/IPv6-адреса через `getifaddrs()`; префикс сети отмечается доступным только при корректной маске. |
+| `read_default_route()` **(РЕАЛИЗОВАНО; CTest/CI прошёл)** | Читает IPv4 и IPv6 default routes из Linux procfs; отсутствие маршрута представляется пустым списком при доступных таблицах, ошибка чтения обеих таблиц — UNAVAILABLE. |
+| `resolve_dns_name(hostname, family)` **(РЕАЛИЗОВАНО; CTest/CI прошёл)** | Разрешает явно переданное имя через системный resolver/NSS и возвращает уникальные адреса. Вызов синхронный, отдельный тайм-аут DNS пока не предоставляется. |
+| `check_tcp_reachability(host, port, timeout)` **(РЕАЛИЗОВАНО; CTest/CI прошёл)** | Проверяет TCP-подключение к заданному узлу и порту через non-blocking connect/poll; timeout ограничен 1 мс…60 с после синхронного DNS-разрешения. Статус AVAILABLE означает, что проверка выполнена; `reachable=false` и причина отражают отказ/тайм-аут соединения. |
+| `collect_network_diagnostics()` **(РЕАЛИЗОВАНО; CTest/CI прошёл)** | Собирает только локальные интерфейсы, адреса и default routes. Не инициирует DNS-запросы или внешние TCP-подключения автоматически. |
 
 Проверка: `verification/repka_gateway/test_network_diagnostics.cpp`. Все сетевые пробы в тесте используют только loopback/localhost; внешние узлы не вызываются.
 
@@ -857,9 +875,9 @@ PlatformLogger обслуживает технические сообщения 
 
 Обработчик сигнала только устанавливает `volatile sig_atomic_t`; журналирование, выделение памяти и остановка службы из signal handler не выполняются. Служба получает указатель на флаг и сама отвечает за своевременное завершение. Обработчики SIGINT/SIGTERM восстанавливаются до закрытия Logger.
 
-Текущий entry point запускается в bootstrap-only режиме: callback прикладной службы не зарегистрирован, поэтому процесс выполняет проверки и завершает работу, явно указывая, что HTTP API не запущен. Python Gateway остаётся отдельным временным VM-прототипом. C++ Bootstrap не открывает сокет, не меняет фиксированный loopback bind, не выполняет DNS/TCP-пробы автоматически и не управляет физическим оборудованием.
+Текущий entry point `repka_gateway/main.cpp` регистрирует production `LocalApiServer` через `ServiceRunner`: запускается C++ read-only HTTP API на loopback, а при SQLite-enabled build composition root открывает `GatewayPersistenceContext`, подключает authenticated ControllerLink event ingress и закрывает persistence context после остановки сервиса. В SQLite-disabled build остаётся diagnostics-only путь без event persistence. Python Gateway — отдельный временный VM/test-only прототип. Gateway не выполняет физических команд и не выбирает UART/GPIO автоматически.
 
-Проверка: `verification/repka_gateway/test_application_bootstrap.cpp`; регистрация в CTest — `application_bootstrap`. Добавлены сценарии справки, раннего отказа CLI, запуска/завершения, передачи конфигурации службе, SIGTERM и ненулевого кода службы. Сборка и выполнение теста ещё не подтверждены.
+Проверка: `verification/repka_gateway/test_application_bootstrap.cpp`; CTest — `application_bootstrap`. Сценарии справки, CLI failure, запуска/завершения, передачи конфигурации службе и SIGTERM входят в Linux Full Verification CI. Production entry point отдельно запускает LocalApiServer; bootstrap-only callback path не является текущим production режимом.
 
 
 ## 23. Временный VM-вертикальный срез тестового адаптера
@@ -1222,7 +1240,7 @@ Optional RuntimeConfig keys: controller_uart_device, controller_local_id, contro
 
 
 
-## 12. Платформенный слой Linux — LinuxPlatformCapabilities
+## 25. Платформенный слой Linux — LinuxPlatformCapabilities
 
 ### src/platform/linux/platform_capabilities.hpp / .cpp
 
@@ -1237,7 +1255,7 @@ Optional RuntimeConfig keys: controller_uart_device, controller_local_id, contro
 Проверка: verification/repka_gateway/test_platform_capabilities.cpp, CTest platform_capabilities. Fixture test использует временную файловую структуру и ссылки на /dev/null как безопасные character-device substitutes; он проверяет только логику обнаружения, а не GPIO/UART/V4L2 hardware. Выявленный кандидатный path — только информация для оператора. Repka WiringRP и repka_gpio.ko не используются; установка/загрузка драйвера и изменение permissions остаются открытыми по DEC-069.
 
 
-## 13. Диагностическая публикация платформенных возможностей — Gateway / Operator
+## 26. Диагностическая публикация платформенных возможностей — Gateway / Operator
 
 ### src/communications/api_serialization.hpp / .cpp
 
@@ -1259,7 +1277,7 @@ hardwarePlatformInfo публикует выбранный платформен�
 
 
 
-## 14. Приём и публикация телеметрии Repka—ESP32 — Gateway / Operator
+## 27. Приём и публикация телеметрии Repka—ESP32 — Gateway / Operator
 
 ### src/hardware/interfaces/controller_telemetry_snapshot.hpp / .cpp
 
