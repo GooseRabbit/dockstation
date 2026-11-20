@@ -1,0 +1,164 @@
+name: AMD64 Debian package
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Build and verify amd64 .deb
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install build and packaging dependencies
+        run: |
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 update
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 install -y \
+            build-essential cmake libssl-dev libsqlite3-dev dpkg-dev binutils
+
+      - name: Confirm native AMD64 runner
+        run: |
+          test "$(dpkg --print-architecture)" = amd64
+          test "$(uname -m)" = x86_64
+
+      - name: Build production Gateway binaries
+        run: |
+          set -euo pipefail
+          cmake -S . -B build-deb \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTING=OFF \
+            -DDOCKSTATION_ENABLE_SANITIZERS=OFF \
+            -DDOCKSTATION_BUILD_SQLITE_PERSISTENCE=ON \
+            -DCMAKE_INSTALL_PREFIX=/usr
+          cmake --build build-deb \
+            --target dockstation_linux_bootstrap dockstation-credential-provision dockstation-registry-provision \
+            --parallel 2
+          cmake --build build-deb --target preinstall --parallel 2
+
+      - name: Assemble and inspect AMD64 Debian package
+        env:
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          stage="$RUNNER_TEMP/dockstation-deb/root"
+          artifacts="$RUNNER_TEMP/dockstation-deb/artifacts"
+          extracted="$RUNNER_TEMP/dockstation-deb/extracted"
+          control="$RUNNER_TEMP/dockstation-deb/control"
+          mkdir -p "$stage" "$artifacts" "$extracted" "$control"
+
+          DESTDIR="$stage" cmake --install build-deb
+          version="0.1.0~git${SOURCE_COMMIT:0:12}"
+          bash packaging/debian/build_package.sh \
+            --root "$stage" --output-dir "$artifacts" --version "$version"
+
+          deb="$artifacts/dockstation-gateway_${version}_amd64.deb"
+          test -s "$deb"
+          [[ "$(dpkg-deb -f "$deb" Package)" == dockstation-gateway ]]
+          [[ "$(dpkg-deb -f "$deb" Version)" == "$version" ]]
+          [[ "$(dpkg-deb -f "$deb" Architecture)" == amd64 ]]
+          depends="$(dpkg-deb -f "$deb" Depends)"
+          grep -Fq systemd <<< "$depends"
+          grep -Fq adduser <<< "$depends"
+
+          dpkg-deb --extract "$deb" "$extracted"
+          dpkg-deb --control "$deb" "$control"
+          for binary in dockstation_linux_bootstrap dockstation-credential-provision dockstation-registry-provision; do
+            test -x "$extracted/usr/bin/$binary"
+            readelf -h "$extracted/usr/bin/$binary" | grep -Eq 'Machine:[[:space:]]+Advanced Micro Devices X86-64$'
+          done
+          test -f "$extracted/usr/lib/systemd/system/dockstation-gateway.service"
+          test -f "$extracted/usr/lib/systemd/system/dockstation-gateway-uart@.service"
+          test -f "$extracted/etc/dockstation/gateway.conf"
+          if grep -Eq '^[[:space:]]*controller_uart_device[[:space:]]*=' "$extracted/etc/dockstation/gateway.conf"; then
+            echo "Package default config must not select a physical UART." >&2
+            exit 1
+          fi
+          grep -Fqx /etc/dockstation/gateway.conf "$control/conffiles"
+          for script in postinst prerm postrm; do
+            sh -n "$control/$script"
+          done
+          if dpkg-deb --contents "$deb" | grep -Eiq 'esp32|firmware|dockstation-esp32-setup'; then
+            echo "Package must not include ESP32 firmware or setup." >&2
+            exit 1
+          fi
+          (cd "$artifacts" && sha256sum --check --strict "$(basename "$deb").sha256")
+
+      - name: Test Debian install, upgrade, remove, and purge
+        run: |
+          set -euo pipefail
+          deb="$(find "$RUNNER_TEMP/dockstation-deb/artifacts" -maxdepth 1 -type f -name '*.deb' -print -quit)"
+          test -s "$deb"
+
+          policy="/usr/sbin/policy-rc.d"
+          policy_backup="$RUNNER_TEMP/policy-rc.d.backup"
+          had_policy=false
+          if [[ -e "$policy" ]]; then
+            sudo cp -a "$policy" "$policy_backup"
+            had_policy=true
+          fi
+          cleanup_package_test() {
+            if [[ "$had_policy" == true ]]; then
+              sudo mv -f "$policy_backup" "$policy"
+            else
+              sudo rm -f "$policy"
+            fi
+            sudo rm -f /var/lib/dockstation/package-test-marker
+            sudo rmdir /var/lib/dockstation 2>/dev/null || true
+            sudo userdel dockstation 2>/dev/null || true
+            sudo groupdel dockstation 2>/dev/null || true
+          }
+          trap cleanup_package_test EXIT
+
+          # Keep package lifecycle testing isolated from service startup on the runner.
+          printf '%s\\n' '#!/bin/sh' 'exit 101' | sudo tee "$policy" >/dev/null
+          sudo chmod 0755 "$policy"
+
+          sudo dpkg -i "$deb"
+          [[ "$(sudo dpkg-query -W -f='${Status}' dockstation-gateway)" == "install ok installed" ]]
+          sudo test -f /etc/dockstation/gateway.conf
+          sudo test -d /var/lib/dockstation
+          sudo getent passwd dockstation >/dev/null
+          sudo getent group dockstation >/dev/null
+
+          printf '%s\\n' 'local_setting=preserve-on-upgrade' | sudo tee -a /etc/dockstation/gateway.conf >/dev/null
+          printf '%s\\n' 'preserve-me' | sudo tee /var/lib/dockstation/package-test-marker >/dev/null
+          sudo dpkg -i "$deb"
+          sudo grep -Fqx 'local_setting=preserve-on-upgrade' /etc/dockstation/gateway.conf
+          sudo grep -Fqx 'preserve-me' /var/lib/dockstation/package-test-marker
+
+          sudo dpkg --remove dockstation-gateway
+          sudo test -f /etc/dockstation/gateway.conf
+          sudo test -f /var/lib/dockstation/package-test-marker
+          sudo test ! -e /usr/bin/dockstation_linux_bootstrap
+
+          sudo dpkg --purge dockstation-gateway
+          sudo test ! -e /etc/dockstation/gateway.conf
+          sudo test -f /var/lib/dockstation/package-test-marker
+          sudo test ! -e /usr/lib/systemd/system/dockstation-gateway.service
+
+      - name: Upload tested AMD64 Debian package
+        uses: actions/upload-artifact@v7
+        with:
+          name: dockstation-gateway-amd64-deb-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/dockstation-deb/artifacts/dockstation-gateway_*.deb
+            ${{ runner.temp }}/dockstation-deb/artifacts/dockstation-gateway_*.deb.sha256
+          if-no-files-found: error
+          retention-days: 30
