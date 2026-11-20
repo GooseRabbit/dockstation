@@ -117,7 +117,7 @@ Host harness SSR-01…SSR-20 вызывает production coordinator с fake ver
 |---|---|
 | `SubsystemStatusEventDecoderPort::decode(const Event& event)` | Storage- и serialization-neutral порт: преобразует непрозрачный payload SUBSYSTEM_STATUS_UPDATED в типизированный subsystem_id/status/error_code/severity/description/reason_text; все views живут до возврата processor. |
 | `SubsystemRegistrationReader::find_subsystem(station_id, subsystem_id)` | Read-only точный поиск регистрации подсистемы в локальной станции; результат должен содержать source, registration_revision и ACTIVE/DISABLED/REVOKED. Дубликаты и противоречивые ответы отклоняются. |
-| `SubsystemStatusRepository::commit_subsystem_status()` | Логический атомарный commit port: проверяет текущую ACTIVE-регистрацию/revision, весь expected SourceCursor и event_id; сохраняет статус/отчёт/Event и продвигает cursor одной транзакцией. Физическая БД не выбрана. |
+| `SubsystemStatusRepository::commit_subsystem_status()` | Логический атомарный commit port: production-адаптер `SqliteSubsystemStatusStore` проверяет ACTIVE-регистрацию/revision, expected SourceCursor и event_id; сохраняет Event, append-only status history, current-status pointer и cursor одной SQLite-транзакцией. Полная SSM persistence остальных processors не реализована. |
 | `SubsystemStatusEventProcessor::process()` | Обрабатывает только SUBSYSTEM_STATUS_UPDATED/Subsystem, VALID schema 1; проверяет порядок, payload, точную активную регистрацию и вызывает commit port. Наблюдательные статусы PASS/DEGRADED/FAIL/UNKNOWN не имеют отдельной запрещающей матрицы; любой принятый report возвращается в F13 как NoStateChange относительно глобального автомата, не управляет оборудованием и не меняет глобальное состояние. Зарегистрирован в production StationEventPipeline при явной передаче профильного обработчика; этот путь доступен только из аутентифицированного ControllerLink ingress и Gateway SQLite composition root. |
 
 CTest: `verification/repka_gateway/test_subsystem_status_event_processor.cpp` / `subsystem_status_event_processor`. Fake adapters проверяют fail-closed контракт и передачу expected registration/cursor; это не проверка production persistence или физической атомарности.
@@ -911,7 +911,7 @@ CFG-F00…F08 реализованы как логические функции 
 
 | Функция / тип | Назначение |
 |---|---|
-| `ControllerMessageType` | Типизированный перечень HELLO, HELLO_ACK, HEARTBEAT, REQUEST_SNAPSHOT, TELEMETRY_SNAPSHOT и ERROR. |
+| `ControllerMessageType` | Типизированный перечень HELLO, HELLO_ACK, HEARTBEAT, REQUEST_SNAPSHOT, TELEMETRY_SNAPSHOT, ERROR, COMMAND_REQUEST и COMMAND_RESULT. |
 | `ControllerProtocolVersion` | Пара major/minor логического ControllerLink protocol; текущая версия — 1.1. Точное совпадение major/minor применяется `ControllerLinkSession`, negotiation и downgrade отсутствуют. |
 | `ControllerMessageEnvelope` | Невладеющее представление общих метаданных сообщения: тип, версия, controller_id, controller_instance_id, sequence_number и sent_at. |
 | `SensorQualityStatus` | Шесть статусов телеметрии из docs/06 §3 и §25.1: OK, STALE, INVALID, UNAVAILABLE, NOT_CONFIGURED и UNKNOWN. ERROR не является качеством измерения. |
@@ -935,7 +935,7 @@ CFG-F00…F08 реализованы как логические функции 
 | `encode_controller_message()` | Кодирует logical envelope + payload в полный бинарный кадр v1 в caller-owned буфер без динамического выделения памяти. |
 | `decode_controller_message()` | Проверяет и декодирует ровно один полный кадр v1; отклоняет неверный magic/version/type/length/CRC, некорректный UTF-8, недопустимые value tags и превышение лимитов. |
 
-Wire-frame v1: magic `DS`, wire version 1, тип сообщения 1…6, uint16 little-endian body length, общий envelope, typed payload и CRC-32/ISO-HDLC по header + body. Логическая ControllerLink version в общем envelope сейчас 1.1. Для ERROR после reason_text добавлен presence byte; при 1 далее идут subsystem_id (UTF-8) и один из четырёх кодов subsystem_status. Максимальный кадр 2048 байт, максимум 16 измерений. Подробная таблица полей — docs/06 §16.3; версия 1.0 не принимается из-за exact-match policy.
+Wire-frame v1: magic `DS`, wire version 1, тип сообщения 1…8, uint16 little-endian body length, общий envelope, typed payload и CRC-32/ISO-HDLC по header + body. Логическая ControllerLink version в общем envelope сейчас 1.1. Для ERROR после reason_text добавлен presence byte; при 1 далее идут subsystem_id (UTF-8) и один из четырёх кодов subsystem_status. Максимальный кадр 2048 байт, максимум 16 измерений. Подробная таблица полей — docs/06 §16.3; версия 1.0 не принимается из-за exact-match policy.
 
 Проверка: `verification/repka_gateway/test_controller_codec.cpp`; CTest — `controller_codec`. Host-тесты проверяют round-trip HELLO/telemetry/ERROR, все типы значений, границы целых чисел, нулевой snapshot, UTF-8, размеры, повреждённую CRC и malformed frames. Кодек декодирует один полный кадр; накопление потока выполняет `ControllerFrameStreamDecoder`. CRC не является аутентификацией/шифрованием. UART-драйвер, защищённый transport/session verifier и ESP-IDF firmware target остаются отдельными задачами.
 
@@ -1433,9 +1433,11 @@ Repka использует `controller_local_id` и `controller_peer_id` из с
 | 'ControllerStationSafetyInputs' | Передаёт в локальную политику только необходимые состояния крышки, движения, очистки, рабочей зоны и safety-stop. |
 | 'evaluate_controller_station_command(...)' | Возвращает 'ALLOW' либо точную причину локального запрета; не управляет GPIO и не подтверждает физическое исполнение. Неизвестные условия не считаются разрешением. |
 
-Host CTest 'controller_station_command_policy' проверяет основные разрешённые
-и запрещённые сценарии. Интеграция с реальным ControllerLink command frame,
-ESP32 GPIO и исполнительными устройствами остаётся следующей задачей.
+Host CTest `controller_station_command_policy` проверяет основные разрешённые
+и запрещённые сценарии. ControllerLink command frame, обмен COMMAND_REQUEST /
+COMMAND_RESULT и peer-side policy уже реализованы и проверяются host/ESP-IDF CI.
+Gateway/Operator command route, GPIO acquisition для safety-входов и исполнительные
+устройства остаются следующими задачами.
 
 
 ## Дополнение: ESP32 — состояние станции и телеметрия
