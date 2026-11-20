@@ -64,12 +64,14 @@ acceptance steps.
 
 ## Current firmware entry point
 
-`main/app_main.cpp` generates a fresh per-boot instance ID before ADC, I²S or
-radio subsystems are used. It then applies two guards **before touching NVS**:
-the exact hardware profile must be explicitly confirmed and the UART port/TX/RX
-configuration must be valid. The checked-in profile deliberately keeps
-`hardware_profile_confirmed=false` and the GPIOs unset, so the current image
-returns before opening NVS.
+`main/app_main.cpp` starts the separate prototype telemetry UART2 path
+(GPIO17/TX, GPIO16/RX) and then prepares a fresh per-boot instance ID before
+ADC, I²S or radio subsystems are used. The secure ControllerLink startup applies
+two guards **before touching NVS**: its exact hardware profile must be
+explicitly confirmed and its dedicated UART port/TX/RX configuration must be
+valid. The checked-in secure profile deliberately keeps
+`hardware_profile_confirmed=false` and its ControllerLink GPIOs unset, so only
+the protected NVS/TLS path is skipped; prototype UART telemetry continues.
 
 Only after those two guards have been deliberately satisfied will
 `app_main` initialize the already-provisioned encrypted NVS store in
