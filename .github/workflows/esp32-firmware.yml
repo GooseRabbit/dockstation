@@ -51,7 +51,7 @@ jobs:
           set -euo pipefail
           build_dir="firmware/esp32/build"
           package_root="$RUNNER_TEMP/dockstation-esp32-firmware"
-          archive="$RUNNER_TEMP/dockstation-esp32-firmware-${GITHUB_SHA:0:12}.tar.gz"
+          archive="$RUNNER_TEMP/dockstation-esp32-firmware-${GITHUB_SHA}.tar.gz"
 
           test -s "$build_dir/dockstation-esp32-4mb.bin"
           test -s "$build_dir/dockstation_esp32_firmware.bin"
