@@ -380,7 +380,15 @@ class QmlOperatorBridge(QObject):
     def controllerTelemetrySummary(self) -> str:
         snapshot = self.model.snapshot
         telemetry = snapshot.get("controller_telemetry", {}) if isinstance(snapshot, dict) else {}
-        if not isinstance(telemetry, dict) or telemetry.get("sequence_number") is None:
+        if not isinstance(telemetry, dict):
+            return "Gateway пока не передаёт телеметрию ESP32."
+        if telemetry.get("sequence_number") is None:
+            if telemetry.get("transport") == "PROTOTYPE_UART":
+                error_code = telemetry.get("error_code", "")
+                return (
+                    f"Прототипный UART ожидает первый пакет: {error_code}."
+                    if error_code else "Прототипный UART ожидает первый пакет от ESP32."
+                )
             return "Нет принятого снимка телеметрии от ESP32."
         link_connected = telemetry.get("link_connected") is True
         if telemetry.get("transport") == "PROTOTYPE_UART":
