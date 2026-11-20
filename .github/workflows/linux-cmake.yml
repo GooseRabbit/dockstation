@@ -3,7 +3,7 @@ name: Linux full verification
 on:
   push:
     branches:
-      - chore/flatten-repka-directories
+      - main
     tags:
       - 'v*'
   pull_request:
