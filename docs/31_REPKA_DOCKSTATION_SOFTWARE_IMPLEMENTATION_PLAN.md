@@ -1,8 +1,8 @@
 # Полный план реализации программного комплекса DockStation на Repka Pi 5
 
 **Статус:** мастер-план реализации; последовательность разработки согласована, открытые платформенные, сетевые, серверные и аппаратные детали требуют отдельной проверки и решения.  
-**Редакция:** 2.24.
-**Дата:** 2026-11-18.  
+**Редакция:** 2.52.
+**Дата актуализации:** 2026-11-20.  
 **Вычислительная платформа:** Repka Pi 5.  
 **Предполагаемая ОС:** официальная Repka OS; образ и версия проверяются перед развёртыванием.
 
@@ -1995,3 +1995,11 @@ ControllerLink требуется отдельная безопасная provis
 
 Зафиксирован состав начальных дистрибутивов в `docs/37_INSTALLER_AND_DEPLOYMENT_SPEC.md`.
 Windows installer содержит frozen QML Operator и его Python/PySide6 runtime; OpenSSH Client остаётся системной зависимостью Windows, а пользовательские SSH keys, known_hosts и профили не входят в installer. Первый ARM64 `.deb` содержит только C++ Gateway, provisioner executables, systemd units и конфигурацию. Он не содержит ESP32 firmware и не выполняет прошивку или provisioning. Сценарии lifecycle должны сохранять пользовательскую конфигурацию и постоянные данные.
+
+## Дополнение 2.52 — синхронизация статуса реализации и проверок на 2026-11-20
+
+SQLite больше не является только foundation-кандидатом: утверждённый DEC-068 backend подключён к Gateway через `GatewayPersistenceContext`. Production composition root открывает БД до запуска LocalApiServer и закрывает после его остановки; source/subsystem stores и authenticated `SUBSYSTEM_STATUS_UPDATED` ingress используют одну сериализованную SQLite connection. Текущая область хранения не равна полной истории всех будущих сенсорных измерений или файлов.
+
+Полная host-проверка функционального среза и AMD64 `.deb` lifecycle подтверждены отдельными GitHub Actions runs, перечисленными в корневом README. Эти проверки не заменяют актуальную ESP-IDF сборку, Mbed TLS interoperability, проверку Repka OS, физическую UART/GPIO и power-loss acceptance.
+
+Основные CI workflows переключены на `main`; ранее push-триггеры Linux, Windows, Mbed TLS и ESP32 были привязаны к прежней рабочей ветке. Результаты новых прогонов следует фиксировать только после фактического завершения.
