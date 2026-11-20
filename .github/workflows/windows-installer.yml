@@ -55,29 +55,100 @@ jobs:
             throw "Frozen Operator executable was not created."
           }
 
-      # Packaging-only mode: runtime smoke and install/uninstall checks are intentionally deferred.
       - name: Install Inno Setup
         run: choco install innosetup --no-progress -y
 
-      - name: Compile Windows setup executable
+      - name: Build two installer versions and verify install, upgrade, and uninstall
         shell: pwsh
         run: |
-          $version = "0.1.0+${{ github.sha }}".Substring(0, 18)
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DAppVersion=$version" "packaging/windows/DockStationOperator.iss"
-          if ($LASTEXITCODE -ne 0) {
-            throw "Inno Setup compilation failed."
-          }
-          $installer = Get-ChildItem "artifacts/DockStationOperator-Setup-*.exe" | Select-Object -First 1
-          if (-not $installer) {
-            throw "Windows setup executable was not created."
-          }
-          "INSTALLER_PATH=$($installer.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $compiler = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          $initialVersion = "0.0.9-ci"
+          $upgradeVersion = "0.1.0+${{ github.sha }}".Substring(0, 18)
 
-      - name: Upload Windows installer
+          & $compiler "/DAppVersion=$initialVersion" "packaging/windows/DockStationOperator.iss"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Initial Inno Setup compilation failed."
+          }
+          & $compiler "/DAppVersion=$upgradeVersion" "packaging/windows/DockStationOperator.iss"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Upgrade Inno Setup compilation failed."
+          }
+
+          $initialInstaller = "artifacts/DockStationOperator-Setup-$initialVersion.exe"
+          $upgradeInstaller = "artifacts/DockStationOperator-Setup-$upgradeVersion.exe"
+          foreach ($installer in @($initialInstaller, $upgradeInstaller)) {
+            if (-not (Test-Path $installer)) {
+              throw "Windows setup executable was not created: $installer"
+            }
+          }
+
+          $installDir = Join-Path $env:RUNNER_TEMP "DockStationOperator-Install"
+          $appDataDir = Join-Path $env:LOCALAPPDATA "DockStationOperator"
+          $marker = Join-Path $appDataDir "ci-user-data-preservation-marker.txt"
+          New-Item -ItemType Directory -Force -Path $appDataDir | Out-Null
+
+          $install = Start-Process -FilePath $initialInstaller -ArgumentList @(
+            "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DIR=$installDir"
+          ) -Wait -PassThru
+          if ($install.ExitCode -ne 0) {
+            throw "Initial Windows installation failed with exit code $($install.ExitCode)."
+          }
+          $appExe = Join-Path $installDir "DockStationOperator.exe"
+          if (-not (Test-Path $appExe)) {
+            throw "Initial installation did not create DockStationOperator.exe."
+          }
+
+          Set-Content -Path $marker -Value "preserve-me" -Encoding UTF8
+
+          $upgrade = Start-Process -FilePath $upgradeInstaller -ArgumentList @(
+            "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DIR=$installDir"
+          ) -Wait -PassThru
+          if ($upgrade.ExitCode -ne 0) {
+            throw "Windows upgrade failed with exit code $($upgrade.ExitCode)."
+          }
+          if (-not (Test-Path $appExe) -or (Get-Content $marker -Raw).Trim() -ne "preserve-me") {
+            throw "Windows upgrade did not preserve the application or user data."
+          }
+
+          $smokeLog = Join-Path $env:RUNNER_TEMP "DockStationOperator-QML-smoke.log"
+          $env:DOCKSTATION_SMOKE_LOG = $smokeLog
+          & $appExe --smoke-test
+          if ($LASTEXITCODE -ne 0) {
+            throw "Installed QML Operator smoke test failed with exit code $LASTEXITCODE."
+          }
+          $env:DOCKSTATION_SMOKE_LOG = $null
+          if (-not (Select-String -Path $smokeLog -Pattern "QML root objects loaded: [1-9]" -Quiet)) {
+            Get-Content $smokeLog
+            throw "Packaged QML root object was not loaded."
+          }
+
+          $uninstaller = Join-Path $installDir "unins000.exe"
+          if (-not (Test-Path $uninstaller)) {
+            throw "Inno Setup uninstaller was not installed."
+          }
+          $remove = Start-Process -FilePath $uninstaller -ArgumentList @(
+            "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"
+          ) -Wait -PassThru
+          if ($remove.ExitCode -ne 0) {
+            throw "Windows uninstall failed with exit code $($remove.ExitCode)."
+          }
+          if (Test-Path $installDir) {
+            throw "Windows uninstall left application files behind."
+          }
+          if ((Get-Content $marker -Raw).Trim() -ne "preserve-me") {
+            throw "Windows uninstall removed or changed user data."
+          }
+
+          Remove-Item -Force $marker
+          if ((Get-ChildItem $appDataDir -Force | Measure-Object).Count -eq 0) {
+            Remove-Item -Force $appDataDir
+          }
+
+      - name: Upload tested Windows installer
         uses: actions/upload-artifact@v7
         with:
           name: dockstation-operator-windows-x64-${{ github.sha }}
-          path: artifacts/DockStationOperator-Setup-*.exe
+          path: artifacts/DockStationOperator-Setup-0.1.0+*.exe
           if-no-files-found: error
           retention-days: 30
 
