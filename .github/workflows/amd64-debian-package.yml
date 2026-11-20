@@ -65,10 +65,14 @@ jobs:
 
           DESTDIR="$stage" cmake --install build-deb
           version="0.1.0~git${SOURCE_COMMIT:0:12}"
+          upgrade_version="0.1.1~git${SOURCE_COMMIT:0:12}"
           bash packaging/debian/build_package.sh \
             --root "$stage" --output-dir "$artifacts" --version "$version"
+          bash packaging/debian/build_package.sh \
+            --root "$stage" --output-dir "$artifacts" --version "$upgrade_version"
 
           deb="$artifacts/dockstation-gateway_${version}_amd64.deb"
+          upgrade_deb="$artifacts/dockstation-gateway_${upgrade_version}_amd64.deb"
           test -s "$deb"
           [[ "$(dpkg-deb -f "$deb" Package)" == dockstation-gateway ]]
           [[ "$(dpkg-deb -f "$deb" Version)" == "$version" ]]
@@ -103,8 +107,11 @@ jobs:
       - name: Test Debian install, upgrade, remove, and purge
         run: |
           set -euo pipefail
-          deb="$(find "$RUNNER_TEMP/dockstation-deb/artifacts" -maxdepth 1 -type f -name '*.deb' -print -quit)"
+          deb="$RUNNER_TEMP/dockstation-deb/artifacts/dockstation-gateway_0.1.0~git${GITHUB_SHA:0:12}_amd64.deb"
+          upgrade_deb="$RUNNER_TEMP/dockstation-deb/artifacts/dockstation-gateway_0.1.1~git${GITHUB_SHA:0:12}_amd64.deb"
           test -s "$deb"
+          test -s "$upgrade_deb"
+          bash verification/repka_gateway/test_debian_postrm.sh
 
           policy="/usr/sbin/policy-rc.d"
           policy_backup="$RUNNER_TEMP/policy-rc.d.backup"
@@ -119,7 +126,7 @@ jobs:
             else
               sudo rm -f "$policy"
             fi
-            sudo rm -f /var/lib/dockstation/package-test-marker
+            sudo rm -f /var/lib/dockstation/package-test-marker /var/lib/dockstation/dockstation.sqlite3
             sudo rmdir /var/lib/dockstation 2>/dev/null || true
             sudo userdel dockstation 2>/dev/null || true
             sudo groupdel dockstation 2>/dev/null || true
@@ -139,9 +146,16 @@ jobs:
 
           printf '%s\n' 'local_setting=preserve-on-upgrade' | sudo tee -a /etc/dockstation/gateway.conf >/dev/null
           printf '%s\n' 'preserve-me' | sudo tee /var/lib/dockstation/package-test-marker >/dev/null
-          sudo dpkg -i "$deb"
+          sudo python3 -c 'import sqlite3; db=sqlite3.connect("/var/lib/dockstation/dockstation.sqlite3"); db.execute("CREATE TABLE package_upgrade_probe (id INTEGER PRIMARY KEY, value TEXT NOT NULL)"); db.execute("INSERT INTO package_upgrade_probe(value) VALUES (?)", ("preserve-sqlite",)); db.commit(); db.close()'
+          sudo chown dockstation:dockstation /var/lib/dockstation/dockstation.sqlite3
+          sudo chmod 0600 /var/lib/dockstation/dockstation.sqlite3
+
+          # Install a higher Debian version: dpkg must perform a real upgrade.
+          sudo dpkg -i "$upgrade_deb"
+          [[ "$(sudo dpkg-query -W -f='${Version}' dockstation-gateway)" == "0.1.1~git${GITHUB_SHA:0:12}" ]]
           sudo grep -Fqx 'local_setting=preserve-on-upgrade' /etc/dockstation/gateway.conf
           sudo grep -Fqx 'preserve-me' /var/lib/dockstation/package-test-marker
+          sudo python3 -c 'import sqlite3; db=sqlite3.connect("file:/var/lib/dockstation/dockstation.sqlite3?mode=ro", uri=True); assert db.execute("PRAGMA integrity_check").fetchone()[0] == "ok"; assert db.execute("SELECT value FROM package_upgrade_probe").fetchone()[0] == "preserve-sqlite"; db.close()'
 
           sudo dpkg --remove dockstation-gateway
           sudo test -f /etc/dockstation/gateway.conf
@@ -151,6 +165,8 @@ jobs:
           sudo dpkg --purge dockstation-gateway
           sudo test ! -e /etc/dockstation/gateway.conf
           sudo test -f /var/lib/dockstation/package-test-marker
+          sudo test -f /var/lib/dockstation/dockstation.sqlite3
+          sudo python3 -c 'import sqlite3; db=sqlite3.connect("file:/var/lib/dockstation/dockstation.sqlite3?mode=ro", uri=True); assert db.execute("PRAGMA integrity_check").fetchone()[0] == "ok"; assert db.execute("SELECT value FROM package_upgrade_probe").fetchone()[0] == "preserve-sqlite"; db.close()'
           sudo test ! -e /usr/lib/systemd/system/dockstation-gateway.service
 
       - name: Upload tested AMD64 Debian package
