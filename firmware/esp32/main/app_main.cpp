@@ -26,9 +26,9 @@
 namespace {
 constexpr char kTag[] = "DockStationESP32";
 
-// This remains default-off until the exact module/SoC, Flash/partition layout,
-// UART pinout and electrical compatibility have been verified. No GPIO map is
-// guessed or enabled by this scaffold.
+// ControllerLink remains default-off until the exact module/SoC,
+// Flash/partition layout, UART pinout and electrical compatibility are verified.
+// This guard does not disable the independently configured DHT22 GPIO inputs.
 dockstation::firmware::esp32::ControllerLinkFirmwareRuntimeStartConfig
     g_controller_link_start_config{};
 
@@ -133,8 +133,9 @@ void log_startup_blockers(
 }
 
 
-// DHT22 pins intentionally remain unset until the actual wiring is confirmed.
-// Each sensor has its own scheduler and last valid sample.
+// Prototype DHT22 data-line assignments. The board may print these as G25/G26;
+// these are GPIO numbers, not ground pins. Physical wiring/reading still needs
+// acceptance on the actual board. Each sensor has its own scheduler and sample.
 struct Dht22Channel final {
     gpio_num_t pin{GPIO_NUM_NC};
     dockstation::firmware::esp32::Dht22SamplingScheduler scheduler{};
@@ -144,18 +145,25 @@ struct Dht22Channel final {
     char measured_at[32]{};
 };
 
+constexpr gpio_num_t kDht22Sensor1DataPin = GPIO_NUM_25;
+constexpr gpio_num_t kDht22Sensor2DataPin = GPIO_NUM_26;
+
 std::array<Dht22Channel, 2U> g_dht22_channels{};
 
 void initialize_dht22_channels() noexcept {
+    // Keep the mapping in one place so a later wiring revision is easy to apply.
+    g_dht22_channels[0].pin = kDht22Sensor1DataPin;
+    g_dht22_channels[1].pin = kDht22Sensor2DataPin;
+
     const std::uint64_t now_ms = monotonic_milliseconds();
     for (auto& channel : g_dht22_channels) {
         if (channel.pin != GPIO_NUM_NC && GPIO_IS_VALID_GPIO(channel.pin)) {
             channel.scheduler.initialize(now_ms);
         }
     }
-    ESP_LOGI(kTag, "DHT22 channels configured: sensor1=%s sensor2=%s",
-        g_dht22_channels[0].pin == GPIO_NUM_NC ? "NOT_CONFIGURED" : "CONFIGURED",
-        g_dht22_channels[1].pin == GPIO_NUM_NC ? "NOT_CONFIGURED" : "CONFIGURED");
+    ESP_LOGI(kTag, "DHT22 channels configured: sensor1=GPIO%d sensor2=GPIO%d",
+        static_cast<int>(g_dht22_channels[0].pin),
+        static_cast<int>(g_dht22_channels[1].pin));
 }
 
 void poll_dht22_channels() noexcept {
