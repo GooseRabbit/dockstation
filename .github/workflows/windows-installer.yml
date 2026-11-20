@@ -3,7 +3,7 @@ name: Windows Operator installer
 on:
   push:
     branches:
-      - chore/flatten-repka-directories
+      - main
     tags:
       - 'v*'
   pull_request:
