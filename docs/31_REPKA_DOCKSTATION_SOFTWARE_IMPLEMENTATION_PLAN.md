@@ -87,7 +87,7 @@ Windows-клиент не обращается к GPIO, драйверам и с
 | ОС | Repka OS | Основной кандидат; версию проверить на плате |
 | Служба Repka | C++17 с переиспользованием текущего ядра | Предварительная позиция |
 | Сборка | CMake для отдельной Linux-цели | СОГЛАСОВАНО владельцем 2026-11-12 |
-| Windows-клиент | Python + PySide6 + Qt Quick/QML | Рекомендация docs/23; подтвердить прототипом |
+| Windows-клиент | Python 3.12 + PySide6 + Qt Quick/QML | Выбранный стек текущего Operator; приложение реализовано частично, полный продуктовый функционал не завершён |
 | API первого прототипа | REST/HTTP + JSON через SSH-туннель | Предложение |
 | Рабочий API | Защищённый API с проверкой идентичности и полномочий | Обязательно; реализация требует решений docs/24 |
 | Локальная БД | SQLite по DEC-068; доменные порты не зависят от backend | СОГЛАСОВАНО; проверка на Repka OS остаётся открытой |
@@ -473,7 +473,7 @@ Persistence adapters / Clock / Timer / ID providers
 
 Ядро не должно знать, используется ли внутри SQLite, другой движок или файловый адаптер. Один физический адаптер может реализовать несколько логических портов, чтобы связанные изменения фиксировались одной транзакцией. Это не требует объединять публичные интерфейсы ядра или создавать один монолитный класс.
 
-**Фактически созданная основа:** src/platform/persistence/sqlite_database.hpp/.cpp содержит SqliteDatabase, отдельный от Linux Gateway runtime. CMakeLists.txt требует SQLite >= 3.31 для SQLITE_OPEN_NOFOLLOW, создаёт отдельную static library dockstation_persistence_sqlite и CTest sqlite_persistence_probe; GitHub Actions устанавливает libsqlite3-dev. Это только фундамент соединения/версии схемы, а не production repository adapter. Остальные минимальные файлы — read/write adapters для событий/состояния/операций/recovery/configuration, миграции доменной схемы, clocks/timer и устойчивые ID providers — остаются планируемыми.
+**Историческое состояние на редакцию 1.70:** src/platform/persistence/sqlite_database.hpp/.cpp содержал только основу соединения/версии схемы без production repository adapters и Gateway wiring. С тех пор этот этап завершён частично: актуальное состояние Gateway/SQLite приведено ниже в примечании редакции 2.52. Остальные адаптеры для полного набора SSM operations/recovery/configuration, миграции будущих доменных схем, clocks/timer и устойчивые ID providers остаются отдельными задачами.
 
 Системный журнал Gateway (stderr → journald) остаётся отдельным от долговременных данных SSM. `EventRepository` хранит нормализованные события, необходимые для дедупликации и доказательства изменений; он не становится хранилищем сырых сетевых/аппаратных логов. Конфигурация процесса Linux Gateway из `/etc/dockstation/gateway.conf` (порт и параметры журналирования) также не является конфигурацией станции CFG-F00…CFG-F08.
 
@@ -490,7 +490,7 @@ Persistence adapters / Clock / Timer / ID providers
 - CMake требует SQLite >=3.31 (для SQLITE_OPEN_NOFOLLOW); CI Ubuntu 24.04 использовал системный SQLite. Точную версию и возможности библиотеки на Repka OS ещё требуется проверить до production-развёртывания.
 - CTest sqlite_persistence_probe проверяет реальный on-disk файл, настройки PRAGMA, начальную schema migration, отклонение относительного пути и final symlink, отказ чужой БД без изменения её WAL-режима, отказ закрытия при незавершённом statement, rollback/commit нескольких связанных строк, close/reopen, crash recovery после _exit(), integrity_check и блокировку конкурирующего writer.
 - Полный GitHub Actions run 43699555707 завершился SUCCESS для candidate HEAD 53f3289bb58d1fd9dc0f67111299a546aaf7b49e: 23/23 CTest с ASan/UBSan, 31/31 C++ host-программ и 141 pytest; прошли QML/package, Python compileall, Gateway/systemd/non-root и shell/network checks. Это host-проверка на Ubuntu 24.04.5 x86_64: завершение процесса до COMMIT не является испытанием внезапного отключения питания или отказа реального накопителя.
-- SQLite пока не включён в dockstation_linux_runtime, Gateway не открывает файл БД и не сохраняет реальные station events. При последующей интеграции отсутствие/ошибка локального хранилища должны выдавать явный UNAVAILABLE/ERROR для persistence-зависимых операций; Gateway и диагностика, не требующие записи, не должны заявлять несуществующий commit.
+- Историческое ограничение редакции 1.70: SQLite ещё не был подключён к dockstation_linux_runtime и Gateway не сохранял station events. В текущей редакции source/session/cursor и subsystem-status persistence уже подключены; полная SSM persistence остаётся незавершённой. Отсутствие/ошибка локального хранилища должны выдавать явный UNAVAILABLE/ERROR для persistence-зависимых операций; Gateway и диагностика, не требующие записи, не должны заявлять несуществующий commit.
 
 ### 5.1.2. Распределение локальных, серверных и резервных данных
 
