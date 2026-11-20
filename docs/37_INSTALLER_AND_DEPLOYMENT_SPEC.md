@@ -79,7 +79,7 @@ The current ESP32 credential store reads pre-provisioned encrypted NVS only. A s
 
 | Scenario | Required behaviour |
 |---|---|
-| Fresh install | Verify native ARM64 and runtime dependencies; install files; create the system account/group and initial config if absent; enable/start only the read-only base service; verify local health endpoint. |
+| Fresh install | Verify that the package architecture matches the native host and runtime dependencies; install files; create the system account/group and initial config if absent; enable/start only the read-only base service; verify local health endpoint. |
 | Upgrade | Preserve /etc/dockstation/gateway.conf and /var/lib/dockstation; stop/restart the base service through package lifecycle; do not alter UART selection or secrets. |
 | Remove | Stop and disable the service; remove package-owned executables/units; retain configuration and persistent state for a later reinstall. |
 | Purge | Remove package conffiles according to dpkg policy, but do not silently delete /var/lib/dockstation; data deletion is a separate explicit administrative action. |
