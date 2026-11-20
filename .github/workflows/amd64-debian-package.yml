@@ -210,7 +210,7 @@ jobs:
           done
 
           release_dir="$RUNNER_TEMP/dockstation-release"
-          deb="$(find "$release_dir" -maxdepth 1 -type f -name 'dockstation-gateway_0.1.0~git*_amd64.deb' -print -quit)"
+          deb="$(find "$release_dir" -maxdepth 1 -type f -name 'dockstation-gateway_0.1.1~git*_amd64.deb' -print -quit)"
           test -n "$deb" && test -s "$deb"
           test -s "$deb.sha256"
           (cd "$(dirname "$deb")" && sha256sum --check --strict "$(basename "$deb").sha256")
