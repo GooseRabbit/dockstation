@@ -83,11 +83,6 @@ RUNTIME_DEPENDS="$(printf '%s\n' "$SHLIBS_OUTPUT" | sed -n 's/^shlibs:Depends=//
 # Debian 12 uses libssl3; Ubuntu 24.04 uses the t64-renamed libssl3t64.
 # Keep the package installable on either ABI-compatible OpenSSL 3 provider.
 RUNTIME_DEPENDS="$(printf '%s\n' "$RUNTIME_DEPENDS" | sed -E 's/libssl3t64 \(>= ([^)]+)\)/libssl3 (>= \1) | libssl3t64 (>= \1)/g')"
-sed -e "s/@VERSION@/$VERSION/g" \
-    -e "s/@ARCH@/$PACKAGE_ARCH/g" \
-    -e "s#@RUNTIME_DEPENDS@#$RUNTIME_DEPENDS#g" \
-    packaging/debian/control.in > "$PACKAGE_ROOT/DEBIAN/control"
-
 # Build a native package only: Debian architecture metadata must match every
 # shipped ELF executable. Cross-compilation/package staging is not implied.
 PACKAGE_ARCH="$(dpkg --print-architecture)"
@@ -103,6 +98,11 @@ case "$PACKAGE_ARCH" in
         exit 1
         ;;
 esac
+
+sed -e "s/@VERSION@/$VERSION/g" \
+    -e "s/@ARCH@/$PACKAGE_ARCH/g" \
+    -e "s#@RUNTIME_DEPENDS@#$RUNTIME_DEPENDS#g" \
+    packaging/debian/control.in > "$PACKAGE_ROOT/DEBIAN/control"
 
 for binary in "$PACKAGE_ROOT"/usr/bin/dockstation*; do
     readelf -h "$binary" | grep -Eq "Machine:[[:space:]]+$EXPECTED_ELF_MACHINE$" || {
