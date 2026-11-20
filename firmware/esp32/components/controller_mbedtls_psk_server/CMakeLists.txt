@@ -15,5 +15,8 @@ idf_component_register(
     REQUIRES mbedtls bootloader_support controller_lid_limit_switches
 )
 
+# LidLimitSwitchTracker is compiled by its own component; depend on it here
+# rather than compiling its source a second time into this TLS component.
+
 # Keep the firmware component on the same language baseline as the shared code.
 target_compile_features(${COMPONENT_LIB} PUBLIC cxx_std_17)
