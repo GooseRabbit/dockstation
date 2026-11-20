@@ -32,8 +32,10 @@ The ESP-IDF target build including the stable controller-ID NVS reader passed
 on commit `8219cd5023a881bd66139a4365b5fd3fbdb43ea3`:
 [ESP32 firmware build #43939967553](https://github.com/GooseRabbit/dockstation/actions/runs/43939967553).
 The log confirms that the NVS credential/identity component compiled and
-linked, and the ESP32 ELF/BIN were generated. This is compile/link acceptance
-only; the workflow does not flash or run the image on a physical board.
+linked. In addition, the owner has physically tested the ESP32 prototype with
+an ordinary Linux host (not Repka). The Repka-specific UART/ControllerLink
+integration remains untested. GitHub Actions builds and packages the image but
+does not flash or run physical hardware.
 
 ## Board identification and limitations
 
@@ -45,30 +47,31 @@ TX2/U2TXD on board pin 28 and GPIO16 as RX2/U2RXD on board pin 27.
 Espressif's official ESP32-WROOM-32 datasheet specifies 4 MB integrated SPI
 Flash for the standard module.
 
-This is a documented **UART2 candidate**, not a physically verified
-profile. The FCC filing/manual do not prove that the particular board in the
-owner's possession has the same PCB revision, module suffix, Flash/PSRAM
-capacity or unmodified header routing. GPIO17/GPIO16 therefore remain
-`GPIO_NUM_NC` in `ControllerUartConfig`; neither pin is assigned at startup.
-The UART0 pins GPIO1/TX0 and GPIO3/RX0 remain reserved for the board's USB
-serial/console path and are not selected for the station link.
+The physical prototype has been identified as ESP32-D0WD-V3, revision 3.1;
+`esptool flash-id` reported **4 MB SPI Flash**. The prototype UART path has
+been exercised with an ordinary Linux host. Its checked-in wiring is UART2,
+GPIO17/TX and GPIO16/RX, 115200 8N1, with UART0 retained for USB console and
+programming. This is a verified prototype configuration for the tested ESP32
+and Linux host; it is not yet a Repka hardware acceptance.
 
-`IDF_TARGET=esp32` remains a provisional family-level build target. The
-physical module suffix/revision, actual Flash chip identity, PSRAM presence,
-exact board revision and production partition layout remain unconfirmed.
-4 MB is expected only if the installed module is verified as standard
-ESP32-WROOM-32; it is not yet a measured property of the board. See
-`docs/33_ESP32_HARDWARE_PROFILE.md` for the evidence matrix and acceptance
-steps.
+`IDF_TARGET=esp32` remains the family-level target. The physical Flash size
+is confirmed as 4 MB and is now explicit in `sdkconfig.defaults` and CI.
+PSRAM presence and the final production partition/security layout remain
+unconfirmed; the release image uses the project's current prototype partition
+layout and must not be treated as a production-secured image. See
+`docs/33_ESP32_HARDWARE_PROFILE.md` for the evidence matrix and remaining
+acceptance steps.
 
 ## Current firmware entry point
 
-`main/app_main.cpp` generates a fresh per-boot instance ID before ADC, I²S or
-radio subsystems are used. It then applies two guards **before touching NVS**:
-the exact hardware profile must be explicitly confirmed and the UART port/TX/RX
-configuration must be valid. The checked-in profile deliberately keeps
-`hardware_profile_confirmed=false` and the GPIOs unset, so the current image
-returns before opening NVS.
+`main/app_main.cpp` starts the separate prototype telemetry UART2 path
+(GPIO17/TX, GPIO16/RX) and then prepares a fresh per-boot instance ID before
+ADC, I²S or radio subsystems are used. The secure ControllerLink startup applies
+two guards **before touching NVS**: its exact hardware profile must be
+explicitly confirmed and its dedicated UART port/TX/RX configuration must be
+valid. The checked-in secure profile deliberately keeps
+`hardware_profile_confirmed=false` and its ControllerLink GPIOs unset, so only
+the protected NVS/TLS path is skipped; prototype UART telemetry continues.
 
 Only after those two guards have been deliberately satisfied will
 `app_main` initialize the already-provisioned encrypted NVS store in
@@ -105,10 +108,12 @@ tracker remains a pure component awaiting GPIO acquisition. The temporary envelo
 time marker is `mono_us_<value>`, monotonic microseconds since boot; it is
 **not UTC wall-clock time**, and the final timestamp convention remains open.
 
-The checked-in ControllerLink profile still has
-`hardware_profile_confirmed=false` and unset UART GPIOs. The normal image
-therefore skips NVS, UART and TLS setup, but it still creates the runtime task
-for independent DHT22 acquisition on GPIO25/GPIO26. ControllerLink remains
+The secure ControllerLink profile still has
+`hardware_profile_confirmed=false` and its dedicated UART GPIO configuration
+unset. Therefore the normal image does not open protected NVS or start
+ControllerLink/TLS. This does **not** disable the separate prototype telemetry
+path: `app_main` initializes plaintext UART2 on GPIO17/GPIO16 and starts the
+runtime task for DHT22 acquisition on GPIO25/GPIO26. ControllerLink remains
 NOT_CONFIGURED. The link-only acceptance hook is forced into the ELF for
 compile/link coverage but is not executed.
 
@@ -130,7 +135,8 @@ send/receive callbacks, uses the selected UART port with 8N1/no flow control,
 and requires explicit TX/RX GPIOs. Its bounded event queue exposes RX FIFO and
 ring-buffer overflow, framing/parity faults and BREAK; the firmware runtime
 closes TLS before UART whenever the protected byte stream may be damaged.
-UART2 is the logical candidate, but neither GPIO is assigned by this project.
+The secure ControllerLink adapter still requires its own explicit confirmed
+configuration. The separate prototype UART2 path uses GPIO17/TX and GPIO16/RX.
 
 `controller_link_firmware_runtime/` composes the UART adapter and
 `ControllerLinkPeerService`. Its `start()` accepts a
@@ -213,12 +219,14 @@ The firmware runtime polling task owns both DHT22 channels and invokes the GPIO
 reader only for explicitly configured pins. This task is started even when the
 physical ControllerLink profile or protected credentials are unavailable; in
 that mode it continues the independent sensor lifecycle without opening NVS,
-UART or TLS. Both checked-in sensor pins remain unset, so the normal image
-reports both channels as NOT_CONFIGURED. Sensor samples are not transmitted to Repka while ControllerLink is
-NOT_CONFIGURED. The Repka-side ControllerLink receiver and diagnostics JSON
-path are implemented and covered by a host PTY integration test for all four
-DHT22 measurements. Physical UART exchange remains pending confirmation of
-the hardware profile, GPIO mapping and provisioned credentials. The decoder, adapter and scheduler
+UART or TLS. The prototype config assigns DHT22 sensor 1 DATA to GPIO25 and sensor 2 DATA
+to GPIO26. The prototype UART sends the four sensor measurements to the Linux
+host when fresh readings are available. This plaintext path is independent of
+secure ControllerLink; sensor samples are not sent through ControllerLink while
+it is NOT_CONFIGURED. The Repka-side ControllerLink receiver and diagnostics
+JSON path are implemented and covered by a host PTY integration test for all
+four DHT22 measurements, but physical Repka exchange and secure pairing remain
+unverified. The decoder, adapter and scheduler
 are built by ESP-IDF and checked by the host CTest targets `dht22_frame_decoder`,
 `dht22_telemetry_adapter` and `dht22_sampling_scheduler`; these tests do
 not prove physical sensor operation or acquisition timing.
@@ -257,20 +265,20 @@ Not implemented by this scaffold:
 - a provisioning writer/utility for PSK, PSK identity or stable controller IDs;
 - board-specific UART pin assignment or a running UART connection;
 - physical acceptance of ControllerLink reconnect/recovery over the actual UART wiring;
-- physical DHT22 acceptance on the actual board; the GPIO reader and telemetry path are implemented, but both sensor GPIOs remain unset and no real sensor has yet been tested;
+- physical DHT22 acceptance on the actual board; GPIO25/GPIO26 are configured for the two prototype channels, but sensor electrical acceptance must be distinguished from the confirmed ESP32-to-Linux prototype UART test;
 - GPIO acquisition/pin assignment for the lid limit switches, motor control or hardware interlocks; the pure lid limit-switch state tracker exists but is not connected to hardware;
 - enabling/configuring Flash Encryption, Secure Boot policy or OTA update;
 - production partition/Flash sizing and final board profile.
 
-The CI build currently inherits ESP-IDF v5.5.6's default 2 MB SPI-flash
-selection because the board's actual Flash capacity has not been confirmed.
-This is only the SDK build default, not evidence that the physical board has
-2 MB. The 4 MB value in the standard ESP32-WROOM-32 datasheet is a module
-specification, but it becomes applicable to this particular board only after
-the actual module is confirmed and `flash_id` is read.
-The CI workflow only builds and never flashes the hardware. Do not flash or
-distribute this image for use on the board until the module/Flash capacity and
-partition layout are verified and configured.
+The physical ESP32-D0WD-V3 revision 3.1 reports 4 MB SPI Flash via the
+read-only `esptool flash-id` check. `sdkconfig.defaults` explicitly selects
+`CONFIG_ESPTOOLPY_FLASHSIZE_4MB`, and CI verifies that the generated flasher
+arguments also select 4 MB before packaging. The workflow creates a merged
+image from the build-generated bootloader, partition table and application;
+it never flashes physical hardware. The image is suitable for the confirmed
+4 MB prototype configuration only. It does not provision encrypted NVS,
+Flash Encryption, Secure Boot, production credentials or OTA; do not enable
+eFuses or treat this prototype image as a production-secured firmware.
 
 ## Architecture boundaries
 
@@ -402,9 +410,10 @@ GPIO acquisition, or physical completion acknowledgement in the firmware.
 The polling task answers snapshot requests with logical station-state
 telemetry plus the two DHT22 channels. Its unknown input qualities are
 intentional. The DHT22 GPIO reader and telemetry path are implemented, but
-both sensor pins remain unset until the actual wiring is confirmed. Lid
-limit-switch debounce is still not connected to GPIO, and the actual board
-profile remains default-off until physical acceptance.
+the prototype DHT22 pins are configured as GPIO25 and GPIO26. Lid
+limit-switch debounce is still not connected to GPIO. The secure ControllerLink
+profile remains default-off pending its separate Repka, credential and security
+acceptance.
 
 
 ## Safety-input freshness

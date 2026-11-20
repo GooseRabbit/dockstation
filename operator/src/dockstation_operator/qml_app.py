@@ -15,8 +15,21 @@ from .ui.qml_bridge import QmlOperatorBridge
 
 def main() -> int:
     smoke_test = "--smoke-test" in sys.argv
-    qt_arguments = [argument for argument in sys.argv if argument != "--smoke-test"]
     log_path = os.environ.get("DOCKSTATION_SMOKE_LOG")
+    qt_arguments: list[str] = []
+    arguments = iter(enumerate(sys.argv))
+    for index, argument in arguments:
+        if argument == "--smoke-test":
+            continue
+        if argument == "--smoke-test-log":
+            try:
+                _, log_path = next(arguments)
+            except StopIteration as error:
+                raise ValueError("--smoke-test-log requires a file path") from error
+            if not log_path:
+                raise ValueError("--smoke-test-log requires a non-empty file path")
+            continue
+        qt_arguments.append(argument)
 
     def write_smoke_log(message: str) -> None:
         if smoke_test and log_path:

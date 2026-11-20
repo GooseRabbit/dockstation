@@ -178,3 +178,40 @@ jobs:
             ${{ runner.temp }}/dockstation-deb/artifacts/dockstation-gateway_*.deb.sha256
           if-no-files-found: error
           retention-days: 30
+
+  publish-amd64-release:
+    name: Publish AMD64 Debian package to GitHub Release
+    needs: build-and-test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    steps:
+      - name: Download tested AMD64 Debian package
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: dockstation-gateway-amd64-deb-${{ github.sha }}
+          path: ${{ runner.temp }}/dockstation-release
+
+      - name: Wait for Linux release, then attach AMD64 package
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          deadline=$((SECONDS + 3000))
+          until gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; do
+            if (( SECONDS >= deadline )); then
+              echo "Linux release $RELEASE_TAG was not created within 50 minutes." >&2
+              exit 1
+            fi
+            sleep 20
+          done
+
+          release_dir="$RUNNER_TEMP/dockstation-release"
+          deb="$(find "$release_dir" -maxdepth 1 -type f -name 'dockstation-gateway_0.1.1~git*_amd64.deb' -print -quit)"
+          test -n "$deb" && test -s "$deb"
+          test -s "$deb.sha256"
+          (cd "$(dirname "$deb")" && sha256sum --check --strict "$(basename "$deb").sha256")
+          gh release upload "$RELEASE_TAG" "$deb" "$deb.sha256" --repo "$GITHUB_REPOSITORY"

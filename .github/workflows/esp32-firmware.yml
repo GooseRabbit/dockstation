@@ -1,9 +1,11 @@
-name: ESP32 firmware build
+name: ESP32 firmware build and release
 
 on:
   push:
     branches:
       - main
+    tags:
+      - 'v*'
     paths:
       - "firmware/esp32/**"
       - "src/hardware/interfaces/**"
@@ -17,19 +19,180 @@ on:
       - ".github/workflows/esp32-firmware.yml"
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   build-esp32:
-    name: ESP-IDF v5.5.6 / provisional ESP32 target
+    name: Build and package ESP32 4 MB firmware
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
 
-      - name: Build ESP32 firmware
+      - name: Build ESP32 firmware and merged flash image
         uses: espressif/esp-idf-ci-action@v1
         with:
           esp_idf_version: v5.5.6
           target: esp32
           path: firmware/esp32
-          command: idf.py build && idf.py size && idf.py size-components
+          command: idf.py build && idf.py size && idf.py size-components && idf.py merge-bin -o dockstation-esp32-4mb.bin
+
+      - name: Verify 4 MB build profile and assemble release bundle
+        env:
+          SOURCE_COMMIT: ${{ github.sha }}
+          SOURCE_REF: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          build_dir="firmware/esp32/build"
+          package_root="$RUNNER_TEMP/dockstation-esp32-firmware"
+          archive="$RUNNER_TEMP/dockstation-esp32-firmware-${GITHUB_SHA}.tar.gz"
+
+          test -s "$build_dir/dockstation-esp32-4mb.bin"
+          test -s "$build_dir/dockstation_esp32_firmware.bin"
+          test -s "$build_dir/bootloader/bootloader.bin"
+          test -s "$build_dir/partition_table/partition-table.bin"
+          test -s "$build_dir/flash_args"
+          test -s "$build_dir/flasher_args.json"
+
+          grep -Fqx 'CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y' firmware/esp32/sdkconfig.defaults
+          grep -Eq -- '--flash_size[[:space:]]+4MB' "$build_dir/flash_args"
+
+          python3 - "$build_dir/flasher_args.json" "$build_dir" <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          metadata_path = pathlib.Path(sys.argv[1])
+          build_dir = pathlib.Path(sys.argv[2])
+          metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+          args = metadata["write_flash_args"]
+          try:
+              size_index = args.index("--flash_size")
+          except ValueError as exc:
+              raise SystemExit("Generated flasher_args.json has no --flash_size option") from exc
+          if args[size_index + 1] != "4MB":
+              raise SystemExit(f"Expected 4MB flash arguments, got {args[size_index + 1]!r}")
+          for relative_path in metadata["flash_files"].values():
+              if not (build_dir / relative_path).is_file():
+                  raise SystemExit(f"Missing generated flash file: {relative_path}")
+          PY
+
+          mkdir -p "$package_root/bootloader" "$package_root/partition_table"
+          cp "$build_dir/dockstation-esp32-4mb.bin" "$package_root/"
+          cp "$build_dir/dockstation_esp32_firmware.bin" "$package_root/"
+          cp "$build_dir/bootloader/bootloader.bin" "$package_root/bootloader/"
+          cp "$build_dir/partition_table/partition-table.bin" "$package_root/partition_table/"
+          cp "$build_dir/flash_args" "$package_root/"
+          cp "$build_dir/flasher_args.json" "$package_root/"
+
+          cat > "$package_root/README-FLASHING.md" <<'EOF'
+          # DockStation ESP32 prototype firmware
+
+          This bundle was built with ESP-IDF v5.5.6 for the classic ESP32 target
+          and the physically confirmed 4 MB SPI Flash profile.
+
+          ## Contents
+
+          - dockstation-esp32-4mb.bin: merged image containing the build-generated
+            bootloader, partition table and application. Flash this file at offset 0x0.
+          - dockstation_esp32_firmware.bin: application image only.
+          - bootloader/bootloader.bin and partition_table/partition-table.bin:
+            individual build outputs.
+          - flash_args and flasher_args.json: exact offsets and settings generated
+            by ESP-IDF for this build.
+
+          ## Flash the merged image
+
+          Install the Espressif esptool package, put the ESP32 into download mode if
+          the board does not do this automatically, then run:
+
+          ~~~bash
+          python -m esptool --chip esp32 --port PORT write_flash 0x0 dockstation-esp32-4mb.bin
+          ~~~
+
+          Replace PORT with the actual serial device (for example /dev/ttyUSB0
+          on Linux or COMx on Windows). This writes the merged image; it does not
+          run erase_flash and does not change eFuses.
+
+          ## Prototype scope
+
+          The physical ESP32 prototype has been tested with an ordinary Linux host.
+          Repka Pi integration has not yet been physically tested. The prototype
+          telemetry UART is plaintext and is not the secure ControllerLink/TLS
+          transport. This image does not provision credentials, enable Flash
+          Encryption or Secure Boot, or implement production OTA.
+          EOF
+
+          cat > "$package_root/BUILD-METADATA.txt" <<EOF
+          Project: DockStation ESP32 firmware
+          Source commit: $SOURCE_COMMIT
+          Source ref: $SOURCE_REF
+          ESP-IDF: v5.5.6
+          Target: esp32
+          SPI Flash: 4 MB (explicit sdkconfig selection; generated flasher args verified)
+          Physical acceptance: ESP32 with ordinary Linux host
+          Repka physical integration: not yet tested
+          EOF
+
+          (cd "$package_root" && sha256sum \
+            dockstation-esp32-4mb.bin \
+            dockstation_esp32_firmware.bin \
+            bootloader/bootloader.bin \
+            partition_table/partition-table.bin > SHA256SUMS)
+          tar -czf "$archive" -C "$RUNNER_TEMP" dockstation-esp32-firmware
+          (cd "$RUNNER_TEMP" && sha256sum "$(basename "$archive")" > "$(basename "$archive").sha256")
+          test -s "$archive"
+          test -s "$archive.sha256"
+
+      - name: Upload verified ESP32 firmware bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: dockstation-esp32-firmware-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/dockstation-esp32-firmware-${{ github.sha }}.tar.gz
+            ${{ runner.temp }}/dockstation-esp32-firmware-${{ github.sha }}.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+  publish-esp32-release:
+    name: Attach ESP32 firmware bundle to GitHub Release
+    needs: build-esp32
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    steps:
+      - name: Download verified ESP32 firmware bundle
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: dockstation-esp32-firmware-${{ github.sha }}
+          path: ${{ runner.temp }}/dockstation-esp32-release
+
+      - name: Wait for Linux release, then attach ESP32 bundle
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          deadline=$((SECONDS + 3000))
+          until gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; do
+            if (( SECONDS >= deadline )); then
+              echo "Linux release $RELEASE_TAG was not created within 50 minutes." >&2
+              exit 1
+            fi
+            sleep 20
+          done
+
+          release_dir="$RUNNER_TEMP/dockstation-esp32-release"
+          archive="$(find "$release_dir" -maxdepth 1 -type f -name 'dockstation-esp32-firmware-*.tar.gz' -print -quit)"
+          test -n "$archive" && test -s "$archive"
+          test -s "$archive.sha256"
+          (cd "$(dirname "$archive")" && sha256sum --check --strict "$(basename "$archive").sha256")
+          gh release upload "$RELEASE_TAG" "$archive" "$archive.sha256" --repo "$GITHUB_REPOSITORY" --clobber

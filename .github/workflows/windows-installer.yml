@@ -63,7 +63,11 @@ jobs:
         run: |
           $compiler = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
           $initialVersion = "0.0.9-ci"
-          $upgradeVersion = "0.1.0+${{ github.sha }}".Substring(0, 18)
+          if ($env:GITHUB_REF -like "refs/tags/v*") {
+            $upgradeVersion = $env:GITHUB_REF_NAME.Substring(1)
+          } else {
+            $upgradeVersion = "0.1.0+$($env:GITHUB_SHA.Substring(0, 12))"
+          }
 
           & $compiler "/DAppVersion=$initialVersion" "packaging/windows/DockStationOperator.iss"
           if ($LASTEXITCODE -ne 0) {
@@ -111,16 +115,22 @@ jobs:
           }
 
           $smokeLog = Join-Path $env:RUNNER_TEMP "DockStationOperator-QML-smoke.log"
-          $env:DOCKSTATION_SMOKE_LOG = $smokeLog
-          & $appExe --smoke-test
-          if ($LASTEXITCODE -ne 0) {
-            throw "Installed QML Operator smoke test failed with exit code $LASTEXITCODE."
+          $smoke = Start-Process -FilePath $appExe -ArgumentList @(
+            "--smoke-test", "--smoke-test-log", $smokeLog
+          ) -Wait -PassThru -NoNewWindow
+          if ($smoke.ExitCode -ne 0) {
+            throw "Installed QML Operator smoke test failed with exit code $($smoke.ExitCode)."
           }
-          $env:DOCKSTATION_SMOKE_LOG = $null
+          if (-not (Test-Path $smokeLog)) {
+            throw "Packaged QML smoke test did not create its diagnostic log."
+          }
           if (-not (Select-String -Path $smokeLog -Pattern "QML root objects loaded: [1-9]" -Quiet)) {
             Get-Content $smokeLog
             throw "Packaged QML root object was not loaded."
           }
+
+          New-Item -ItemType Directory -Force -Path "artifacts/release" | Out-Null
+          Copy-Item $upgradeInstaller "artifacts/release/"
 
           $uninstaller = Join-Path $installDir "unins000.exe"
           if (-not (Test-Path $uninstaller)) {
@@ -148,7 +158,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: dockstation-operator-windows-x64-${{ github.sha }}
-          path: artifacts/DockStationOperator-Setup-0.1.0+*.exe
+          path: artifacts/release/*.exe
           if-no-files-found: error
           retention-days: 30
 

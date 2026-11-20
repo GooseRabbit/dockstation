@@ -1,23 +1,21 @@
-# Предварительный аппаратный профиль ESP32 для DockStation
+# Аппаратный профиль ESP32 для DockStation
 
-**Статус:** документированный кандидат; физически не подтверждён.
-**Редакция:** 0.6.
+**Статус:** прототип ESP32 → обычный Linux физически проверен; интеграция с Repka и secure ControllerLink ещё не приняты.
+**Редакция:** 0.7.
 **Дата:** 2026-11-20.
 **Связанные решения:** DEC-062, DEC-064, DEC-065, DEC-066.
 
 ## 1. Назначение и правило безопасности
 
-Документ собирает подтверждённые внешними документами сведения о плате ESP32, предоставленной владельцем по FCC ID `2A54N-ESP32`, и отделяет их от неизвестных параметров конкретного физического экземпляра.
+Документ фиксирует аппаратные сведения и результаты физической проверки прототипа. Владелец подтвердил работу физической ESP32 в связке с обычным Linux-хостом. Проверка не выполнялась на Repka Pi; она не подтверждает готовность Repka UART, защищённого ControllerLink/TLS или production provisioning.
 
-Запись FCC и приложенный к ней user manual позволяют уточнить вероятный модуль и распиновку, но не заменяют осмотр/измерение платы владельца. Поэтому документ имеет статус **candidate**, а не «аппаратный профиль подтверждён».
+До отдельной приёмки Repka и production security запрещено:
+- считать текущую проверку обычного Linux-хоста подтверждением Repka Pi;
+- включать `hardware_profile_confirmed=true` для защищённого ControllerLink без завершённой проверки его полного профиля;
+- включать Flash Encryption/eFuses или выполнять production provisioning;
+- считать прототипную partition table окончательной production-разметкой.
 
-До закрытия критериев §6 запрещено:
-- указывать неподтверждённую Flash capacity в `sdkconfig`;
-- создавать окончательную production partition table;
-- включать Flash Encryption/eFuses или provisioning;
-- задавать GPIO16/GPIO17 в `ControllerUartConfig`;
-- устанавливать `hardware_profile_confirmed=true`;
-- прошивать на физическую плату текущий CI image.
+4 MB Flash уже подтверждены физически и явно задаются в `firmware/esp32/sdkconfig.defaults`.
 
 ## 2. Что подтверждают документы
 
@@ -27,9 +25,9 @@
 | Модуль на схеме/manual | В user manual, приложенном к той же FCC application, показан ESP-WROOM-32; datasheet Espressif описывает модуль и выводы U2RXD/U2TXD | Документированный кандидат; точное исполнение установленного модуля не прочитано с физической маркировки |
 | Семейство SoC | ESP32 classic family implied by FCC/manual and ESP-WROOM-32 description | Семейство-кандидат; SoC stepping / package revision не подтверждены |
 | Тип платы | Manual содержит 38-pin board pin definition с USB и кнопками EN/IO0 | Кандидат по документации; ревизия фактической PCB и непрерывность дорожек до header не измерены |
-| SPI Flash | Официальный datasheet стандартного ESP32-WROOM-32 указывает интегрированную SPI Flash 4 MB | **Ожидается 4 MB при подтверждении точной модели установленного модуля; фактическая плата ещё не проверена через `flash_id`** |
+| SPI Flash | `esptool flash-id` на физической плате ESP32-D0WD-V3 revision 3.1 | **Физически подтверждено: 4 MB; CI конфигурация также фиксирует 4 MB** |
 | PSRAM | Нет подтверждения установленной PSRAM | **UNKNOWN; не считать наличие PSRAM** |
-| UART2 | Manual указывает GPIO17 = TX2/U2TXD (board pin 28), GPIO16 = RX2/U2RXD (board pin 27) | Документированный pin-map candidate; физическая проверка не выполнена |
+| UART2 prototype | GPIO17 = TX, GPIO16 = RX, 115200 8N1 | **Физически проверен ESP32 → обычный Linux host; Repka не проверялась** |
 | UART0 | Manual указывает GPIO1 = TX0 (pin 35), GPIO3 = RX0 (pin 34) | Не использовать для штатного Repka—ESP32 канала; оставить сервисному USB-UART/console пути |
 | Flash pins | Manual помечает GPIO6–GPIO11 как SPI Flash signal pins | Не назначать их прикладной периферии |
 | Рабочий ESP-IDF target | `esp32` | Временный family-level build target; не является production board approval |
@@ -37,86 +35,77 @@
 Источники:
 - [FCC ID 2A54N-ESP32 — устройство и filing](https://fccid.io/2A54N-ESP32)
 - [FCC User Manual 5836477](https://fccid.io/2A54N-ESP32/User-Manual/User-Manual-5836477) — pin definition в §1.5, последняя страница документа
-- [Espressif ESP32-WROOM-32 datasheet](https://documentation.espressif.com/esp32-wroom-32_datasheet_en.html) — для стандартного модуля указывает ESP32-D0WDQ6 и 4 MB SPI Flash; это условный профиль, пока маркировка и физическая Flash не проверены
+- [Espressif ESP32-WROOM-32 datasheet](https://documentation.espressif.com/esp32-wroom-32_datasheet_en.html) — справочные сведения о модуле; фактические 4 MB дополнительно подтверждены read-only `esptool flash-id` на ESP32-D0WD-V3 revision 3.1.
+- Физическую проверку ESP32 с обычным Linux-хостом подтвердил владелец; Repka в эту проверку не входила.
 - [Repka Pi 5 GPIO](https://repka-pi.com/docs/109) и [Repka pinout configuration](https://repka-pi.ru/docs/108)
 
-## 3. Кандидатный UART pin map
+## 3. UART pin map и границы физической проверки
 
-DEC-062 уже утвердил для Repka Pi 5 ↔ ESP32: проводной full-duplex UART point-to-point, логические уровни 3,3 В, 115200 baud, 8N1, без hardware/software flow control; TX/RX перекрещиваются, GND общая; USB не используется как штатный межконтроллерный канал.
+DEC-062 описывает целевой проводной full-duplex UART point-to-point для Repka Pi 5 ↔ ESP32: уровни 3,3 В, 115200 baud, 8N1, без flow control, TX/RX перекрещиваются, GND общая.
 
-Документированный кандидат ESP32 из FCC User Manual:
+Отдельный прототипный телеметрический канал ESP32 → обычный Linux host физически проверен владельцем. Его конфигурация:
 
 | Сигнал | ESP32 GPIO | Board pin из manual | Направление |
 |---|---:|---:|---|
 | UART2 TX2 | GPIO17 | 28 | ESP32 → Repka RX |
 | UART2 RX2 | GPIO16 | 27 | Repka TX → ESP32 |
 
-Порт ESP-IDF: `UART_NUM_2`. В текущем `ControllerUartConfig` он остаётся логическим default candidate; `tx_gpio` и `rx_gpio` намеренно равны `GPIO_NUM_NC`. Это fail-closed поведение нужно сохранить до физической проверки.
+Прототипный путь использует `UART_NUM_2`, GPIO17/TX и GPIO16/RX, 115200 8N1. Это отдельный открытый telemetry stream из `docs/35_PROTOTYPE_UART_DHT22.md`, без аутентификации, шифрования и команд. Secure ControllerLink использует отдельную конфигурацию, которая остаётся default-off (`hardware_profile_confirmed=false`, UART GPIO не заданы). Не смешивать эти два транспорта.
 
 UART0 GPIO1/TX0 и GPIO3/RX0 не назначать для ControllerLink: они относятся к USB serial/console programming path. GPIO6–GPIO11 по документации связаны с SPI Flash; не использовать их для внешней периферии. Учитывать также ограничения boot-strapping GPIO из datasheet.
 
-Перед соединением необходимо проверить:
-1. что на установленной плате присутствуют именно контакты 27/28 и они соответствуют manual;
-2. что контакты действительно идут на GPIO16/GPIO17, нет другой ревизии/переназначения;
-3. уровни обоих UART TX равны 3,3 В и ни одна сторона не выдаёт 5 В;
-4. общую землю и отсутствие ошибочного соединения выход-выход;
-5. Repka UART0 не используется одновременно консолью ОС после его выделения службе.
+Для будущего подключения к Repka отдельно проверить распиновку и уровни именно на Repka, перекрёстное соединение TX/RX, общую землю и отсутствие конфликта с UART-консолью Linux. Текущая физическая проверка обычным Linux-хостом не закрывает эти пункты для Repka.
 
-## 4. Flash и partition table — не определены
+## 4. Flash и partition table
 
 ### 4.1. SPI Flash
 
-Официальный datasheet Espressif для стандартного ESP32-WROOM-32 указывает интегрированную SPI Flash объёмом **4 MB**. Поскольку связанный FCC manual указывает именно ESP-WROOM-32, 4 MB — наиболее вероятный профиль платы, но он остаётся условным до подтверждения физической маркировки модуля и read-only `flash_id`. Нельзя переносить это значение на иной suffix/модуль или на другую ревизию платы без проверки.
+Физическая плата ESP32-D0WD-V3 revision 3.1 прошла read-only `esptool flash-id`; обнаружен объём **4 MB SPI Flash**. В `firmware/esp32/sdkconfig.defaults` установлен `CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y`. ESP-IDF v5.5.6 CI дополнительно проверяет сгенерированные `flasher_args.json` и `flash_args`, чтобы в публикуемый образ не попала конфигурация 2 MB. Workflow не прошивает физическую плату.
 
-Текущий GitHub Actions ESP-IDF v5.5.6 build наследует SDK default **2 MB** и формирует соответствующие flash arguments. Это настройка CI toolchain, а не результат чтения физической Flash; она не соответствует условному ожидаемому профилю 4 MB и не должна использоваться для прошивки. Сборка не выполняет flash operation.
-
-Для определения на реальной плате использовать только read-only идентификацию, например `python -m esptool --chip esp32 --port COMx flash_id` (в Windows заменить `COMx` на фактический порт; на Linux — на `/dev/...`). Зафиксировать полный вывод, manufacturer/device ID и обнаруженный размер. Перед командой не выполнять `erase_flash`, `write_flash`, `idf.py flash` или настройку eFuse.
+Read-only `flash_id` уже выполнен на используемой физической плате и подтвердил 4 MB. Повторять проверку требуется только при замене платы/модуля или при сомнении в аппаратной конфигурации. Команда для такой повторной идентификации: `python -m esptool --chip esp32 --port COMx flash_id` (в Windows заменить `COMx` на фактический порт; на Linux — на `/dev/...`). Она не стирает Flash и не меняет eFuses.
 
 ### 4.2. Production partition table
 
-Окончательная таблица разделов не выбирается, пока Flash capacity не подтверждена. Production layout должен отдельно учесть bootloader, partition table, запас по размеру app image, NVS data partition, отдельную `nvs_keys` partition нужного размера и требования Flash Encryption + NVS Encryption. OTA/rollback включать только после выбора стратегии обновления. Нужны также резерв свободного пространства и возможность будущего расширения firmware.
+Текущая ESP-IDF partition table остаётся прототипной. Production layout должен отдельно учесть bootloader, partition table, app slots, NVS data, отдельную `nvs_keys` partition, Flash Encryption + NVS Encryption, OTA/rollback и резерв расширения. Публикуемый бинарник использует именно текущую таблицу из ESP-IDF build; он не включает provisioning credentials и не активирует security eFuses.
 
 Текущая default ESP-IDF partition table — build scaffold. В ней нет production-provisioned `nvs_keys`; read-only `ControllerPskNvsCredentialStore` не сможет загрузить реальные credentials до безопасного provisioning. Нельзя включать eFuse security или генерировать NVS keys во время обычного старта.
 
 ## 5. Текущее состояние реализации
 
 - ESP-IDF v5.5.6 / target `esp32` кросс-собирает прошивку и TLS/ControllerLink components.
-- `ControllerUartConfig.port` по умолчанию `UART_NUM_2`; TX/RX GPIO остаются `GPIO_NUM_NC`.
+- Для secure ControllerLink: `ControllerUartConfig.port` по умолчанию `UART_NUM_2`, TX/RX GPIO остаются `GPIO_NUM_NC`; secure path не запускается.
+- Для отдельной прототипной телеметрии: UART2 GPIO17/TX, GPIO16/RX, 115200 8N1; физическая проверка с обычным Linux-хостом подтверждена владельцем.
 - Baud rate по умолчанию 115200, receive buffer 4096, 8N1/no flow control.
 - `app_main` генерирует per-boot ID, затем проверяет `hardware_profile_confirmed` и явную валидную UART-конфигурацию **до обращения к NVS**.
-- В текущем checked-in профиле `hardware_profile_confirmed=false`; UART TX/RX GPIO не назначены, поэтому NVS/UART/TLS не открываются. Независимые DHT22 GPIO25/26 при этом опрашиваются runtime task.
-- Только после явного подтверждения физического профиля и задания валидного UART-кандидата `app_main` сможет прочитать уже существующие protected NVS credentials и stable controller IDs. Операций записи/генерации/ротации ключей этот путь не выполняет.
+- Secure ControllerLink имеет `hardware_profile_confirmed=false`; его NVS/TLS startup не выполняется. Отдельный prototype UART запускается независимо и передаёт телеметрию на обычный Linux host.
+- Secure ControllerLink сможет читать заранее provisioned protected NVS credentials и stable controller IDs только после отдельной приёмки Repka/ESP32 профиля и явной UART-конфигурации; provisioning writer в штатном старте отсутствует.
 - FreeRTOS polling/lifecycle task `controller_link_polling_task` уже реализована в `app_main.cpp`: она создаётся после прохождения startup readiness checks, с выделенным стеком и приоритетом, и обслуживает runtime с периодом опроса 10 мс.
-- В текущем checked-in профиле ControllerLink не запускается, поскольку `hardware_profile_confirmed=false`; runtime task всё равно создаётся для независимого опроса DHT22 GPIO25/GPIO26. NVS, UART и TLS в этом режиме не открываются.
-- После подтверждения аппаратного профиля, явной UART-конфигурации и наличия заранее provisioned credentials/ID task запускает runtime, выполняет polling и повторные попытки подключения с backoff. При запросе снимка передаются восемь логических измерений состояния станции, а также четыре климатических канала двух DHT22 (температура и влажность каждого датчика). DHT22 GPIO reader использует open-drain start pulse 1,1 мс, ограниченное ожидание фронтов и существующий checksum/range decoder; каждый датчик имеет отдельный sampling scheduler с интервалом не менее двух секунд. Для двух DHT22 выбраны GPIO25 (датчик 1 DATA) и GPIO26 (датчик 2 DATA). Это назначение прошивки для первого прототипа; физическая проводка и электрическая приёмка ещё не выполнены. Поэтому до получения реальных кадров каналы сообщают `UNAVAILABLE`, а не фиктивные значения. Для настроенного, но ещё не прочитанного канала передаётся `UNAVAILABLE`; успешное измерение получает время фактического захвата, а старше пяти секунд помечается `STALE`. Недоступные физические входы состояния станции передаются как `UNKNOWN` с качеством `Unknown`; неподтверждённая крышка — `NOT_CONFIGURED`. Получение feedback механизмов и GPIO-концевиков ещё не реализовано.
+- Secure ControllerLink не запускается, поскольку `hardware_profile_confirmed=false`; его protected NVS и TLS transport не открываются. Отдельный prototype UART2 GPIO17/GPIO16 при этом инициализируется для передачи телеметрии обычному Linux-хосту; runtime task независимо опрашивает DHT22 GPIO25/GPIO26.
+- После подтверждения аппаратного профиля, явной UART-конфигурации и наличия заранее provisioned credentials/ID task запускает runtime, выполняет polling и повторные попытки подключения с backoff. При запросе снимка передаются восемь логических измерений состояния станции, а также четыре климатических канала двух DHT22 (температура и влажность каждого датчика). DHT22 GPIO reader использует open-drain start pulse 1,1 мс, ограниченное ожидание фронтов и существующий checksum/range decoder; каждый датчик имеет отдельный sampling scheduler с интервалом не менее двух секунд. Для двух DHT22 в прототипе назначены GPIO25 (датчик 1 DATA) и GPIO26 (датчик 2 DATA). Каналы опрашиваются независимо и передают только валидные свежие измерения; до успешного чтения сообщают `UNAVAILABLE`, а не фиктивные значения. Физическая проверка ESP32 с обычным Linux-хостом не является проверкой Repka. Для настроенного, но ещё не прочитанного канала передаётся `UNAVAILABLE`; успешное измерение получает время фактического захвата, а старше пяти секунд помечается `STALE`. Недоступные физические входы состояния станции передаются как `UNKNOWN` с качеством `Unknown`; неподтверждённая крышка — `NOT_CONFIGURED`. Получение feedback механизмов и GPIO-концевиков ещё не реализовано.
 - UART event queue обрабатывается ограниченными порциями до 8 событий за один runtime poll. Если после порции очередь не пуста, runtime откладывает TLS/ControllerLink poll до следующего цикла; оставшиеся UART-события сначала должны быть проверены на overflow/framing/parity faults.
 - На Repka (Linux/OpenSSL) первоначальное TLS-рукопожатие ограничено отдельным монотонным дедлайном 10 секунд. При истечении срока transport manager закрывает TLS и UART и возвращает отдельный `TlsHandshakeTimeout`; ControllerLink service классифицирует его как потерю транспорта и запускает обычный reconnect backoff. На ESP32 TLS/HELLO handshake ограничен тремя секундами. Оба тайм-аута относятся к программной политике и ещё требуют проверки на физической связке.
 - ESP32 CI после сборки выполняет `idf.py size` и `idf.py size-components`; сводка размера ELF/секции и разбивка по компонентам доступны в журнале workflow. Это статические показатели сборки, не runtime RAM.
 - При разрешённом запуске ControllerLink firmware task пишет при старте и далее раз в 60 секунд: свободную internal 8-bit-capable heap, largest contiguous internal block, minimum-ever free internal heap и stack high-water mark текущей задачи. Это диагностические измерения будущего запуска на плате; текущий default-off образ их не выдаёт, поскольку задача не создаётся.
-- CI build только компилирует и линкует; не прошивает и не запускает физическую плату.
+- CI собирает ELF/BIN, проверяет 4 MB flash arguments, формирует merged flash image и архивирует исходные бинарники с контрольными суммами. CI не прошивает и не запускает физическую плату.
 
-## 6. Критерии подтверждения аппаратного профиля
+## 6. Что уже подтверждено и что остаётся
 
-Профиль можно перевести из candidate в verified только после закрытия всех пунктов:
-1. Маркировка модуля и ревизия платы на фактическом устройстве согласуются с FCC/manual candidate (либо составлен отдельный профиль для обнаруженного отличия).
-2. Read-only `flash_id` на фактической плате определяет и записывает SPI Flash manufacturer/device/size.
-3. Наличие или отсутствие PSRAM установлено; неизвестное значение не трактуется как наличие.
-4. 38-pin header / контакты 27 и 28 и UART2 mapping GPIO17/TX, GPIO16/RX сверены с физической платой и электрически проверены.
-5. Уровни логики 3,3 В, GND reference и cross-wiring проверены без подключения силовых/моторных нагрузок.
-6. Выбрана partition table, размер которой помещается в физическую Flash и содержит требуемые защищённые NVS области; её app partition проходит build size checks.
-7. Изменения профиля просмотрены и явно утверждены до включения `hardware_profile_confirmed`, установки GPIO или flash/provisioning операций.
+Подтверждено:
+1. Физическая ESP32-D0WD-V3 revision 3.1 и SPI Flash 4 MB по `esptool flash-id`.
+2. Сборочный профиль ESP-IDF v5.5.6 / `esp32` с явным выбором 4 MB.
+3. Физическая работа ESP32 prototype firmware с обычным Linux-хостом (по подтверждению владельца).
+4. Прототипный UART2: GPIO17/TX, GPIO16/RX, 115200 8N1.
 
-До выполнения этих критериев аппаратный профиль остаётся **CANDIDATE / NOT_CONFIGURED**.
+Не подтверждено:
+1. Физическое соединение и обмен с Repka Pi.
+2. Запуск secure ControllerLink/TLS на физической связке и provisioning защищённых NVS credentials.
+3. Наличие PSRAM (остаётся UNKNOWN).
+4. Production partition layout, Flash Encryption, Secure Boot и OTA strategy.
+5. Аппаратная обратная связь концевиков, приводов, safety-stop и физическое управление механизмами.
 
-## 7. Следующий безопасный шаг
+## 7. Следующий шаг
 
-Когда плата доступна для подключения к ПК, сначала выполнить только:
-- посмотреть маркировку модуля и PCB;
-- получить фактический COM-порт/serial device;
-- выполнить read-only `flash_id`;
-- сверить результат с этой матрицей.
-
-До этого не требуется менять прошивку, flash-size config, partition CSV, eFuse или GPIO defaults.
+Следующая аппаратная приёмка — ESP32 ↔ Repka: отдельно подтвердить уровни, перекрёстный UART, Linux UART device/service ownership, затем защищённый ControllerLink и reconnect. До этой проверки обычный Linux host остаётся единственной подтверждённой физической хост-платформой.
 
 
 ## 8. Логика команд и телеметрия состояния ESP32
