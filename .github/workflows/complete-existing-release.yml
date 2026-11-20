@@ -1,0 +1,132 @@
+name: Complete existing GitHub release assets
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing GitHub release tag to complete
+        required: true
+        type: string
+        default: v0.1.1
+      source_run_id:
+        description: Successful tag workflow run that produced the signed ARM64 assets
+        required: true
+        type: string
+        default: "44741179363"
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish-existing-assets:
+    name: Verify and attach signed ARM64 assets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Validate source run and resolve commit
+        id: source
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]]
+
+          run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID")"
+          source_sha="$(jq -r '.head_sha' <<< "$run_json")"
+          source_ref="$(jq -r '.head_branch' <<< "$run_json")"
+          source_event="$(jq -r '.event' <<< "$run_json")"
+          source_status="$(jq -r '.status' <<< "$run_json")"
+          source_conclusion="$(jq -r '.conclusion' <<< "$run_json")"
+
+          [[ "$source_ref" == "$RELEASE_TAG" ]]
+          [[ "$source_event" == "push" ]]
+          [[ "$source_status" == "completed" ]]
+          [[ "$source_conclusion" == "failure" || "$source_conclusion" == "success" ]]
+          [[ "$source_sha" =~ ^[[:xdigit:]]{40}$ ]]
+
+          tag_commit="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" --jq '.object.sha')"
+          tag_type="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" --jq '.object.type')"
+          if [[ "$tag_type" == "tag" ]]; then
+            tag_commit="$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$tag_commit" --jq '.object.sha')"
+          fi
+          [[ "$tag_commit" == "$source_sha" ]]
+
+          echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
+          echo "Verified source run $SOURCE_RUN_ID for $RELEASE_TAG at $source_sha."
+
+      - name: Download signed ARM64 Debian package and provenance
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: dockstation-gateway-arm64-deb-${{ steps.source.outputs.sha }}
+          run-id: ${{ inputs.source_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ${{ runner.temp }}/dockstation-release/deb
+
+      - name: Download signed Repka Pi 5 bundle and provenance
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: dockstation-repka-pi5-arm64-${{ steps.source.outputs.sha }}
+          run-id: ${{ inputs.source_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ${{ runner.temp }}/dockstation-release/bundle
+
+      - name: Verify checksums and Sigstore provenance
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCE_COMMIT: ${{ steps.source.outputs.sha }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          release_dir="$RUNNER_TEMP/dockstation-release"
+          deb="$(find "$release_dir/deb" -maxdepth 1 -type f -name '*.deb' -print -quit)"
+          bundle="$release_dir/bundle/dockstation-repka-pi5-arm64.tar.gz"
+          test -n "$deb" && test -s "$deb"
+          test -s "$deb.sha256"
+          test -s "$deb.attestation.jsonl"
+          test -s "$bundle"
+          test -s "$bundle.sha256"
+          test -s "$bundle.attestation.jsonl"
+
+          [[ "$(dpkg-deb -f "$deb" Architecture)" == "arm64" ]]
+          [[ "$(dpkg-deb -f "$deb" Version)" == "0.1.1~git${SOURCE_COMMIT:0:12}" ]]
+          (
+            cd "$(dirname "$deb")"
+            sha256sum --check --strict "$(basename "$deb").sha256"
+          )
+          (
+            cd "$(dirname "$bundle")"
+            sha256sum --check --strict "$(basename "$bundle").sha256"
+          )
+
+          verify_policy=(
+            --repo "$GITHUB_REPOSITORY"
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/linux-cmake.yml"
+            --source-ref "refs/tags/$RELEASE_TAG"
+            --source-digest "$SOURCE_COMMIT"
+            --deny-self-hosted-runners
+          )
+          gh attestation verify "$deb" "${verify_policy[@]}"
+          gh attestation verify "$deb" --bundle "$deb.attestation.jsonl" "${verify_policy[@]}"
+          gh attestation verify "$bundle" "${verify_policy[@]}"
+          gh attestation verify "$bundle" --bundle "$bundle.attestation.jsonl" "${verify_policy[@]}"
+
+      - name: Attach missing ARM64 assets to the existing release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
+          release_dir="$RUNNER_TEMP/dockstation-release"
+          deb="$(find "$release_dir/deb" -maxdepth 1 -type f -name '*.deb' -print -quit)"
+          bundle="$release_dir/bundle/dockstation-repka-pi5-arm64.tar.gz"
+
+          gh release upload "$RELEASE_TAG" \
+            "$deb" "$deb.sha256" "$deb.attestation.jsonl" \
+            "$bundle" "$bundle.sha256" "$bundle.attestation.jsonl" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
