@@ -226,11 +226,15 @@ void remember_device(
 
     bool console_conflict = is_kernel_console(state.cmdline, entry_name);
     if (!console_conflict) {
-        char resolved_path[kPathBufferSize]{};
-        if (::realpath(full_path, resolved_path) != nullptr) {
+        // realpath() may produce a canonical path longer than our bounded
+        // diagnostic path buffer. Passing nullptr asks libc to allocate the
+        // exact required size and prevents a stack-buffer overwrite.
+        char* resolved_path = ::realpath(full_path, nullptr);
+        if (resolved_path != nullptr) {
             const char* resolved_name = std::strrchr(resolved_path, '/');
             resolved_name = resolved_name == nullptr ? resolved_path : resolved_name + 1;
             console_conflict = is_kernel_console(state.cmdline, resolved_name);
+            std::free(resolved_path);
         }
     }
     if (console_conflict &&
