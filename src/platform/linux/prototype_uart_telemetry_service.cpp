@@ -179,6 +179,13 @@ std::string_view PrototypeUartTelemetryService::device_path() const noexcept {
 }
 
 bool PrototypeUartTelemetryService::process_line(std::string_view line) noexcept {
+    // UART2 sends a raw DS1 frame. UART0 carries it inside the standard
+    // ESP-IDF console line: "I (123) TAG: DS1,...".
+    const std::size_t log_frame = line.find(": DS1,");
+    if (log_frame != std::string_view::npos) {
+        line.remove_prefix(log_frame + 2U);
+    }
+
     // DS1,<sequence>,<esp_uptime_ms>,<t1>,<h1>,<t2>,<h2>
     std::array<std::string_view, 7U> fields{};
     std::size_t field_index = 0U;

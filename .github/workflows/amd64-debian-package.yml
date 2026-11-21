@@ -65,7 +65,7 @@ jobs:
 
           DESTDIR="$stage" cmake --install build-deb
           version="0.1.0~git${SOURCE_COMMIT:0:12}"
-          upgrade_version="0.1.1~git${SOURCE_COMMIT:0:12}"
+          upgrade_version="0.1.2~git${SOURCE_COMMIT:0:12}"
           bash packaging/debian/build_package.sh \
             --root "$stage" --output-dir "$artifacts" --version "$version"
           bash packaging/debian/build_package.sh \
@@ -108,7 +108,7 @@ jobs:
         run: |
           set -euo pipefail
           deb="$RUNNER_TEMP/dockstation-deb/artifacts/dockstation-gateway_0.1.0~git${GITHUB_SHA:0:12}_amd64.deb"
-          upgrade_deb="$RUNNER_TEMP/dockstation-deb/artifacts/dockstation-gateway_0.1.1~git${GITHUB_SHA:0:12}_amd64.deb"
+          upgrade_deb="$RUNNER_TEMP/dockstation-deb/artifacts/dockstation-gateway_0.1.2~git${GITHUB_SHA:0:12}_amd64.deb"
           test -s "$deb"
           test -s "$upgrade_deb"
           bash verification/repka_gateway/test_debian_postrm.sh
@@ -152,7 +152,7 @@ jobs:
 
           # Install a higher Debian version: dpkg must perform a real upgrade.
           sudo dpkg -i "$upgrade_deb"
-          [[ "$(sudo dpkg-query -W -f='${Version}' dockstation-gateway)" == "0.1.1~git${GITHUB_SHA:0:12}" ]]
+          [[ "$(sudo dpkg-query -W -f='${Version}' dockstation-gateway)" == "0.1.2~git${GITHUB_SHA:0:12}" ]]
           sudo grep -Fqx 'local_setting=preserve-on-upgrade' /etc/dockstation/gateway.conf
           sudo grep -Fqx 'preserve-me' /var/lib/dockstation/package-test-marker
           sudo python3 -c 'import sqlite3; db=sqlite3.connect("file:/var/lib/dockstation/dockstation.sqlite3?mode=ro", uri=True); assert db.execute("PRAGMA integrity_check").fetchone()[0] == "ok"; assert db.execute("SELECT value FROM package_upgrade_probe").fetchone()[0] == "preserve-sqlite"; db.close()'
@@ -210,7 +210,7 @@ jobs:
           done
 
           release_dir="$RUNNER_TEMP/dockstation-release"
-          deb="$(find "$release_dir" -maxdepth 1 -type f -name 'dockstation-gateway_0.1.1~git*_amd64.deb' -print -quit)"
+          deb="$(find "$release_dir" -maxdepth 1 -type f -name 'dockstation-gateway_0.1.2~git*_amd64.deb' -print -quit)"
           test -n "$deb" && test -s "$deb"
           test -s "$deb.sha256"
           (cd "$(dirname "$deb")" && sha256sum --check --strict "$(basename "$deb").sha256")

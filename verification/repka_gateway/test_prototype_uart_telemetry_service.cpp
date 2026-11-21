@@ -67,15 +67,36 @@ int main() {
         return 1;
     }
 
+    // The USB/UART0 console wraps the same frame in the ESP-IDF log prefix.
+    if (!check(write_frame(master,
+            "I (1450) DockStationESP32: DS1,8,14000,23.5,42.0,NA,NA\n"),
+               "Could not write the ESP-IDF log-framed telemetry frame")) {
+        service.stop();
+        ::close(master);
+        return 1;
+    }
+    service.poll();
+    if (!check(service.sequence_number() == 8U,
+               "ESP-IDF log-framed DS1 telemetry was not accepted") ||
+        !check(service.measurement(0U).available &&
+                   service.measurement(0U).value == 23.5,
+               "USB/UART0 DHT22 temperature was not decoded") ||
+        !check(!service.measurement(2U).available,
+               "Missing second sensor was not retained as unavailable")) {
+        service.stop();
+        ::close(master);
+        return 1;
+    }
+
     // Invalid ranges must not replace the last accepted snapshot.
-    if (!check(write_frame(master, "DS1,8,14000,21.0,101.0,22.0,44.0\n"),
+    if (!check(write_frame(master, "DS1,9,16000,21.0,101.0,22.0,44.0\n"),
                "Could not write the invalid telemetry frame")) {
         service.stop();
         ::close(master);
         return 1;
     }
     service.poll();
-    if (!check(service.sequence_number() == 7U,
+    if (!check(service.sequence_number() == 8U,
                "Out-of-range humidity replaced an accepted snapshot")) {
         service.stop();
         ::close(master);
@@ -83,14 +104,14 @@ int main() {
     }
 
     // NA is an explicit unavailable reading, not a fabricated zero.
-    if (!check(write_frame(master, "DS1,8,16000,NA,NA,22.2,44.2\n"),
+    if (!check(write_frame(master, "DS1,9,18000,NA,NA,22.2,44.2\n"),
                "Could not write the NA telemetry frame")) {
         service.stop();
         ::close(master);
         return 1;
     }
     service.poll();
-    const bool na_handled = service.sequence_number() == 8U &&
+    const bool na_handled = service.sequence_number() == 9U &&
         !service.measurement(0U).available &&
         !service.measurement(1U).available &&
         service.measurement(2U).available &&
