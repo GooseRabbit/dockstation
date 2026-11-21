@@ -488,19 +488,7 @@ if(BUILD_TESTING)
     add_test(NAME controller_telemetry_snapshot
         COMMAND test_controller_telemetry_snapshot)
 
-    # DHT22 decoder and telemetry adapter are shared with the ESP-IDF component.
-    add_executable(test_dht22_frame_decoder
-        firmware/esp32/components/controller_dht22_sensor/dht22_frame_decoder.cpp
-        verification/repka_gateway/test_dht22_frame_decoder.cpp
-    )
-    target_include_directories(test_dht22_frame_decoder PRIVATE
-        firmware/esp32/components/controller_dht22_sensor/include
-    )
-    dockstation_apply_compile_policy(test_dht22_frame_decoder)
-    add_test(NAME dht22_frame_decoder COMMAND test_dht22_frame_decoder)
-
     add_executable(test_dht22_telemetry_adapter
-        firmware/esp32/components/controller_dht22_sensor/dht22_frame_decoder.cpp
         firmware/esp32/components/controller_dht22_sensor/dht22_telemetry_adapter.cpp
         verification/repka_gateway/test_dht22_telemetry_adapter.cpp
     )
@@ -815,7 +803,6 @@ if(BUILD_TESTING)
                     test_controller_station_safety_input_adapter
                     test_controller_station_command_policy
                     test_lid_limit_switch_tracker
-                    test_dht22_frame_decoder
                     test_controller_psk_credential_store
                     test_local_api
                     test_prototype_uart_telemetry_service
@@ -913,9 +900,6 @@ if(BUILD_TESTING)
                 )
             endforeach()
             target_link_options(test_controller_telemetry_snapshot PRIVATE
-                -fsanitize=address,undefined
-            )
-            target_link_options(test_dht22_frame_decoder PRIVATE
                 -fsanitize=address,undefined
             )
             if(DOCKSTATION_BUILD_SQLITE_PERSISTENCE)

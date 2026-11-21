@@ -43,7 +43,7 @@ bool output_is_clear(
 
 int main() {
     std::array<ControllerTelemetryMeasurement, 2U> output{};
-    const Dht22DecodedReading positive{269, 658U};
+    const DhtSensorReading positive{269, 658U};
 
     const auto success = make_dht22_telemetry_measurements(
         positive, "climate.outdoor.temperature", "climate.outdoor.humidity",
@@ -68,7 +68,7 @@ int main() {
                output[1].quality == SensorQualityStatus::Ok,
            "caller-supplied quality is preserved");
 
-    const Dht22DecodedReading negative{-101, 658U};
+    const DhtSensorReading negative{-101, 658U};
     const auto stale = make_dht22_telemetry_measurements(
         negative, "sensor.temperature", "sensor.humidity", "source-time",
         SensorQualityStatus::Stale, output);
@@ -106,7 +106,7 @@ int main() {
                output_is_clear(output),
            "unknown quality enum is rejected and output is cleared");
 
-    const Dht22DecodedReading invalid_temperature{801, 500U};
+    const DhtSensorReading invalid_temperature{801, 500U};
     expect(make_dht22_telemetry_measurements(
                invalid_temperature, "sensor.temperature", "sensor.humidity",
                "time", SensorQualityStatus::Ok, output) ==

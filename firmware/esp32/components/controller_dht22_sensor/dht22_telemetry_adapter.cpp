@@ -14,7 +14,7 @@ using dockstation::hardware::interfaces::SensorQualityStatus;
 }  // namespace
 
 Dht22TelemetryBuildStatus make_dht22_telemetry_measurements(
-    const Dht22DecodedReading& reading,
+    const DhtSensorReading& reading,
     std::string_view temperature_sensor_id,
     std::string_view humidity_sensor_id,
     std::string_view measured_at,

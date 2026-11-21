@@ -2,6 +2,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cmath>
 #include <string_view>
 
 #include "driver/gpio.h"
@@ -12,15 +13,14 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
+#include "DHT.h"
 #include "controller_psk_nvs_credential_store.hpp"
 #include "controller_instance_id_provider.hpp"
 #include "controller_link_firmware_runtime.hpp"
 #include "controller_link_reconnect_backoff.hpp"
 #include "controller_uart_transport.hpp"
-#include "dht22_frame_decoder.hpp"
 #include "dht22_sampling_scheduler.hpp"
 #include "dht22_telemetry_adapter.hpp"
-#include "dht22_gpio_reader.hpp"
 #include "hardware/interfaces/controller_link_startup_readiness.hpp"
 #include "hardware/interfaces/controller_stable_identity.hpp"
 
@@ -146,24 +146,29 @@ void log_startup_blockers(
 }
 
 
-// Prototype DHT11/DHT22 data-line assignments. The board may print these as G25/G26;
-// these are GPIO numbers, not ground pins. Physical wiring/reading still needs
-// acceptance on the actual board. Each sensor has its own scheduler and sample.
+// DHT sensor assignments. Select the model explicitly for each input:
+// DHT11 matches the currently installed KY-015 prototype module.
 struct DhtSensorChannel final {
     gpio_num_t pin{GPIO_NUM_NC};
+    DHT* sensor{nullptr};
+    std::uint8_t sensor_type{DHT11};
     dockstation::firmware::esp32::Dht22SamplingScheduler scheduler{};
-    dockstation::firmware::esp32::Dht22DecodedReading reading{};
+    dockstation::firmware::esp32::DhtSensorReading reading{};
     bool has_reading{false};
     std::uint64_t measured_at_us{0U};
     char measured_at[32]{};
     bool has_logged_read_status{false};
-    dockstation::firmware::esp32::DhtSensorGpioReadStatus last_logged_read_status{
-        dockstation::firmware::esp32::DhtSensorGpioReadStatus::NotConfigured};
+    bool last_read_succeeded{false};
     std::uint64_t last_diagnostic_log_ms{0U};
 };
 
 constexpr gpio_num_t kDhtSensor1DataPin = GPIO_NUM_25;
 constexpr gpio_num_t kDhtSensor2DataPin = GPIO_NUM_26;
+constexpr std::uint8_t kDhtSensor1Type = DHT11;
+constexpr std::uint8_t kDhtSensor2Type = DHT11;
+
+DHT g_dht_sensor_1{static_cast<std::uint8_t>(kDhtSensor1DataPin), kDhtSensor1Type};
+DHT g_dht_sensor_2{static_cast<std::uint8_t>(kDhtSensor2DataPin), kDhtSensor2Type};
 
 std::array<DhtSensorChannel, 2U> g_dht_sensor_channels{};
 
@@ -253,62 +258,48 @@ void send_prototype_dht22_telemetry() noexcept {
 }
 
 void initialize_dht22_channels() noexcept {
-    // Keep the mapping in one place so a later wiring revision is easy to apply.
     g_dht_sensor_channels[0].pin = kDhtSensor1DataPin;
+    g_dht_sensor_channels[0].sensor = &g_dht_sensor_1;
+    g_dht_sensor_channels[0].sensor_type = kDhtSensor1Type;
     g_dht_sensor_channels[1].pin = kDhtSensor2DataPin;
+    g_dht_sensor_channels[1].sensor = &g_dht_sensor_2;
+    g_dht_sensor_channels[1].sensor_type = kDhtSensor2Type;
 
     const std::uint64_t now_ms = monotonic_milliseconds();
     for (auto& channel : g_dht_sensor_channels) {
-        if (channel.pin != GPIO_NUM_NC && GPIO_IS_VALID_GPIO(channel.pin)) {
-            channel.scheduler.initialize(now_ms);
-        }
+        if (channel.sensor == nullptr || channel.pin == GPIO_NUM_NC ||
+            !GPIO_IS_VALID_GPIO(channel.pin)) continue;
+        channel.sensor->begin();
+        channel.scheduler.initialize(now_ms);
     }
-    ESP_LOGI(kTag, "DHT11/DHT22 channels configured: sensor1=GPIO%d sensor2=GPIO%d",
-        static_cast<int>(g_dht_sensor_channels[0].pin),
-        static_cast<int>(g_dht_sensor_channels[1].pin));
-}
 
-[[nodiscard]] const char* dht_sensor_read_status_name(
-    dockstation::firmware::esp32::DhtSensorGpioReadStatus status) noexcept {
-    using dockstation::firmware::esp32::DhtSensorGpioReadStatus;
-    switch (status) {
-        case DhtSensorGpioReadStatus::Success: return "SUCCESS";
-        case DhtSensorGpioReadStatus::NotConfigured: return "NOT_CONFIGURED";
-        case DhtSensorGpioReadStatus::GpioError: return "GPIO_ERROR";
-        case DhtSensorGpioReadStatus::NoResponse: return "NO_RESPONSE";
-        case DhtSensorGpioReadStatus::Timeout: return "TIMEOUT";
-        case DhtSensorGpioReadStatus::InvalidFrame: return "INVALID_FRAME";
-    }
-    return "UNKNOWN";
+    ESP_LOGI(kTag, "DHT11/DHT22 channels configured: sensor1=GPIO%d type=%s sensor2=GPIO%d type=%s",
+        static_cast<int>(g_dht_sensor_channels[0].pin),
+        g_dht_sensor_channels[0].sensor_type == DHT11 ? "DHT11" : "DHT22",
+        static_cast<int>(g_dht_sensor_channels[1].pin),
+        g_dht_sensor_channels[1].sensor_type == DHT11 ? "DHT11" : "DHT22");
 }
 
 void log_dht_sensor_read_status(
-    std::size_t index,
-    DhtSensorChannel& channel,
-    dockstation::firmware::esp32::DhtSensorGpioReadStatus status,
+    std::size_t index, DhtSensorChannel& channel, bool success,
     std::uint64_t now_ms) noexcept {
-    using dockstation::firmware::esp32::DhtSensorGpioReadStatus;
     const bool changed = !channel.has_logged_read_status ||
-        channel.last_logged_read_status != status;
+        channel.last_read_succeeded != success;
     const bool repeated_failure_due = channel.has_logged_read_status &&
-        status != DhtSensorGpioReadStatus::Success &&
-        now_ms >= channel.last_diagnostic_log_ms &&
+        !success && now_ms >= channel.last_diagnostic_log_ms &&
         now_ms - channel.last_diagnostic_log_ms >= 10000U;
-    if (!changed && !repeated_failure_due) {
-        return;
-    }
+    if (!changed && !repeated_failure_due) return;
 
-    const char* const status_name = dht_sensor_read_status_name(status);
-    if (status == DhtSensorGpioReadStatus::Success) {
+    const char* const status = success ? "SUCCESS" : "READ_FAILED";
+    if (success) {
         ESP_LOGI(kTag, "DHT sensor=%u gpio=%d read_status=%s",
-            static_cast<unsigned>(index + 1U), static_cast<int>(channel.pin), status_name);
+            static_cast<unsigned>(index + 1U), static_cast<int>(channel.pin), status);
     } else {
         ESP_LOGW(kTag, "DHT sensor=%u gpio=%d read_status=%s",
-            static_cast<unsigned>(index + 1U), static_cast<int>(channel.pin), status_name);
+            static_cast<unsigned>(index + 1U), static_cast<int>(channel.pin), status);
     }
-
     channel.has_logged_read_status = true;
-    channel.last_logged_read_status = status;
+    channel.last_read_succeeded = success;
     channel.last_diagnostic_log_ms = now_ms;
 }
 
@@ -316,22 +307,29 @@ void poll_dht22_channels() noexcept {
     const std::uint64_t now_ms = monotonic_milliseconds();
     for (std::size_t index = 0U; index < g_dht_sensor_channels.size(); ++index) {
         auto& channel = g_dht_sensor_channels[index];
-        if (channel.pin == GPIO_NUM_NC || !GPIO_IS_VALID_GPIO(channel.pin)) {
-            continue;
-        }
+        if (channel.sensor == nullptr || channel.pin == GPIO_NUM_NC ||
+            !GPIO_IS_VALID_GPIO(channel.pin)) continue;
         if (channel.scheduler.try_begin_read(now_ms).status !=
-            dockstation::firmware::esp32::Dht22SamplingStatus::Ready) {
-            continue;
-        }
+            dockstation::firmware::esp32::Dht22SamplingStatus::Ready) continue;
 
-        dockstation::firmware::esp32::Dht22DecodedReading reading{};
-        const auto status =
-            dockstation::firmware::esp32::read_dht_sensor_gpio(channel.pin, reading);
-        log_dht_sensor_read_status(index, channel, status, now_ms);
-        if (status != dockstation::firmware::esp32::DhtSensorGpioReadStatus::Success) {
-            continue;
-        }
+        const float temperature_c = channel.sensor->readTemperature();
+        const float humidity_percent = channel.sensor->readHumidity();
+        const bool is_dht11 = channel.sensor_type == DHT11;
+        const float minimum_temperature_c = is_dht11 ? 0.0F : -40.0F;
+        const float maximum_temperature_c = is_dht11 ? 50.0F : 80.0F;
+        const bool success =
+            std::isfinite(temperature_c) && std::isfinite(humidity_percent) &&
+            temperature_c >= minimum_temperature_c &&
+            temperature_c <= maximum_temperature_c &&
+            humidity_percent >= 0.0F && humidity_percent <= 99.9F;
+        log_dht_sensor_read_status(index, channel, success, now_ms);
+        if (!success) continue;
 
+        dockstation::firmware::esp32::DhtSensorReading reading{};
+        reading.temperature_tenths_c = static_cast<std::int16_t>(
+            std::lround(temperature_c * 10.0F));
+        reading.relative_humidity_tenths_percent = static_cast<std::uint16_t>(
+            std::lround(humidity_percent * 10.0F));
         channel.reading = reading;
         channel.has_reading = true;
         channel.measured_at_us = static_cast<std::uint64_t>(esp_timer_get_time());
@@ -570,6 +568,8 @@ extern "C" void app_main(void) {
         evaluate_controller_link_startup_readiness;
 
     ESP_LOGI(kTag, "DockStation ESP32 firmware bootstrap started");
+    initArduino();
+    ESP_LOGI(kTag, "Arduino Core initialized for Adafruit DHT library");
     g_prototype_uart_enabled = initialize_prototype_uart();
     ESP_LOGI(kTag, "Prototype DHT22 telemetry over USB/UART0 is enabled");
     if (!g_prototype_uart_enabled) {

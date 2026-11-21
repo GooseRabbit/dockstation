@@ -2,7 +2,7 @@ idf_component_register(
     SRCS "app_main.cpp"
     INCLUDE_DIRS "." "../../../src"
     REQUIRES driver log esp_timer freertos heap controller_link_firmware_runtime controller_psk_nvs_credential_store
-        controller_instance_identity controller_uart_transport controller_dht22_sensor
+        controller_instance_identity controller_uart_transport controller_dht22_sensor adafruit_dht
         controller_lid_limit_switches
 )
 

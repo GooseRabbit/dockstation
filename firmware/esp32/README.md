@@ -190,56 +190,38 @@ digits, `_`, `-`, `.` or `:`. The loader rejects missing, malformed or
 identical values and clears its output on failure. It never creates or repairs
 records.
 
-## DHT11/DHT22 frame decoder and GPIO reader
+## DHT11/DHT22 acquisition
 
-`components/controller_dht22_sensor/` contains pure five-byte decoders for
-DHT22/AM2302 and DHT11. Both validate exact frame length and checksum and
-normalize values to integer tenths for the existing telemetry contract.
-DHT22's packed tenths format, including its temperature sign bit, is decoded
-separately from DHT11's integer/decimal byte pairs. DHT22 accepts 0–99.9 %RH
-and −40.0…+80.0 °C; DHT11 accepts 0–99.9 %RH and 0.0…+50.0 °C. Outputs are
-cleared on every failure, and invalid ranges/checksums never become telemetry.
+The firmware uses the Adafruit DHT Sensor Library 1.4.7. Its original
+DHT.cpp, DHT.h and MIT license are kept in components/adafruit_dht/.
+Arduino Core for ESP32 4.0.0 is resolved by the ESP-IDF Component Manager
+and is used only as a dependency of this library. ESP-IDF remains the
+application framework: app_main() calls initArduino(), while automatic
+Arduino setup()/loop() startup is disabled. The FreeRTOS tick is configured
+to 1,000 Hz as required by Arduino Core.
 
-The component also contains the pure `Dht22TelemetryAdapter`, retained for
-compatibility with the current data model. It maps either normalized sensor
-reading to two `ControllerTelemetryMeasurement` values: temperature in
-`°C` and relative humidity in `%RH`. The caller supplies stable sensor IDs,
-the non-empty `measured_at` string and quality status.
+The two input channels are GPIO25 and GPIO26. Each channel's model is selected
+explicitly by kDhtSensor1Type or kDhtSensor2Type in main/app_main.cpp.
+Both are currently configured as DHT11 for the KY-015 prototype module;
+set an input to DHT22 when an AM2302/DHT22 sensor is installed there.
+There is no automatic model detection.
 
-The ESP-IDF GPIO reader automatically detects each sensor independently.
-It first sends the DHT22 start-low pulse (about 1.1 ms); only when no response
-edge is seen does it retry with the DHT11 start-low pulse (20 ms; the specified
-minimum is 18 ms).
-Once a response has started, it never sends a second immediate request, so a
-partial/invalid frame cannot cause a too-early retry. Both variants use the
-same 40-bit pulse capture and checksum validation. The GPIO reader reports
-`NO_RESPONSE` when neither request gets a response edge, `TIMEOUT` when a
-response starts but its pulse sequence is incomplete, `INVALID_FRAME` when
-40 bits fail checksum/format/range validation, and `GPIO_ERROR` when GPIO
-configuration or access fails. The capture is polling-based
-and may reject a frame if an interrupt stretches a pulse; the data line needs
-an external 4.7–10 kOhm pull-up (the ESP32 internal pull-up is only a fallback).
+The Adafruit library owns the DHT start pulse, timing-critical pulse capture
+and checksum validation. The application only checks the returned values for
+the configured model's range, converts them to integer tenths and passes them
+through the existing telemetry adapter. A failed library read returns NaN
+and is logged as READ_FAILED; the library does not expose a reliable
+distinction between no response, timing timeout and checksum failure.
 
-The firmware defines two independent channels: sensor 1 DATA is GPIO25 and
-sensor 2 DATA is GPIO26. Each channel has its own sampling scheduler and
-cached reading; the sensor type is detected on each channel separately.
-USB-console diagnostics are emitted immediately on status changes and repeat
-failures are rate-limited to one message per channel every 10 seconds. The
-capture procedure is documented in `docs/35_PROTOTYPE_UART_DHT22.md`.
-Sampling attempts are rate-limited independently to at least two seconds.
-Telemetry reports `NOT_CONFIGURED` or `UNAVAILABLE` explicitly until a valid
-reading exists. Valid values carry their acquisition timestamp; readings older
-than five seconds are marked `STALE`.
-
-The `Dht22SamplingScheduler` remains a pure policy component. It blocks the
-first read until more than 2,000 ms after power-on and separates later attempts
-by at least 2,000 ms. The runtime task owns both channels and runs even when
-the secure ControllerLink profile or credentials are unavailable; it does not
-open NVS, UART or TLS in that mode. The prototype UART continues to send the
-same four climate values. The decoder, telemetry adapter and scheduler are
-covered by host CTest targets `dht22_frame_decoder`,
-`dht22_telemetry_adapter` and `dht22_sampling_scheduler`; these tests do not
-prove physical sensor operation or acquisition timing.
+Each channel retains its independent sampling scheduler: the first attempt
+waits more than two seconds after initialization and subsequent attempts are
+separated by at least two seconds. The runtime caches the last valid sample,
+adds its acquisition timestamp and marks readings older than five seconds
+STALE. Dht22TelemetryAdapter and Dht22SamplingScheduler remain covered by
+host CTest targets; those tests do not prove physical sensor acquisition.
+The standalone Arduino sketch has physically read the KY-015 module on
+GPIO26; the integrated DockStation firmware still requires a flash-and-read
+check on the board.
 
 ## Lid limit-switch state tracker
 
@@ -419,7 +401,7 @@ GPIO acquisition, or physical completion acknowledgement in the firmware.
 
 The polling task answers snapshot requests with logical station-state
 telemetry plus the two DHT11/DHT22 channels. Its unknown input qualities are
-intentional. The DHT11/DHT22 GPIO reader and telemetry path are implemented, but
+intentional. Adafruit DHT11/DHT22 acquisition and the telemetry path are implemented, but
 the prototype DHT11/DHT22 pins are configured as GPIO25 and GPIO26. Lid
 limit-switch debounce is still not connected to GPIO. The secure ControllerLink
 profile remains default-off pending its separate Repka, credential and security
