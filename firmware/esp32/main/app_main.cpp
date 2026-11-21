@@ -568,8 +568,6 @@ extern "C" void app_main(void) {
         evaluate_controller_link_startup_readiness;
 
     ESP_LOGI(kTag, "DockStation ESP32 firmware bootstrap started");
-    initArduino();
-    ESP_LOGI(kTag, "Arduino Core initialized for Adafruit DHT library");
     g_prototype_uart_enabled = initialize_prototype_uart();
     ESP_LOGI(kTag, "Prototype DHT22 telemetry over USB/UART0 is enabled");
     if (!g_prototype_uart_enabled) {

@@ -47,9 +47,6 @@ DHT::DHT(uint8_t pin, uint8_t type, uint8_t count) {
   _bit = digitalPinToBitMask(pin);
   _port = digitalPinToPort(pin);
 #endif
-  _maxcycles =
-      microsecondsToClockCycles(1000); // 1 millisecond timeout for
-                                       // reading pulses from DHT sensor.
   // Note that count is now ignored as the DHT reading algorithm adjusts itself
   // based on the speed of the processor.
 }
@@ -67,8 +64,6 @@ void DHT::begin(uint8_t usec) {
   // >= MIN_INTERVAL right away. Note that this assignment wraps around,
   // but so will the subtraction.
   _lastreadtime = millis() - MIN_INTERVAL;
-  DEBUG_PRINT("DHT max clock cycles: ");
-  DEBUG_PRINTLN(_maxcycles, DEC);
   pullTime = usec;
 }
 
@@ -356,39 +351,19 @@ bool DHT::read(bool force) {
   }
 }
 
-// Expect the signal line to be at the specified level for a period of time and
-// return a count of loop cycles spent at that level (this cycle count can be
-// used to compare the relative time of two pulses).  If more than a millisecond
-// ellapses without the level changing then the call fails with a 0 response.
-// This is adapted from Arduino's pulseInLong function (which is only available
-// in the very latest IDE versions):
-//   https://github.com/arduino/Arduino/blob/master/hardware/arduino/avr/cores/arduino/wiring_pulse.c
+// ESP-IDF adaptation of Adafruit's pulse capture. The decoder compares pulse
+// lengths relatively, so measuring both levels in microseconds preserves its
+// original zero/one decision while using the ESP-IDF hardware timer.
 uint32_t DHT::expectPulse(bool level) {
-// F_CPU is not be known at compile time on platforms such as STM32F103.
-// The preprocessor seems to evaluate it to zero in that case.
-#if (F_CPU > 16000000L) || (F_CPU == 0L)
-  uint32_t count = 0;
-#else
-  uint16_t count = 0; // To work fast enough on slower AVR boards
-#endif
-// On AVR platforms use direct GPIO port access as it's much faster and better
-// for catching pulses that are 10's of microseconds in length:
-#ifdef __AVR
-  uint8_t portState = level ? _bit : 0;
-  while ((*portInputRegister(_port) & _bit) == portState) {
-    if (count++ >= _maxcycles) {
-      return TIMEOUT; // Exceeded timeout, fail.
-    }
-  }
-// Otherwise fall back to using digitalRead (this seems to be necessary on
-// ESP8266 right now, perhaps bugs in direct port access functions?).
-#else
-  while (digitalRead(_pin) == level) {
-    if (count++ >= _maxcycles) {
-      return TIMEOUT; // Exceeded timeout, fail.
-    }
-  }
-#endif
+  constexpr int64_t kPulseTimeoutUs = 1000;
+  const int64_t started_at_us = esp_timer_get_time();
 
-  return count;
+  while (digitalRead(_pin) == static_cast<int>(level)) {
+    if ((esp_timer_get_time() - started_at_us) >= kPulseTimeoutUs) {
+      return TIMEOUT;
+    }
+  }
+
+  const int64_t elapsed_us = esp_timer_get_time() - started_at_us;
+  return elapsed_us > 0 ? static_cast<uint32_t>(elapsed_us) : 0U;
 }

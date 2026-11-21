@@ -194,11 +194,11 @@ records.
 
 The firmware uses the Adafruit DHT Sensor Library 1.4.7. Its original
 DHT.cpp, DHT.h and MIT license are kept in components/adafruit_dht/.
-Arduino Core for ESP32 4.0.0 is resolved by the ESP-IDF Component Manager
-and is used only as a dependency of this library. ESP-IDF remains the
-application framework: app_main() calls initArduino(), while automatic
-Arduino setup()/loop() startup is disabled. The FreeRTOS tick is configured
-to 1,000 Hz as required by Arduino Core.
+The small DHT_ESP32_Compat.h adapter maps only the GPIO, delay, timer and
+critical-section calls used by Adafruit onto ESP-IDF primitives. No Arduino
+Core is linked or initialized, no Arduino setup()/loop() is started, and the
+adapter does not initialize the default NVS partition. ESP-IDF remains the
+sole application framework and app_main() remains the application entry point.
 
 The two input channels are GPIO25 and GPIO26. Each channel's model is selected
 explicitly by kDhtSensor1Type or kDhtSensor2Type in main/app_main.cpp.

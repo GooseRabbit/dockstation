@@ -3,8 +3,7 @@
  *
  *  This is a library for DHT series of low cost temperature/humidity sensors.
  *
- *  You must have Adafruit Unified Sensor Library library installed to use this
- * class.
+ *  The optional DHT_U wrapper is not included in this ESP-IDF component.
  *
  *  Adafruit invests time and resources providing this open source code,
  *  please support Adafruit andopen-source hardware by purchasing products
@@ -18,7 +17,7 @@
 #ifndef DHT_H
 #define DHT_H
 
-#include "Arduino.h"
+#include "DHT_ESP32_Compat.h"
 
 /* Uncomment to enable printing out nice debug messages. */
 // #define DHT_DEBUG
@@ -82,7 +81,7 @@ class DHT {
   // digitalRead.
   uint8_t _bit, _port;
 #endif
-  uint32_t _lastreadtime, _maxcycles;
+  uint32_t _lastreadtime;
   bool _lastresult;
   uint8_t pullTime; // Time (in usec) to pull up data line before reading
 
