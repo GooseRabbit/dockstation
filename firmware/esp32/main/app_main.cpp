@@ -57,8 +57,9 @@ constexpr UBaseType_t kControllerLinkTaskPriority = tskIDLE_PRIORITY + 3U;
 
 constexpr std::uint64_t kMemoryReportIntervalMs = 60000U;
 
-// Temporary plaintext prototype telemetry channel. UART0 remains dedicated to
-// USB programming/logging; UART2 is wired separately to the Linux host.
+// Temporary plaintext prototype telemetry channel.
+// UART0 emits log-framed DS1 telemetry through the board's USB-UART bridge.
+// UART2 remains a separate raw 115200 8N1 GPIO17/GPIO16 host connection.
 constexpr uart_port_t kPrototypeUartPort = UART_NUM_2;
 constexpr gpio_num_t kPrototypeUartTxPin = GPIO_NUM_17;
 constexpr gpio_num_t kPrototypeUartRxPin = GPIO_NUM_16;
@@ -198,8 +199,6 @@ bool initialize_prototype_uart() noexcept {
 }
 
 void send_prototype_dht22_telemetry() noexcept {
-    if (!g_prototype_uart_enabled) return;
-
     const std::uint64_t now_us = static_cast<std::uint64_t>(esp_timer_get_time());
     char values[4][24]{};
     for (std::size_t index = 0U; index < g_dht22_channels.size(); ++index) {
@@ -236,10 +235,16 @@ void send_prototype_dht22_telemetry() noexcept {
         ESP_LOGW(kTag, "Prototype telemetry frame formatting failed");
         return;
     }
+    // ESP_LOGI writes one complete UART0 console line alongside normal logs.
+    // Linux extracts the DS1 payload after the standard ESP-IDF "TAG: " prefix.
+    ESP_LOGI(kTag, "%.*s", length - 1, frame);
+
+    // Preserve the original raw UART2 path for a directly wired Linux host.
+    if (!g_prototype_uart_enabled) return;
     const int written = uart_write_bytes(
         kPrototypeUartPort, frame, static_cast<size_t>(length));
     if (written != length) {
-        ESP_LOGW(kTag, "Prototype UART telemetry write incomplete: %d/%d", written, length);
+        ESP_LOGW(kTag, "Prototype UART2 telemetry write incomplete: %d/%d", written, length);
     }
 }
 
@@ -398,10 +403,9 @@ void controller_link_polling_task(void*) {
         const std::uint64_t now_ms = monotonic_milliseconds();
         poll_dht22_channels();
 
-        if (g_prototype_uart_enabled &&
-            (last_prototype_telemetry_ms == 0U ||
+        if (last_prototype_telemetry_ms == 0U ||
              (now_ms >= last_prototype_telemetry_ms &&
-              now_ms - last_prototype_telemetry_ms >= kPrototypeTelemetryIntervalMs))) {
+              now_ms - last_prototype_telemetry_ms >= kPrototypeTelemetryIntervalMs)) {
             send_prototype_dht22_telemetry();
             last_prototype_telemetry_ms = now_ms;
         }
@@ -518,8 +522,9 @@ extern "C" void app_main(void) {
 
     ESP_LOGI(kTag, "DockStation ESP32 firmware bootstrap started");
     g_prototype_uart_enabled = initialize_prototype_uart();
+    ESP_LOGI(kTag, "Prototype DHT22 telemetry over USB/UART0 is enabled");
     if (!g_prototype_uart_enabled) {
-        ESP_LOGE(kTag, "Prototype telemetry UART unavailable; DHT22 sampling will continue locally");
+        ESP_LOGW(kTag, "Raw UART2 path unavailable; USB/UART0 telemetry remains enabled");
     }
 
     // DHT22 acquisition is useful independently of ControllerLink. Prepare

@@ -32,10 +32,11 @@ The ESP-IDF target build including the stable controller-ID NVS reader passed
 on commit `8219cd5023a881bd66139a4365b5fd3fbdb43ea3`:
 [ESP32 firmware build #43939967553](https://github.com/GooseRabbit/dockstation/actions/runs/43939967553).
 The log confirms that the NVS credential/identity component compiled and
-linked. In addition, the owner has physically tested the ESP32 prototype with
-an ordinary Linux host (not Repka). The Repka-specific UART/ControllerLink
-integration remains untested. GitHub Actions builds and packages the image but
-does not flash or run physical hardware.
+linked. The raw UART2 path (GPIO17/TX, GPIO16/RX) has been exercised with an
+ordinary Linux host, not Repka. The USB/UART0 log-framed telemetry route is
+also implemented in firmware and the Linux receiver, but its physical
+end-to-end acceptance remains pending. GitHub Actions builds and packages the
+image but does not flash or run physical hardware.
 
 ## Board identification and limitations
 
@@ -48,11 +49,13 @@ Espressif's official ESP32-WROOM-32 datasheet specifies 4 MB integrated SPI
 Flash for the standard module.
 
 The physical prototype has been identified as ESP32-D0WD-V3, revision 3.1;
-`esptool flash-id` reported **4 MB SPI Flash**. The prototype UART path has
-been exercised with an ordinary Linux host. Its checked-in wiring is UART2,
-GPIO17/TX and GPIO16/RX, 115200 8N1, with UART0 retained for USB console and
-programming. This is a verified prototype configuration for the tested ESP32
-and Linux host; it is not yet a Repka hardware acceptance.
+`esptool flash-id` reported **4 MB SPI Flash**. The raw prototype UART2 path is
+GPIO17/TX and GPIO16/RX at 115200 8N1 and has been exercised with an ordinary
+Linux host. UART0 remains the board USB-UART console/programming interface and
+now emits the same DS1 telemetry as an ESP-IDF log line so a Linux host/Repka
+can receive it over the ordinary USB cable. The UART0 path is software-built
+but still requires physical end-to-end acceptance; neither route yet proves
+Repka hardware acceptance.
 
 `IDF_TARGET=esp32` remains the family-level target. The physical Flash size
 is confirmed as 4 MB and is now explicit in `sdkconfig.defaults` and CI.
@@ -64,14 +67,18 @@ acceptance steps.
 
 ## Current firmware entry point
 
-`main/app_main.cpp` starts the separate prototype telemetry UART2 path
-(GPIO17/TX, GPIO16/RX) and then prepares a fresh per-boot instance ID before
-ADC, I²S or radio subsystems are used. The secure ControllerLink startup applies
+`main/app_main.cpp` emits the prototype DS1 telemetry frame through the
+UART0 USB console using ESP-IDF logging, and also sends the raw frame through
+UART2 (GPIO17/TX, GPIO16/RX) when that optional GPIO transport initializes.
+The UART0 console baud is fixed at 115200 in `sdkconfig.defaults`. The
+application then prepares a fresh per-boot instance ID before ADC, I²S or
+radio subsystems are used. The secure ControllerLink startup applies
 two guards **before touching NVS**: its exact hardware profile must be
 explicitly confirmed and its dedicated UART port/TX/RX configuration must be
 valid. The checked-in secure profile deliberately keeps
 `hardware_profile_confirmed=false` and its ControllerLink GPIOs unset, so only
-the protected NVS/TLS path is skipped; prototype UART telemetry continues.
+the protected NVS/TLS path is skipped; prototype DHT22 acquisition and
+UART0/USB telemetry continue independently.
 
 Only after those two guards have been deliberately satisfied will
 `app_main` initialize the already-provisioned encrypted NVS store in
@@ -112,8 +119,9 @@ The secure ControllerLink profile still has
 `hardware_profile_confirmed=false` and its dedicated UART GPIO configuration
 unset. Therefore the normal image does not open protected NVS or start
 ControllerLink/TLS. This does **not** disable the separate prototype telemetry
-path: `app_main` initializes plaintext UART2 on GPIO17/GPIO16 and starts the
-runtime task for DHT22 acquisition on GPIO25/GPIO26. ControllerLink remains
+path: `app_main` emits a log-framed DS1 line on UART0 over the USB connector,
+optionally duplicates the raw DS1 frame to UART2 on GPIO17/GPIO16, and starts
+the runtime task for DHT22 acquisition on GPIO25/GPIO26. ControllerLink remains
 NOT_CONFIGURED. The link-only acceptance hook is forced into the ELF for
 compile/link coverage but is not executed.
 
