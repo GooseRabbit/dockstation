@@ -156,6 +156,10 @@ struct DhtSensorChannel final {
     bool has_reading{false};
     std::uint64_t measured_at_us{0U};
     char measured_at[32]{};
+    bool has_logged_read_status{false};
+    dockstation::firmware::esp32::DhtSensorGpioReadStatus last_logged_read_status{
+        dockstation::firmware::esp32::DhtSensorGpioReadStatus::NotConfigured};
+    std::uint64_t last_diagnostic_log_ms{0U};
 };
 
 constexpr gpio_num_t kDhtSensor1DataPin = GPIO_NUM_25;
@@ -264,6 +268,50 @@ void initialize_dht22_channels() noexcept {
         static_cast<int>(g_dht_sensor_channels[1].pin));
 }
 
+[[nodiscard]] const char* dht_sensor_read_status_name(
+    dockstation::firmware::esp32::DhtSensorGpioReadStatus status) noexcept {
+    using dockstation::firmware::esp32::DhtSensorGpioReadStatus;
+    switch (status) {
+        case DhtSensorGpioReadStatus::Success: return "SUCCESS";
+        case DhtSensorGpioReadStatus::NotConfigured: return "NOT_CONFIGURED";
+        case DhtSensorGpioReadStatus::GpioError: return "GPIO_ERROR";
+        case DhtSensorGpioReadStatus::NoResponse: return "NO_RESPONSE";
+        case DhtSensorGpioReadStatus::Timeout: return "TIMEOUT";
+        case DhtSensorGpioReadStatus::InvalidFrame: return "INVALID_FRAME";
+    }
+    return "UNKNOWN";
+}
+
+void log_dht_sensor_read_status(
+    std::size_t index,
+    DhtSensorChannel& channel,
+    dockstation::firmware::esp32::DhtSensorGpioReadStatus status,
+    std::uint64_t now_ms) noexcept {
+    using dockstation::firmware::esp32::DhtSensorGpioReadStatus;
+    const bool changed = !channel.has_logged_read_status ||
+        channel.last_logged_read_status != status;
+    const bool repeated_failure_due = channel.has_logged_read_status &&
+        status != DhtSensorGpioReadStatus::Success &&
+        now_ms >= channel.last_diagnostic_log_ms &&
+        now_ms - channel.last_diagnostic_log_ms >= 10000U;
+    if (!changed && !repeated_failure_due) {
+        return;
+    }
+
+    const char* const status_name = dht_sensor_read_status_name(status);
+    if (status == DhtSensorGpioReadStatus::Success) {
+        ESP_LOGI(kTag, "DHT sensor=%u gpio=%d read_status=%s",
+            static_cast<unsigned>(index + 1U), static_cast<int>(channel.pin), status_name);
+    } else {
+        ESP_LOGW(kTag, "DHT sensor=%u gpio=%d read_status=%s",
+            static_cast<unsigned>(index + 1U), static_cast<int>(channel.pin), status_name);
+    }
+
+    channel.has_logged_read_status = true;
+    channel.last_logged_read_status = status;
+    channel.last_diagnostic_log_ms = now_ms;
+}
+
 void poll_dht22_channels() noexcept {
     const std::uint64_t now_ms = monotonic_milliseconds();
     for (std::size_t index = 0U; index < g_dht_sensor_channels.size(); ++index) {
@@ -277,8 +325,10 @@ void poll_dht22_channels() noexcept {
         }
 
         dockstation::firmware::esp32::Dht22DecodedReading reading{};
-        if (dockstation::firmware::esp32::read_dht_sensor_gpio(channel.pin, reading) !=
-            dockstation::firmware::esp32::DhtSensorGpioReadStatus::Success) {
+        const auto status =
+            dockstation::firmware::esp32::read_dht_sensor_gpio(channel.pin, reading);
+        log_dht_sensor_read_status(index, channel, status, now_ms);
+        if (status != dockstation::firmware::esp32::DhtSensorGpioReadStatus::Success) {
             continue;
         }
 
@@ -290,11 +340,10 @@ void poll_dht22_channels() noexcept {
             static_cast<unsigned long long>(channel.measured_at_us));
         if (written <= 0 || static_cast<std::size_t>(written) >= sizeof(channel.measured_at)) {
             channel.has_reading = false;
-            channel.measured_at[0] = '\\0';
+            channel.measured_at[0] = '\0';
         }
     }
 }
-
 std::size_t build_dht_sensor_telemetry(
     std::uint64_t now_us,
     std::string_view request_timestamp,

@@ -11,7 +11,7 @@ namespace {
 
 constexpr std::uint64_t kEdgeTimeoutUs = 120U;
 constexpr std::uint32_t kDht22StartPulseUs = 1100U;
-constexpr std::uint32_t kDht11StartPulseUs = 18000U;
+constexpr std::uint32_t kDht11StartPulseUs = 20000U;
 constexpr std::uint32_t kOnePulseThresholdUs = 50U;
 
 enum class FrameCaptureStatus : std::uint8_t {
@@ -60,6 +60,7 @@ enum class FrameCaptureStatus : std::uint8_t {
     }
 
     // DHT22 needs at least 1 ms; DHT11 requires at least 18 ms.
+    // The prototype uses 20 ms to keep a margin above the DHT11 minimum.
     esp_rom_delay_us(start_pulse_us);
     if (gpio_set_direction(pin, GPIO_MODE_INPUT) != ESP_OK ||
         gpio_pullup_en(pin) != ESP_OK) {
@@ -114,8 +115,14 @@ DhtSensorGpioReadStatus read_dht_sensor_gpio(
     if (capture_status == FrameCaptureStatus::GpioError) {
         return DhtSensorGpioReadStatus::GpioError;
     }
-    if (capture_status != FrameCaptureStatus::Success) {
+    if (capture_status == FrameCaptureStatus::NoResponse) {
+        return DhtSensorGpioReadStatus::NoResponse;
+    }
+    if (capture_status == FrameCaptureStatus::Timeout) {
         return DhtSensorGpioReadStatus::Timeout;
+    }
+    if (capture_status != FrameCaptureStatus::Success) {
+        return DhtSensorGpioReadStatus::GpioError;
     }
 
     if (decode_dht22_frame(frame.data(), frame.size(), output) ==

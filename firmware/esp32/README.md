@@ -208,16 +208,24 @@ the non-empty `measured_at` string and quality status.
 
 The ESP-IDF GPIO reader automatically detects each sensor independently.
 It first sends the DHT22 start-low pulse (about 1.1 ms); only when no response
-edge is seen does it retry with the DHT11 start-low pulse (at least 18 ms).
+edge is seen does it retry with the DHT11 start-low pulse (20 ms; the specified
+minimum is 18 ms).
 Once a response has started, it never sends a second immediate request, so a
 partial/invalid frame cannot cause a too-early retry. Both variants use the
-same 40-bit pulse capture and checksum validation. The capture is polling-based
+same 40-bit pulse capture and checksum validation. The GPIO reader reports
+`NO_RESPONSE` when neither request gets a response edge, `TIMEOUT` when a
+response starts but its pulse sequence is incomplete, `INVALID_FRAME` when
+40 bits fail checksum/format/range validation, and `GPIO_ERROR` when GPIO
+configuration or access fails. The capture is polling-based
 and may reject a frame if an interrupt stretches a pulse; the data line needs
 an external 4.7–10 kOhm pull-up (the ESP32 internal pull-up is only a fallback).
 
 The firmware defines two independent channels: sensor 1 DATA is GPIO25 and
 sensor 2 DATA is GPIO26. Each channel has its own sampling scheduler and
 cached reading; the sensor type is detected on each channel separately.
+USB-console diagnostics are emitted immediately on status changes and repeat
+failures are rate-limited to one message per channel every 10 seconds. The
+capture procedure is documented in `docs/35_PROTOTYPE_UART_DHT22.md`.
 Sampling attempts are rate-limited independently to at least two seconds.
 Telemetry reports `NOT_CONFIGURED` or `UNAVAILABLE` explicitly until a valid
 reading exists. Valid values carry their acquisition timestamp; readings older
