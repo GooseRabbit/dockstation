@@ -54,7 +54,7 @@ DEC-062 описывает целевой проводной full-duplex UART po
 - UART0 через onboard USB-UART bridge: кадр `DS1,...` выводится штатным ESP-IDF logger в строке вида `I (123) DockStationESP32: DS1,...`; Linux Gateway выделяет кадр из префикса. Это основной путь для подключения ESP32 обычным USB-кабелем к Linux/Repka.
 - UART2 (`UART_NUM_2`), GPIO17/TX и GPIO16/RX, 115200 8N1: исходный raw-кадр `DS1,...` остаётся доступен для прямого последовательного подключения к Linux-хосту.
 
-Оба прототипных варианта открыты, не имеют аутентификации/шифрования и не поддерживают команды. Это временный транспорт из `docs/35_PROTOTYPE_UART_DHT11/DHT22.md`; он не является secure ControllerLink. Secure ControllerLink остаётся default-off (`hardware_profile_confirmed=false`, его UART GPIO не заданы). UART0 не назначать защищённому ControllerLink: он разделяется с USB bootloader/console. Не запускать raw prototype UART2 и secure ControllerLink одновременно на одном UART.
+Оба прототипных варианта открыты, не имеют аутентификации/шифрования и не поддерживают команды. Это временный транспорт из `docs/35_PROTOTYPE_UART_DHT22.md`; он не является secure ControllerLink. Secure ControllerLink остаётся default-off (`hardware_profile_confirmed=false`, его UART GPIO не заданы). UART0 не назначать защищённому ControllerLink: он разделяется с USB bootloader/console. Не запускать raw prototype UART2 и secure ControllerLink одновременно на одном UART.
 
 GPIO6–GPIO11 по документации связаны с SPI Flash; не использовать их для внешней периферии. Учитывать также ограничения boot-strapping GPIO из datasheet.
 
@@ -170,5 +170,5 @@ motion feedback, safety-stop и workspace. Сейчас все интервал�
 На этапе первичной проверки DHT11/DHT22 используется отдельный открытый UART2-поток:
 GPIO17 TX, GPIO16 RX, 115200 8N1. Он не активирует защищённый ControllerLink
 и не передаёт команды. Полное описание кадра, Linux-настройки и ограничений
-находится в docs/35_PROTOTYPE_UART_DHT11/DHT22.md. Это стендовый транспорт без защиты,
+находится в docs/35_PROTOTYPE_UART_DHT22.md. Это стендовый транспорт без защиты,
 не предназначенный для эксплуатации.
