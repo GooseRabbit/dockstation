@@ -33,4 +33,12 @@ enum class Dht22DecodeStatus : std::uint8_t {
     std::size_t frame_size,
     Dht22DecodedReading& output) noexcept;
 
+// DHT11 uses the same 40-bit/checksum envelope but stores integer and
+// decimal bytes separately (unlike DHT22's packed tenths representation).
+// Values are normalized to tenths so the existing telemetry contract is kept.
+[[nodiscard]] Dht22DecodeStatus decode_dht11_frame(
+    const std::uint8_t* frame,
+    std::size_t frame_size,
+    Dht22DecodedReading& output) noexcept;
+
 }  // namespace dockstation::firmware::esp32

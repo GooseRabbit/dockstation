@@ -44,6 +44,36 @@ std::array<std::uint8_t, 5U> make_frame(
     return frame;
 }
 
+
+std::array<std::uint8_t, 5U> make_dht11_frame(
+    std::uint8_t humidity_integer,
+    std::uint8_t humidity_decimal,
+    std::uint8_t temperature_integer,
+    std::uint8_t temperature_decimal) {
+    std::array<std::uint8_t, 5U> frame{{
+        humidity_integer, humidity_decimal, temperature_integer,
+        temperature_decimal, 0U
+    }};
+    frame[4] = static_cast<std::uint8_t>(
+        static_cast<std::uint16_t>(frame[0]) +
+        static_cast<std::uint16_t>(frame[1]) +
+        static_cast<std::uint16_t>(frame[2]) +
+        static_cast<std::uint16_t>(frame[3]));
+    return frame;
+}
+
+void expect_dht11_rejected(
+    const std::array<std::uint8_t, 5U>& frame,
+    Dht22DecodeStatus expected_status,
+    const char* description) {
+    Dht22DecodedReading reading{123, 456U};
+    const auto status = decode_dht11_frame(frame.data(), frame.size(), reading);
+    expect(status == expected_status &&
+               reading.temperature_tenths_c == 0 &&
+               reading.relative_humidity_tenths_percent == 0U,
+           description);
+}
+
 void expect_rejected(
     const std::array<std::uint8_t, 5U>& frame,
     Dht22DecodeStatus expected_status,
@@ -116,6 +146,50 @@ int main() {
     expect_rejected(
         low_temperature, Dht22DecodeStatus::TemperatureOutOfRange,
         "temperature below -40.0 C is rejected");
+
+
+    // DHT11 encodes integer and decimal bytes separately, unlike DHT22.
+    const auto dht11_integer_example = make_dht11_frame(45U, 0U, 23U, 0U);
+    expect(decode_dht11_frame(
+               dht11_integer_example.data(), dht11_integer_example.size(), reading) ==
+               Dht22DecodeStatus::Success &&
+               reading.relative_humidity_tenths_percent == 450U &&
+               reading.temperature_tenths_c == 230,
+           "DHT11 integer example decodes and is normalized to tenths");
+
+    const auto dht11_decimal_example = make_dht11_frame(45U, 5U, 23U, 4U);
+    expect(decode_dht11_frame(
+               dht11_decimal_example.data(), dht11_decimal_example.size(), reading) ==
+               Dht22DecodeStatus::Success &&
+               reading.relative_humidity_tenths_percent == 455U &&
+               reading.temperature_tenths_c == 234,
+           "DHT11 decimal digits are preserved in tenths");
+
+    auto dht11_bad_checksum = dht11_integer_example;
+    dht11_bad_checksum[4] ^= 0x01U;
+    expect_dht11_rejected(
+        dht11_bad_checksum, Dht22DecodeStatus::ChecksumMismatch,
+        "DHT11 checksum mismatch is rejected and output is cleared");
+
+    const auto dht11_bad_humidity_decimal = make_dht11_frame(45U, 10U, 23U, 0U);
+    expect_dht11_rejected(
+        dht11_bad_humidity_decimal, Dht22DecodeStatus::InvalidArgument,
+        "DHT11 humidity decimal byte must be a single decimal digit");
+
+    const auto dht11_bad_temperature_decimal = make_dht11_frame(45U, 0U, 23U, 10U);
+    expect_dht11_rejected(
+        dht11_bad_temperature_decimal, Dht22DecodeStatus::InvalidArgument,
+        "DHT11 temperature decimal byte must be a single decimal digit");
+
+    const auto dht11_excessive_humidity = make_dht11_frame(100U, 0U, 23U, 0U);
+    expect_dht11_rejected(
+        dht11_excessive_humidity, Dht22DecodeStatus::HumidityOutOfRange,
+        "DHT11 humidity above 99.9 percent is rejected");
+
+    const auto dht11_excessive_temperature = make_dht11_frame(45U, 0U, 50U, 1U);
+    expect_dht11_rejected(
+        dht11_excessive_temperature, Dht22DecodeStatus::TemperatureOutOfRange,
+        "DHT11 temperature above 50.0 C is rejected");
 
     reading = {123, 456U};
     expect(decode_dht22_frame(nullptr, 5U, reading) ==

@@ -1,6 +1,6 @@
 # Аппаратный профиль ESP32 для DockStation
 
-**Статус:** raw UART2 ESP32 → обычный Linux физически проверен; программный путь DHT22 через USB/UART0 реализован, но USB → Repka ещё не принят; secure ControllerLink не принят.
+**Статус:** raw UART2 ESP32 → обычный Linux физически проверен; программный путь DHT11/DHT22 через USB/UART0 реализован, но USB → Repka ещё не принят; secure ControllerLink не принят.
 **Редакция:** 0.8.
 **Дата:** 2026-11-21.
 **Связанные решения:** DEC-062, DEC-064, DEC-065, DEC-066.
@@ -28,7 +28,7 @@
 | SPI Flash | `esptool flash-id` на физической плате ESP32-D0WD-V3 revision 3.1 | **Физически подтверждено: 4 MB; CI конфигурация также фиксирует 4 MB** |
 | PSRAM | Нет подтверждения установленной PSRAM | **UNKNOWN; не считать наличие PSRAM** |
 | UART2 prototype | GPIO17 = TX, GPIO16 = RX, 115200 8N1 | **Физически проверен ESP32 → обычный Linux host; Repka не проверялась** |
-| UART0 | Manual указывает GPIO1 = TX0 (pin 35), GPIO3 = RX0 (pin 34) | Основной прототипный путь DHT22 через onboard USB-UART bridge и console; не использовать для secure ControllerLink из-за совместного bootloader/logging пути |
+| UART0 | Manual указывает GPIO1 = TX0 (pin 35), GPIO3 = RX0 (pin 34) | Основной прототипный путь DHT11/DHT22 через onboard USB-UART bridge и console; не использовать для secure ControllerLink из-за совместного bootloader/logging пути |
 | Flash pins | Manual помечает GPIO6–GPIO11 как SPI Flash signal pins | Не назначать их прикладной периферии |
 | Рабочий ESP-IDF target | `esp32` | Временный family-level build target; не является production board approval |
 
@@ -50,11 +50,11 @@ DEC-062 описывает целевой проводной full-duplex UART po
 | UART2 TX2 | GPIO17 | 28 | ESP32 → Repka RX |
 | UART2 RX2 | GPIO16 | 27 | Repka TX → ESP32 |
 
-Для прототипной телеметрии DHT22 прошивка передаёт один и тот же кадр двумя способами:
+Для прототипной телеметрии DHT11/DHT22 прошивка передаёт один и тот же кадр двумя способами:
 - UART0 через onboard USB-UART bridge: кадр `DS1,...` выводится штатным ESP-IDF logger в строке вида `I (123) DockStationESP32: DS1,...`; Linux Gateway выделяет кадр из префикса. Это основной путь для подключения ESP32 обычным USB-кабелем к Linux/Repka.
 - UART2 (`UART_NUM_2`), GPIO17/TX и GPIO16/RX, 115200 8N1: исходный raw-кадр `DS1,...` остаётся доступен для прямого последовательного подключения к Linux-хосту.
 
-Оба прототипных варианта открыты, не имеют аутентификации/шифрования и не поддерживают команды. Это временный транспорт из `docs/35_PROTOTYPE_UART_DHT22.md`; он не является secure ControllerLink. Secure ControllerLink остаётся default-off (`hardware_profile_confirmed=false`, его UART GPIO не заданы). UART0 не назначать защищённому ControllerLink: он разделяется с USB bootloader/console. Не запускать raw prototype UART2 и secure ControllerLink одновременно на одном UART.
+Оба прототипных варианта открыты, не имеют аутентификации/шифрования и не поддерживают команды. Это временный транспорт из `docs/35_PROTOTYPE_UART_DHT11/DHT22.md`; он не является secure ControllerLink. Secure ControllerLink остаётся default-off (`hardware_profile_confirmed=false`, его UART GPIO не заданы). UART0 не назначать защищённому ControllerLink: он разделяется с USB bootloader/console. Не запускать raw prototype UART2 и secure ControllerLink одновременно на одном UART.
 
 GPIO6–GPIO11 по документации связаны с SPI Flash; не использовать их для внешней периферии. Учитывать также ограничения boot-strapping GPIO из datasheet.
 
@@ -84,8 +84,8 @@ Read-only `flash_id` уже выполнен на используемой фи�
 - Secure ControllerLink имеет `hardware_profile_confirmed=false`; его NVS/TLS startup не выполняется. Отдельный prototype UART запускается независимо и передаёт телеметрию на обычный Linux host.
 - Secure ControllerLink сможет читать заранее provisioned protected NVS credentials и stable controller IDs только после отдельной приёмки Repka/ESP32 профиля и явной UART-конфигурации; provisioning writer в штатном старте отсутствует.
 - FreeRTOS polling/lifecycle task `controller_link_polling_task` уже реализована в `app_main.cpp`: она создаётся после прохождения startup readiness checks, с выделенным стеком и приоритетом, и обслуживает runtime с периодом опроса 10 мс.
-- Secure ControllerLink не запускается, поскольку `hardware_profile_confirmed=false`; его protected NVS и TLS transport не открываются. Runtime task независимо опрашивает DHT22 GPIO25/GPIO26. Кадры передаются через UART0/USB как ESP-IDF log lines и, при успешной инициализации, дублируются raw через UART2 GPIO17/GPIO16.
-- После подтверждения аппаратного профиля, явной UART-конфигурации и наличия заранее provisioned credentials/ID task запускает runtime, выполняет polling и повторные попытки подключения с backoff. При запросе снимка передаются восемь логических измерений состояния станции, а также четыре климатических канала двух DHT22 (температура и влажность каждого датчика). DHT22 GPIO reader использует open-drain start pulse 1,1 мс, ограниченное ожидание фронтов и существующий checksum/range decoder; каждый датчик имеет отдельный sampling scheduler с интервалом не менее двух секунд. Для двух DHT22 в прототипе назначены GPIO25 (датчик 1 DATA) и GPIO26 (датчик 2 DATA). Каналы опрашиваются независимо и передают только валидные свежие измерения; до успешного чтения сообщают `UNAVAILABLE`, а не фиктивные значения. Физическая проверка ESP32 с обычным Linux-хостом не является проверкой Repka. Для настроенного, но ещё не прочитанного канала передаётся `UNAVAILABLE`; успешное измерение получает время фактического захвата, а старше пяти секунд помечается `STALE`. Недоступные физические входы состояния станции передаются как `UNKNOWN` с качеством `Unknown`; неподтверждённая крышка — `NOT_CONFIGURED`. Получение feedback механизмов и GPIO-концевиков ещё не реализовано.
+- Secure ControllerLink не запускается, поскольку `hardware_profile_confirmed=false`; его protected NVS и TLS transport не открываются. Runtime task независимо опрашивает DHT11/DHT22 GPIO25/GPIO26. Кадры передаются через UART0/USB как ESP-IDF log lines и, при успешной инициализации, дублируются raw через UART2 GPIO17/GPIO16.
+- После подтверждения аппаратного профиля, явной UART-конфигурации и наличия заранее provisioned credentials/ID task запускает runtime, выполняет polling и повторные попытки подключения с backoff. При запросе снимка передаются восемь логических измерений состояния станции, а также четыре климатических канала двух DHT11/DHT22 (температура и влажность каждого датчика). DHT11/DHT22 GPIO reader использует open-drain start pulse 1,1 мс, ограниченное ожидание фронтов и существующий checksum/range decoder; каждый датчик имеет отдельный sampling scheduler с интервалом не менее двух секунд. Для двух датчиков назначены GPIO25 (датчик 1 DATA) и GPIO26 (датчик 2 DATA); модель каждого определяется по ответному кадру независимо. Каналы опрашиваются независимо и передают только валидные свежие измерения; до успешного чтения сообщают `UNAVAILABLE`, а не фиктивные значения. Физическая проверка ESP32 с обычным Linux-хостом не является проверкой Repka. Для настроенного, но ещё не прочитанного канала передаётся `UNAVAILABLE`; успешное измерение получает время фактического захвата, а старше пяти секунд помечается `STALE`. Недоступные физические входы состояния станции передаются как `UNKNOWN` с качеством `Unknown`; неподтверждённая крышка — `NOT_CONFIGURED`. Получение feedback механизмов и GPIO-концевиков ещё не реализовано.
 - UART event queue обрабатывается ограниченными порциями до 8 событий за один runtime poll. Если после порции очередь не пуста, runtime откладывает TLS/ControllerLink poll до следующего цикла; оставшиеся UART-события сначала должны быть проверены на overflow/framing/parity faults.
 - На Repka (Linux/OpenSSL) первоначальное TLS-рукопожатие ограничено отдельным монотонным дедлайном 10 секунд. При истечении срока transport manager закрывает TLS и UART и возвращает отдельный `TlsHandshakeTimeout`; ControllerLink service классифицирует его как потерю транспорта и запускает обычный reconnect backoff. На ESP32 TLS/HELLO handshake ограничен тремя секундами. Оба тайм-аута относятся к программной политике и ещё требуют проверки на физической связке.
 - ESP32 CI после сборки выполняет `idf.py size` и `idf.py size-components`; сводка размера ELF/секции и разбивка по компонентам доступны в журнале workflow. Это статические показатели сборки, не runtime RAM.
@@ -132,7 +132,7 @@ feedback трактуется как UNKNOWN и запрещает обычну�
 или завершил движение.
 
 На `REQUEST_SNAPSHOT` ESP32 передаёт логические измерения состояния станции и
-четыре климатических канала двух DHT22. В прошивке назначены GPIO25 и GPIO26;
+четыре климатических канала двух DHT11/DHT22. В прошивке назначены GPIO25 и GPIO26;
 до первого успешного чтения настроенный канал имеет явный статус
 `UNAVAILABLE`. Валидные измерения сопровождаются временем захвата,
 а после пяти секунд без обновления получают качество `Stale`. Это программная
@@ -167,8 +167,8 @@ motion feedback, safety-stop и workspace. Сейчас все интервал�
 
 ## Временный прототипный телеметрический UART
 
-На этапе первичной проверки DHT22 используется отдельный открытый UART2-поток:
+На этапе первичной проверки DHT11/DHT22 используется отдельный открытый UART2-поток:
 GPIO17 TX, GPIO16 RX, 115200 8N1. Он не активирует защищённый ControllerLink
 и не передаёт команды. Полное описание кадра, Linux-настройки и ограничений
-находится в docs/35_PROTOTYPE_UART_DHT22.md. Это стендовый транспорт без защиты,
+находится в docs/35_PROTOTYPE_UART_DHT11/DHT22.md. Это стендовый транспорт без защиты,
 не предназначенный для эксплуатации.

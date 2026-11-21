@@ -77,7 +77,7 @@ two guards **before touching NVS**: its exact hardware profile must be
 explicitly confirmed and its dedicated UART port/TX/RX configuration must be
 valid. The checked-in secure profile deliberately keeps
 `hardware_profile_confirmed=false` and its ControllerLink GPIOs unset, so only
-the protected NVS/TLS path is skipped; prototype DHT22 acquisition and
+the protected NVS/TLS path is skipped; prototype DHT11/DHT22 acquisition and
 UART0/USB telemetry continue independently.
 
 Only after those two guards have been deliberately satisfied will
@@ -106,7 +106,7 @@ An accepted `REQUEST_SNAPSHOT` is answered with eight logical station-state
 measurements: lid position, platform/cleaning/drive activity, safety-stop state,
 workspace state, last command decision and pending-command state. Unavailable
 physical inputs are represented as `UNKNOWN` with `Unknown` quality; an
-unconfigured lid is `NOT_CONFIGURED`. The runtime acquires two DHT22 channels independently of ControllerLink:
+unconfigured lid is `NOT_CONFIGURED`. The runtime acquires two DHT11/DHT22 channels independently of ControllerLink:
 sensor 1 uses GPIO25 and sensor 2 uses GPIO26. The GPIO reader, bounded polling,
 decoder and telemetry path are connected in firmware. Physical wiring,
 electrical levels, pull-ups and actual sensor readings still require acceptance
@@ -121,14 +121,14 @@ unset. Therefore the normal image does not open protected NVS or start
 ControllerLink/TLS. This does **not** disable the separate prototype telemetry
 path: `app_main` emits a log-framed DS1 line on UART0 over the USB connector,
 optionally duplicates the raw DS1 frame to UART2 on GPIO17/GPIO16, and starts
-the runtime task for DHT22 acquisition on GPIO25/GPIO26. ControllerLink remains
+the runtime task for DHT11/DHT22 acquisition on GPIO25/GPIO26. ControllerLink remains
 NOT_CONFIGURED. The link-only acceptance hook is forced into the ELF for
 compile/link coverage but is not executed.
 
 The Mbed TLS server reseeds its per-connection DRBG when TLS is
 reinitialized. On the current ESP32 scaffold this briefly enables the SAR-ADC
 entropy source. Do not add concurrent ADC, I2S or RF users without coordinating
-that entropy-source window; current DHT22/limit-switch scaffolding does not use
+that entropy-source window; current DHT11/DHT22/limit-switch scaffolding does not use
 those peripherals.
 
 The default Mbed TLS configuration enables the required TLS 1.3 server,
@@ -190,54 +190,48 @@ digits, `_`, `-`, `.` or `:`. The loader rejects missing, malformed or
 identical values and clears its output on failure. It never creates or repairs
 records.
 
-## DHT22 / AM2302 frame decoder
+## DHT11/DHT22 frame decoder and GPIO reader
 
-`components/controller_dht22_sensor/` contains a pure five-byte frame decoder.
-It validates the exact frame length and checksum,
-decodes humidity and temperature in tenths, handles the temperature sign bit,
-and rejects values outside 0–99.9 %RH and −40.0…+80.0 °C. The output is
-cleared on every failure. Keeping integer tenths avoids premature rounding.
+`components/controller_dht22_sensor/` contains pure five-byte decoders for
+DHT22/AM2302 and DHT11. Both validate exact frame length and checksum and
+normalize values to integer tenths for the existing telemetry contract.
+DHT22's packed tenths format, including its temperature sign bit, is decoded
+separately from DHT11's integer/decimal byte pairs. DHT22 accepts 0–99.9 %RH
+and −40.0…+80.0 °C; DHT11 accepts 0–99.9 %RH and 0.0…+50.0 °C. Outputs are
+cleared on every failure, and invalid ranges/checksums never become telemetry.
 
-The component also contains a pure `Dht22TelemetryAdapter`. It maps one
-decoded reading to two `ControllerTelemetryMeasurement` values: temperature
-in `°C` and relative humidity in `%RH`. The caller supplies both stable
-sensor IDs, the non-empty `measured_at` string and the quality status. The
-adapter validates the IDs, quality enum and decoded value ranges, clears both
-output entries on failure, and does not choose identifiers, invent timestamps
-or infer freshness. The timestamp format remains the existing open protocol
-decision. Returned string views refer to caller-owned storage, which must stay
-valid while the measurements are used.
+The component also contains the pure `Dht22TelemetryAdapter`, retained for
+compatibility with the current data model. It maps either normalized sensor
+reading to two `ControllerTelemetryMeasurement` values: temperature in
+`°C` and relative humidity in `%RH`. The caller supplies stable sensor IDs,
+the non-empty `measured_at` string and quality status.
 
-The component now also contains an ESP-IDF GPIO acquisition adapter. It drives the configured open-drain data pin low for 1.1 ms, releases it, captures the 40 data-bit high pulses with bounded edge waits, and passes the resulting five-byte frame through the existing checksum/range decoder. The reader returns explicit NOT_CONFIGURED, GPIO, timeout or invalid-frame outcomes; it does not return fabricated values. Use an external 4.7–10 kOhm data-line pull-up. The capture is polling-based and may reject a frame if an interrupt stretches a pulse; a later hardware timing review can replace this small adapter without changing the decoder or telemetry contract.
+The ESP-IDF GPIO reader automatically detects each sensor independently.
+It first sends the DHT22 start-low pulse (about 1.1 ms); only when no response
+edge is seen does it retry with the DHT11 start-low pulse (at least 18 ms).
+Once a response has started, it never sends a second immediate request, so a
+partial/invalid frame cannot cause a too-early retry. Both variants use the
+same 40-bit pulse capture and checksum validation. The capture is polling-based
+and may reject a frame if an interrupt stretches a pulse; the data line needs
+an external 4.7–10 kOhm pull-up (the ESP32 internal pull-up is only a fallback).
 
-The firmware defines two independent DHT22 channels: sensor 1 DATA is GPIO25 and sensor 2 DATA is GPIO26. Each channel has its own sampling scheduler and cached real reading. These are the selected prototype assignments; verify the physical header labels and 3.3 V electrical compatibility before wiring. Sampling attempts are rate-limited independently, and snapshot telemetry reports NOT_CONFIGURED or UNAVAILABLE explicitly until a valid reading exists. Valid values are sent with their acquisition timestamp; values older than five seconds are marked STALE. The existing station-state measurements remain in the same snapshot.
+The firmware defines two independent channels: sensor 1 DATA is GPIO25 and
+sensor 2 DATA is GPIO26. Each channel has its own sampling scheduler and
+cached reading; the sensor type is detected on each channel separately.
+Sampling attempts are rate-limited independently to at least two seconds.
+Telemetry reports `NOT_CONFIGURED` or `UNAVAILABLE` explicitly until a valid
+reading exists. Valid values carry their acquisition timestamp; readings older
+than five seconds are marked `STALE`.
 
-The component also contains a pure `Dht22SamplingScheduler`. Each
-physical sensor uses its own scheduler instance. The caller initializes it
-with the monotonic timestamp when sensor power was applied and calls
-`try_begin_read()` immediately before each acquisition attempt. The first
-read is blocked until more than 2,000 ms after power-on; later attempts are
-separated by at least 2,000 ms. A permitted attempt consumes its slot even if
-the physical acquisition subsequently fails. A monotonic-clock regression
-blocks further reads until explicit reinitialization.
-
-The scheduler itself remains a pure policy component and does not read GPIO,
-generate sensor timing, power a sensor, create a FreeRTOS task or run a timer.
-The firmware runtime polling task owns both DHT22 channels and invokes the GPIO
-reader only for explicitly configured pins. This task is started even when the
-physical ControllerLink profile or protected credentials are unavailable; in
-that mode it continues the independent sensor lifecycle without opening NVS,
-UART or TLS. The prototype config assigns DHT22 sensor 1 DATA to GPIO25 and sensor 2 DATA
-to GPIO26. The prototype UART sends the four sensor measurements to the Linux
-host when fresh readings are available. This plaintext path is independent of
-secure ControllerLink; sensor samples are not sent through ControllerLink while
-it is NOT_CONFIGURED. The Repka-side ControllerLink receiver and diagnostics
-JSON path are implemented and covered by a host PTY integration test for all
-four DHT22 measurements, but physical Repka exchange and secure pairing remain
-unverified. The decoder, adapter and scheduler
-are built by ESP-IDF and checked by the host CTest targets `dht22_frame_decoder`,
-`dht22_telemetry_adapter` and `dht22_sampling_scheduler`; these tests do
-not prove physical sensor operation or acquisition timing.
+The `Dht22SamplingScheduler` remains a pure policy component. It blocks the
+first read until more than 2,000 ms after power-on and separates later attempts
+by at least 2,000 ms. The runtime task owns both channels and runs even when
+the secure ControllerLink profile or credentials are unavailable; it does not
+open NVS, UART or TLS in that mode. The prototype UART continues to send the
+same four climate values. The decoder, telemetry adapter and scheduler are
+covered by host CTest targets `dht22_frame_decoder`,
+`dht22_telemetry_adapter` and `dht22_sampling_scheduler`; these tests do not
+prove physical sensor operation or acquisition timing.
 
 ## Lid limit-switch state tracker
 
@@ -273,7 +267,7 @@ Not implemented by this scaffold:
 - a provisioning writer/utility for PSK, PSK identity or stable controller IDs;
 - board-specific UART pin assignment or a running UART connection;
 - physical acceptance of ControllerLink reconnect/recovery over the actual UART wiring;
-- physical DHT22 acceptance on the actual board; GPIO25/GPIO26 are configured for the two prototype channels, but sensor electrical acceptance must be distinguished from the confirmed ESP32-to-Linux prototype UART test;
+- physical DHT11/DHT22 acceptance on the actual board; GPIO25/GPIO26 are configured for the two prototype channels, but sensor electrical acceptance must be distinguished from the confirmed ESP32-to-Linux prototype UART test;
 - GPIO acquisition/pin assignment for the lid limit switches, motor control or hardware interlocks; the pure lid limit-switch state tracker exists but is not connected to hardware;
 - enabling/configuring Flash Encryption, Secure Boot policy or OTA update;
 - production partition/Flash sizing and final board profile.
@@ -416,9 +410,9 @@ only after physical completion feedback. There is currently no actuator layer,
 GPIO acquisition, or physical completion acknowledgement in the firmware.
 
 The polling task answers snapshot requests with logical station-state
-telemetry plus the two DHT22 channels. Its unknown input qualities are
-intentional. The DHT22 GPIO reader and telemetry path are implemented, but
-the prototype DHT22 pins are configured as GPIO25 and GPIO26. Lid
+telemetry plus the two DHT11/DHT22 channels. Its unknown input qualities are
+intentional. The DHT11/DHT22 GPIO reader and telemetry path are implemented, but
+the prototype DHT11/DHT22 pins are configured as GPIO25 and GPIO26. Lid
 limit-switch debounce is still not connected to GPIO. The secure ControllerLink
 profile remains default-off pending its separate Repka, credential and security
 acceptance.
@@ -458,4 +452,4 @@ samples at acquisition, not when forwarding cached values.
  
 ## Prototype UART telemetry
 
-A plaintext receive-only DHT22 telemetry path is available for isolated hardware prototyping. UART2 uses GPIO17 TX / GPIO16 RX at 115200 8N1; UART0 remains the USB console/programming port. The frame and Linux configuration are documented in docs/35_PROTOTYPE_UART_DHT22.md. This temporary transport does not provide authentication, encryption or commands.
+A plaintext receive-only DHT11/DHT22 telemetry path is available for isolated hardware prototyping. UART2 uses GPIO17 TX / GPIO16 RX at 115200 8N1; UART0 remains the USB console/programming port. The frame and Linux configuration are documented in docs/35_PROTOTYPE_UART_DHT22.md. This temporary transport does not provide authentication, encryption or commands.

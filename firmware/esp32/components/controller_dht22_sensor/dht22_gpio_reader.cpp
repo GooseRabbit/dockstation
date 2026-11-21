@@ -10,8 +10,16 @@ namespace dockstation::firmware::esp32 {
 namespace {
 
 constexpr std::uint64_t kEdgeTimeoutUs = 120U;
-constexpr std::uint32_t kStartPulseUs = 1100U;
+constexpr std::uint32_t kDht22StartPulseUs = 1100U;
+constexpr std::uint32_t kDht11StartPulseUs = 18000U;
 constexpr std::uint32_t kOnePulseThresholdUs = 50U;
+
+enum class FrameCaptureStatus : std::uint8_t {
+    Success,
+    NoResponse,
+    Timeout,
+    GpioError
+};
 
 [[nodiscard]] bool wait_for_level(gpio_num_t pin, int expected_level) noexcept {
     const std::int64_t deadline = esp_timer_get_time() +
@@ -42,39 +50,38 @@ constexpr std::uint32_t kOnePulseThresholdUs = 50U;
     return true;
 }
 
-}  // namespace
-
-Dht22GpioReadStatus read_dht22_gpio(
-    gpio_num_t pin, Dht22DecodedReading& output) noexcept {
-    output.clear();
-    if (pin == GPIO_NUM_NC || !GPIO_IS_VALID_GPIO(pin)) {
-        return Dht22GpioReadStatus::NotConfigured;
-    }
-
+[[nodiscard]] FrameCaptureStatus capture_frame(
+    gpio_num_t pin,
+    std::uint32_t start_pulse_us,
+    std::array<std::uint8_t, 5U>& frame) noexcept {
     if (gpio_set_direction(pin, GPIO_MODE_OUTPUT_OD) != ESP_OK ||
         gpio_set_level(pin, 0) != ESP_OK) {
-        return Dht22GpioReadStatus::GpioError;
+        return FrameCaptureStatus::GpioError;
     }
 
-    // DHT22 requires a host start-low pulse of at least 1 ms.
-    esp_rom_delay_us(kStartPulseUs);
+    // DHT22 needs at least 1 ms; DHT11 requires at least 18 ms.
+    esp_rom_delay_us(start_pulse_us);
     if (gpio_set_direction(pin, GPIO_MODE_INPUT) != ESP_OK ||
         gpio_pullup_en(pin) != ESP_OK) {
-        return Dht22GpioReadStatus::GpioError;
+        return FrameCaptureStatus::GpioError;
+    }
+
+    // No low edge means the sensor ignored this start pulse. This is the only
+    // case in which auto-detection may safely try the alternate start protocol.
+    if (!wait_for_level(pin, 0)) {
+        return FrameCaptureStatus::NoResponse;
     }
 
     // Sensor response: 80 us low, 80 us high, then the first data-bit low.
-    if (!wait_for_level(pin, 0) ||
-        !wait_for_level(pin, 1) ||
-        !wait_for_level(pin, 0)) {
-        return Dht22GpioReadStatus::Timeout;
+    if (!wait_for_level(pin, 1) || !wait_for_level(pin, 0)) {
+        return FrameCaptureStatus::Timeout;
     }
 
-    std::array<std::uint8_t, 5U> frame{};
+    frame.fill(0U);
     for (std::size_t bit = 0U; bit < 40U; ++bit) {
         std::uint32_t high_duration_us = 0U;
         if (!capture_high_pulse(pin, high_duration_us)) {
-            return Dht22GpioReadStatus::Timeout;
+            return FrameCaptureStatus::Timeout;
         }
         const std::size_t byte_index = bit / 8U;
         frame[byte_index] = static_cast<std::uint8_t>(frame[byte_index] << 1U);
@@ -83,10 +90,43 @@ Dht22GpioReadStatus read_dht22_gpio(
         }
     }
 
-    return decode_dht22_frame(frame.data(), frame.size(), output) ==
-            Dht22DecodeStatus::Success
-        ? Dht22GpioReadStatus::Success
-        : Dht22GpioReadStatus::InvalidFrame;
+    return FrameCaptureStatus::Success;
+}
+
+}  // namespace
+
+DhtSensorGpioReadStatus read_dht_sensor_gpio(
+    gpio_num_t pin, Dht22DecodedReading& output) noexcept {
+    output.clear();
+    if (pin == GPIO_NUM_NC || !GPIO_IS_VALID_GPIO(pin)) {
+        return DhtSensorGpioReadStatus::NotConfigured;
+    }
+
+    std::array<std::uint8_t, 5U> frame{};
+    auto capture_status = capture_frame(pin, kDht22StartPulseUs, frame);
+    if (capture_status == FrameCaptureStatus::NoResponse) {
+        // A DHT11 intentionally ignores the shorter DHT22 start pulse. Retry
+        // once with its longer request; a DHT22 response/partial frame never
+        // triggers this retry, preserving the sensor's minimum read interval.
+        capture_status = capture_frame(pin, kDht11StartPulseUs, frame);
+    }
+
+    if (capture_status == FrameCaptureStatus::GpioError) {
+        return DhtSensorGpioReadStatus::GpioError;
+    }
+    if (capture_status != FrameCaptureStatus::Success) {
+        return DhtSensorGpioReadStatus::Timeout;
+    }
+
+    if (decode_dht22_frame(frame.data(), frame.size(), output) ==
+        Dht22DecodeStatus::Success) {
+        return DhtSensorGpioReadStatus::Success;
+    }
+    if (decode_dht11_frame(frame.data(), frame.size(), output) ==
+        Dht22DecodeStatus::Success) {
+        return DhtSensorGpioReadStatus::Success;
+    }
+    return DhtSensorGpioReadStatus::InvalidFrame;
 }
 
 }  // namespace dockstation::firmware::esp32
