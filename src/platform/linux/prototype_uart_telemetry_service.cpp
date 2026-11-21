@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <fcntl.h>
+#include <poll.h>
 #include <string_view>
 #include <termios.h>
 #include <unistd.h>
@@ -122,7 +123,9 @@ bool PrototypeUartTelemetryService::open_device() noexcept {
     options.c_cflag &= static_cast<tcflag_t>(~CRTSCTS);
 #endif
     options.c_iflag &= static_cast<tcflag_t>(~(IXON | IXOFF | IXANY));
-    options.c_cc[VMIN] = 0;
+    // With O_NONBLOCK, VMIN=1 makes an empty read return EAGAIN; a zero-byte
+    // read can therefore be treated as a detached/closed serial endpoint.
+    options.c_cc[VMIN] = 1;
     options.c_cc[VTIME] = 0;
     if (::cfsetispeed(&options, B115200) != 0 ||
         ::cfsetospeed(&options, B115200) != 0 ||
@@ -135,7 +138,7 @@ bool PrototypeUartTelemetryService::open_device() noexcept {
 
     descriptor_ = descriptor;
     input_size_ = 0U;
-    error_code_ = "";
+    error_code_ = "UART_DEVICE_WAITING_FOR_FRAME";
     return true;
 }
 
@@ -145,6 +148,7 @@ void PrototypeUartTelemetryService::close_device() noexcept {
         descriptor_ = -1;
     }
     input_size_ = 0U;
+    current_connection_has_frame_ = false;
 }
 
 void PrototypeUartTelemetryService::stop() noexcept {
@@ -158,11 +162,12 @@ void PrototypeUartTelemetryService::stop() noexcept {
     next_open_attempt_ms_ = 0U;
     configured_ = false;
     has_snapshot_ = false;
+    current_connection_has_frame_ = false;
     error_code_ = "NOT_CONFIGURED";
 }
 
 bool PrototypeUartTelemetryService::connected() const noexcept {
-    if (descriptor_ < 0 || !has_snapshot_) return false;
+    if (descriptor_ < 0 || !has_snapshot_ || !current_connection_has_frame_) return false;
     const std::uint64_t now = monotonic_milliseconds();
     return now >= last_received_monotonic_ms_ &&
         now - last_received_monotonic_ms_ <= kFreshnessMilliseconds;
@@ -224,6 +229,7 @@ bool PrototypeUartTelemetryService::process_line(std::string_view line) noexcept
     received_at_unix_ms_ = unix_epoch_milliseconds();
     last_received_monotonic_ms_ = monotonic_milliseconds();
     has_snapshot_ = true;
+    current_connection_has_frame_ = true;
     error_code_ = "";
     return true;
 }
@@ -237,6 +243,33 @@ void PrototypeUartTelemetryService::poll() noexcept {
         (void)open_device();
     }
     if (descriptor_ < 0) return;
+
+    // A USB serial descriptor can remain open after the device is unplugged.
+    // Observe tty hangup/error state explicitly; read() alone may keep returning
+    // no data on some drivers and never trigger the reopen path.
+    struct pollfd uart_poll_descriptor {
+        descriptor_, POLLIN, 0
+    };
+    int poll_result = 0;
+    do {
+        poll_result = ::poll(&uart_poll_descriptor, 1U, 0);
+    } while (poll_result < 0 && errno == EINTR);
+    if (poll_result < 0) {
+        close_device();
+        error_code_ = "UART_DEVICE_POLL_FAILED";
+        next_open_attempt_ms_ = monotonic_milliseconds() +
+            kReconnectIntervalMilliseconds;
+        return;
+    }
+    if (poll_result == 0) return;
+    if ((uart_poll_descriptor.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
+        close_device();
+        error_code_ = "UART_DEVICE_DISCONNECTED";
+        next_open_attempt_ms_ = monotonic_milliseconds() +
+            kReconnectIntervalMilliseconds;
+        return;
+    }
+    if ((uart_poll_descriptor.revents & POLLIN) == 0) return;
 
     std::array<char, 128U> bytes{};
     for (std::size_t iteration = 0U; iteration < kMaximumReadsPerPoll; ++iteration) {
@@ -259,13 +292,23 @@ void PrototypeUartTelemetryService::poll() noexcept {
             }
             continue;
         }
-        if (count == 0) break;
+        if (count == 0) {
+            close_device();
+            error_code_ = "UART_DEVICE_DISCONNECTED";
+            next_open_attempt_ms_ = monotonic_milliseconds() +
+                kReconnectIntervalMilliseconds;
+            return;
+        }
         if (errno == EINTR) continue;
         if (errno == EAGAIN || errno == EWOULDBLOCK) break;
+        const bool device_disconnected =
+            errno == EIO || errno == ENODEV || errno == ENXIO || errno == EBADF;
         close_device();
-        error_code_ = "UART_DEVICE_READ_FAILED";
-        next_open_attempt_ms_ = now + kReconnectIntervalMilliseconds;
-        break;
+        error_code_ = device_disconnected
+            ? "UART_DEVICE_DISCONNECTED" : "UART_DEVICE_READ_FAILED";
+        next_open_attempt_ms_ = monotonic_milliseconds() +
+            kReconnectIntervalMilliseconds;
+        return;
     }
 }
 

@@ -22,8 +22,8 @@ public:
     PrototypeUartTelemetryService(const PrototypeUartTelemetryService&) = delete;
     PrototypeUartTelemetryService& operator=(const PrototypeUartTelemetryService&) = delete;
 
-    // Configure a /dev/... device path. poll() retries opening a missing device
-    // so the read-only Gateway can still start before the UART is connected.
+    // Configure a /dev/... device path. poll() detects tty hangups/errors,
+    // closes detached descriptors, and retries missing/reconnected devices.
     [[nodiscard]] bool configure(std::string_view device_path) noexcept;
     void poll() noexcept;
     void stop() noexcept;
@@ -55,6 +55,7 @@ private:
     std::uint64_t next_open_attempt_ms_{0U};
     bool configured_{false};
     bool has_snapshot_{false};
+    bool current_connection_has_frame_{false};
     const char* error_code_{"NOT_CONFIGURED"};
 };
 
